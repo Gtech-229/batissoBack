@@ -1,0 +1,90 @@
+import { Injectable } from '@nestjs/common';
+import { hashPassword } from '../admin-auth/secrets.js';
+import { AdminRole, Prisma, type Admin } from '../generated/prisma/client.js';
+import { PrismaService } from '../prisma/prisma.service.js';
+import {
+  adminNotFound,
+  emailAlreadyUsed,
+  protectedAdmin,
+} from './admins.errors.js';
+import { toAdminSummary, type AdminSummary } from './dto/admin-summary.js';
+import type { CreateAdminDto } from './dto/create-admin.dto.js';
+
+@Injectable()
+export class AdminsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  /** New admins are always ADMIN and must change the initial password. */
+  async create(
+    data: CreateAdminDto,
+    createdById: string,
+  ): Promise<AdminSummary> {
+    try {
+      const admin = await this.prisma.admin.create({
+        data: {
+          email: data.email,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          passwordHash: await hashPassword(data.password),
+          role: AdminRole.ADMIN,
+          mustChangePassword: true,
+          createdById,
+        },
+      });
+      return toAdminSummary(admin);
+    } catch (error) {
+      // P2002: unique constraint (the email). Caught here rather than checked
+      // beforehand, so two simultaneous creations cannot both pass.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw emailAlreadyUsed();
+      }
+      throw error;
+    }
+  }
+
+  async list(): Promise<AdminSummary[]> {
+    const admins = await this.prisma.admin.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    return admins.map(toAdminSummary);
+  }
+
+  /** Blocks login and signs the admin out everywhere, immediately. */
+  async deactivate(id: string, currentAdminId: string): Promise<AdminSummary> {
+    await this.findManageable(id, currentAdminId);
+    const [admin] = await this.prisma.$transaction([
+      this.prisma.admin.update({ where: { id }, data: { isActive: false } }),
+      this.prisma.adminSession.updateMany({
+        where: { adminId: id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+    return toAdminSummary(admin);
+  }
+
+  async activate(id: string, currentAdminId: string): Promise<AdminSummary> {
+    await this.findManageable(id, currentAdminId);
+    const admin = await this.prisma.admin.update({
+      where: { id },
+      data: { isActive: true },
+    });
+    return toAdminSummary(admin);
+  }
+
+  private async findManageable(
+    id: string,
+    currentAdminId: string,
+  ): Promise<Admin> {
+    const admin = await this.prisma.admin.findUnique({ where: { id } });
+    if (!admin) {
+      throw adminNotFound();
+    }
+    if (admin.id === currentAdminId || admin.role === AdminRole.SUPER_ADMIN) {
+      throw protectedAdmin();
+    }
+    return admin;
+  }
+}

@@ -1,5 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { ACCESS_COOKIE } from './admin-auth/admin-auth.constants.js';
 import { ErrorResponse } from './common/errors/error-response.js';
 
 export const SWAGGER_PATH = 'docs';
@@ -16,6 +17,8 @@ export function setupSwagger(app: INestApplication): void {
       ].join('\n'),
     )
     .setVersion('1.0')
+    // Admin routes read the httpOnly access cookie set by POST /admin/auth/login.
+    .addCookieAuth(ACCESS_COOKIE)
     .build();
 
   const document = SwaggerModule.createDocument(app, config, {

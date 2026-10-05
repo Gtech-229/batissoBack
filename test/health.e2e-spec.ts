@@ -74,6 +74,8 @@ describe('Health (e2e, database unreachable)', () => {
   beforeAll(async () => {
     app = await createApp({
       $queryRaw: vi.fn().mockRejectedValue(new Error('ECONNREFUSED')),
+      // The startup bootstrap looks for a super admin; pretend one exists.
+      admin: { findFirst: vi.fn().mockResolvedValue({ id: 'super-1' }) },
     } as unknown as Partial<PrismaService>);
   });
 

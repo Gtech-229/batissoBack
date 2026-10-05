@@ -16,6 +16,8 @@ import type {
   ValidationErrorDetail,
 } from '../errors/error-response.js';
 
+const DOMAIN_ERROR_CODE = /^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$/;
+
 /** Turns every thrown error into the shared French ErrorResponse. */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -38,7 +40,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     const body: ErrorResponse = {
       statusCode: status,
-      error: HttpStatus[status] ?? 'ERROR',
+      error: this.errorCodeFor(exception, status),
       message: this.messageFor(exception, status),
       // originalUrl keeps the /api/v1 prefix; url can lose it on unmatched routes.
       path: request.originalUrl,
@@ -51,6 +53,23 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     response.status(status).json(body);
+  }
+
+  /**
+   * Our code can pass a domain code: `new UnauthorizedException({ message, error: 'INVALID_CREDENTIALS' })`.
+   * Nest's own payloads use Title Case ("Not Found"), so only UPPER_SNAKE_CASE counts as ours.
+   */
+  private errorCodeFor(exception: unknown, status: number): string {
+    if (exception instanceof HttpException) {
+      const payload = exception.getResponse();
+      if (typeof payload === 'object') {
+        const { error } = payload as { error?: unknown };
+        if (typeof error === 'string' && DOMAIN_ERROR_CODE.test(error)) {
+          return error;
+        }
+      }
+    }
+    return HttpStatus[status] ?? 'ERROR';
   }
 
   private messageFor(exception: unknown, status: number): string {

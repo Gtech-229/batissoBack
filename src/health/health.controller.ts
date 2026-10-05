@@ -11,6 +11,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { ErrorResponse } from '../common/errors/error-response.js';
+import { Public } from '../admin-auth/decorators/public.decorator.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { HealthResponse } from './health-response.js';
 
@@ -21,7 +22,14 @@ export class HealthController {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * @description Check that the API is up and can reach the database
+   * @route GET /api/v1/health
+   * @access Public
+   * @returns HealthResponse, or 503 when the database is unreachable
+   */
   @Get()
+  @Public()
   @ApiOperation({
     summary: 'Vérifier l’état de l’API',
     description:

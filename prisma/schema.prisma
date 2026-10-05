@@ -11,3 +11,63 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+}
+
+/// A member of the Bâtisso team using the web admin (email + password).
+model Admin {
+  id                  String    @id @default(uuid(7)) @db.Uuid
+  email               String    @unique
+  firstName           String
+  lastName            String
+  passwordHash        String
+  role                AdminRole
+  isActive            Boolean   @default(true)
+  mustChangePassword  Boolean   @default(true)
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  createdById         String?   @db.Uuid
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  createdBy       Admin?           @relation("AdminCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAdmins   Admin[]          @relation("AdminCreatedBy")
+  sessions        AdminSession[]
+  updatedSettings SystemSettings[]
+
+  @@map("admins")
+}
+
+/// One login of an admin in one browser. Only the refresh token's hash is stored.
+model AdminSession {
+  id               String    @id @default(uuid(7)) @db.Uuid
+  adminId          String    @db.Uuid
+  refreshTokenHash String    @unique
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  userAgent        String?   @db.VarChar(255)
+  createdAt        DateTime  @default(now())
+  lastUsedAt       DateTime  @default(now())
+
+  admin Admin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId, revokedAt])
+  @@map("admin_sessions")
+}
+
+/// Platform-wide settings editable by admins. A single row (id = 1); until it
+/// exists, the code uses its defaults.
+model SystemSettings {
+  id               Int      @id @default(1)
+  maxLoginAttempts Int
+  maxAdminSessions Int
+  updatedAt        DateTime @updatedAt
+  updatedById      String?  @db.Uuid
+
+  updatedBy Admin? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("system_settings")
+}

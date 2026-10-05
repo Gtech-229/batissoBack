@@ -1,10 +1,24 @@
-import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsInt, IsUrl, Max, Min, validateSync } from 'class-validator';
+import { plainToInstance, Transform } from 'class-transformer';
+import {
+  IsEmail,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUrl,
+  Max,
+  Min,
+  MinLength,
+  validateSync,
+} from 'class-validator';
+import { IsPassword } from '../common/validation/password.js';
+
 export enum Environment {
   Development = 'development',
   Production = 'production',
   Test = 'test',
 }
+
 export class EnvironmentVariables {
   @IsUrl({
     protocols: ['postgresql', 'postgres'],
@@ -20,6 +34,42 @@ export class EnvironmentVariables {
 
   @IsEnum(Environment)
   NODE_ENV: Environment = Environment.Development;
+
+  /** Web admin origins allowed to call the API with cookies, comma-separated. */
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string'
+      ? value
+          .split(',')
+          .map((origin) => origin.trim())
+          .filter(Boolean)
+      : value,
+  )
+  @IsUrl(
+    {
+      protocols: ['http', 'https'],
+      require_tld: false,
+      require_protocol: true,
+    },
+    { each: true },
+  )
+  CORS_ORIGINS: string[] = [];
+
+  /** Signs the admin access tokens. Never logged. */
+  @IsString()
+  @MinLength(32)
+  JWT_ACCESS_SECRET: string;
+
+  /** Used once, to create the super admin when none exists. */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
+  @IsEmail()
+  SUPER_ADMIN_EMAIL?: string;
+
+  @IsOptional()
+  @IsPassword()
+  SUPER_ADMIN_PASSWORD?: string;
 }
 
 export function validate(

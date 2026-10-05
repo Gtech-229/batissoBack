@@ -15,9 +15,10 @@ Built with NestJS 12, PostgreSQL 17 (Docker), Prisma 7, and Swagger.
 
 ```bash
 npm install
-cp .env.example .env        # local defaults work as-is
+cp .env.example .env        # then set JWT_ACCESS_SECRET (see below) and the super admin password
 npm run db:up               # PostgreSQL on localhost:5433 (dev + test databases)
 npm run prisma:generate     # generates the Prisma client into src/generated/
+npm run prisma:migrate      # creates the tables
 npm run start:dev           # http://localhost:3000
 ```
 
@@ -25,6 +26,21 @@ Check it works:
 
 - Health: http://localhost:3000/api/v1/health returns `{"status":"ok","database":"up",...}`
 - API docs (French): http://localhost:3000/docs
+
+## First admin login
+
+1. On the first start, the API creates the **super admin** from `SUPER_ADMIN_EMAIL`
+   and `SUPER_ADMIN_PASSWORD` (the log shows `Super admin created: <email>`). It
+   never overwrites an existing super admin, so these values are only used once.
+2. Log in with `POST /api/v1/admin/auth/login` (`{ "email", "password" }`), for
+   example from Swagger UI. The session lives in httpOnly cookies, which the
+   browser sends automatically.
+3. The super admin creates the other admins (`POST /api/v1/admin/admins`) with an
+   initial password. A new admin must change it (`PATCH /api/v1/admin/auth/password`)
+   before using anything else.
+
+Security settings (max login attempts before a 15-minute lock, max sessions per
+admin) are editable by the super admin at `PATCH /api/v1/admin/settings`.
 
 ## Common commands
 
@@ -41,7 +57,9 @@ Check it works:
 
 ## Conventions
 
-- All routes live under `/api/v1`.
+- All routes live under `/api/v1`; web admin routes under `/api/v1/admin`.
+- Every route requires an admin session unless it is explicitly public (health,
+  login, refresh, logout).
 - Every error response has the same shape:
   `{ statusCode, error, message, details?, path, timestamp }`. `message` is in
   French and safe to show to users; `error` is a stable code for client apps.
@@ -53,6 +71,10 @@ Check it works:
 |---|---|---|---|
 | `DATABASE_URL` | yes | | `postgresql://` URL |
 | `PORT` | no | `3000` | |
-| `NODE_ENV` | no | `development` | `development`, `test`, or `production` (Swagger is off in production) |
+| `NODE_ENV` | no | `development` | `development`, `test`, or `production` (Swagger is off and cookies are `Secure` in production) |
+| `CORS_ORIGINS` | no | none | Comma-separated web admin origins allowed to send cookies, e.g. `http://localhost:5173` |
+| `JWT_ACCESS_SECRET` | yes | | At least 32 random characters; signs admin access tokens. The `.env.example` placeholder is deliberately too short, so the API refuses to start until you set a real one: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
+| `SUPER_ADMIN_EMAIL` | when no super admin exists | | Email of the super admin created at startup |
+| `SUPER_ADMIN_PASSWORD` | when no super admin exists | | 8 to 128 characters with an uppercase letter, a lowercase letter, a digit, and a special character. **Wrap it in quotes**: an unquoted `#` starts a comment |
 
 The app refuses to start if a variable is missing or invalid.

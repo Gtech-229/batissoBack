@@ -1,0 +1,47 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsInt, IsOptional, Max, Min } from 'class-validator';
+import { SYSTEM_SETTINGS_LIMITS as LIMITS } from '../system-settings.service.js';
+
+const ATTEMPTS = LIMITS.maxLoginAttempts;
+const SESSIONS = LIMITS.maxAdminSessions;
+const ATTEMPTS_MESSAGE = `Le nombre de tentatives doit être un entier entre ${ATTEMPTS.min} et ${ATTEMPTS.max}`;
+const SESSIONS_MESSAGE = `Le nombre de sessions doit être un entier entre ${SESSIONS.min} et ${SESSIONS.max}`;
+
+export class SystemSettingsResponse {
+  @ApiProperty({
+    description:
+      'Échecs de connexion consécutifs avant le blocage du compte pendant 15 minutes',
+    example: 5,
+  })
+  maxLoginAttempts: number;
+
+  @ApiProperty({
+    description:
+      'Sessions ouvertes en même temps par administrateur ; au-delà, les plus anciennes sont fermées',
+    example: 3,
+  })
+  maxAdminSessions: number;
+}
+
+/** Partial update: omitted settings keep their current value. */
+export class UpdateSystemSettingsDto {
+  @ApiPropertyOptional({
+    description: `Entre ${ATTEMPTS.min} et ${ATTEMPTS.max}`,
+    example: 5,
+  })
+  @IsOptional()
+  @IsInt({ message: ATTEMPTS_MESSAGE })
+  @Min(ATTEMPTS.min, { message: ATTEMPTS_MESSAGE })
+  @Max(ATTEMPTS.max, { message: ATTEMPTS_MESSAGE })
+  maxLoginAttempts?: number;
+
+  @ApiPropertyOptional({
+    description: `Entre ${SESSIONS.min} et ${SESSIONS.max}`,
+    example: 3,
+  })
+  @IsOptional()
+  @IsInt({ message: SESSIONS_MESSAGE })
+  @Min(SESSIONS.min, { message: SESSIONS_MESSAGE })
+  @Max(SESSIONS.max, { message: SESSIONS_MESSAGE })
+  maxAdminSessions?: number;
+}

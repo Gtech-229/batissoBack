@@ -2,10 +2,12 @@ import {
   ArgumentsHost,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   HttpException,
   Logger,
   NotFoundException,
   ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import type { ValidationError } from 'class-validator';
 import { validationExceptionFactory } from '../validation/validation-exception.factory.js';
@@ -132,4 +134,33 @@ describe('AllExceptionsFilter', () => {
 
     expect(run('boom').status).toBe(500);
   });
+
+  it('uses a domain error code passed by our code', () => {
+    const { status, body } = run(
+      new UnauthorizedException({
+        message: 'Email ou mot de passe incorrect',
+        error: 'INVALID_CREDENTIALS',
+      }),
+    );
+
+    expect(status).toBe(401);
+    expect(body.error).toBe('INVALID_CREDENTIALS');
+    expect(body.message).toBe('Email ou mot de passe incorrect');
+  });
+
+  it("ignores Nest's own Title Case error field", () => {
+    // Nest builds { message, error: 'Not Found', statusCode } for string messages.
+    expect(run(new NotFoundException('Compte introuvable')).body.error).toBe(
+      'NOT_FOUND',
+    );
+  });
+
+  it.each(['invalid', 'Invalid_Code', 'SINGLEWORD'])(
+    'ignores the non-domain code %s',
+    (error) => {
+      const { body } = run(new ForbiddenException({ message: 'Non', error }));
+
+      expect(body.error).toBe('FORBIDDEN');
+    },
+  );
 });
