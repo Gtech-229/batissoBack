@@ -215,12 +215,45 @@ describe('Stores (e2e)', () => {
         expect.arrayContaining([
           {
             field: 'settings',
-            errors: ['Les paramètres de la quincaillerie sont requis'],
+            errors: [
+              'Les paramètres de la quincaillerie sont requis, sous forme d’objet',
+            ],
           },
-          { field: 'manager', errors: ['Le gérant est requis'] },
+          {
+            field: 'manager',
+            errors: ['Le gérant est requis, sous forme d’objet'],
+          },
         ]),
       );
     });
+
+    it.each([
+      ['settings', []],
+      ['settings', [storeBody().settings]],
+      ['settings', 'x'],
+      ['manager', []],
+      ['manager', 42],
+    ])(
+      'refuses %s sent as %j with a French 400 and creates nothing',
+      async (field, value) => {
+        await createMali(prisma);
+
+        const response = await register(storeBody({ [field]: value })).expect(
+          400,
+        );
+
+        const details = response.body.details as {
+          field: string;
+          errors: string[];
+        }[];
+        expect(details.map((d) => d.field)).toEqual([field]);
+        // French only: none of class-validator's default English messages.
+        expect(details[0].errors.join(' ')).not.toMatch(
+          /must|should|nested property/,
+        );
+        expect(await prisma.hardwareStore.count()).toBe(0);
+      },
+    );
 
     it('refuses an unknown field, even nested', async () => {
       await createMali(prisma);

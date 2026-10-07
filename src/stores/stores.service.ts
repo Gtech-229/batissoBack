@@ -42,6 +42,15 @@ import {
   storeNotFound,
 } from './stores.errors.js';
 
+/**
+ * Prisma's `contains` becomes `ILIKE '%value%'` without escaping, so `%` and `_`
+ * in a search would act as wildcards. Backslash is PostgreSQL's default LIKE
+ * escape: escape it first, then the two wildcards, so the text is matched as is.
+ */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
 @Injectable()
 export class StoresService {
   constructor(private readonly prisma: PrismaService) {}
@@ -114,13 +123,14 @@ export class StoresService {
 
   /** Newest first; filters combine with AND. */
   async list(query: ListStoresQueryDto): Promise<Paginated<StoreSummary>> {
+    const search = query.q && escapeLike(query.q);
     const where: Prisma.HardwareStoreWhereInput = {
       status: query.status,
       countryCode: query.countryCode,
-      ...(query.q && {
+      ...(search && {
         OR: [
-          { name: { contains: query.q, mode: 'insensitive' } },
-          { city: { contains: query.q, mode: 'insensitive' } },
+          { name: { contains: search, mode: 'insensitive' } },
+          { city: { contains: search, mode: 'insensitive' } },
         ],
       }),
     };

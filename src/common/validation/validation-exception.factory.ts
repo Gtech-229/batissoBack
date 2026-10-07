@@ -25,10 +25,12 @@ export function toValidationDetails(
   });
 }
 
+/** One entry per distinct message: two constraints may share a message. */
 function toMessages(constraints: Record<string, string>): string[] {
-  return Object.entries(constraints).map(([name, message]) =>
+  const messages = Object.entries(constraints).map(([name, message]) =>
     name === 'whitelistValidation' ? FORBIDDEN_PROPERTY_MESSAGE : message,
   );
+  return [...new Set(messages)];
 }
 
 export function validationExceptionFactory(

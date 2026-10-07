@@ -112,6 +112,25 @@ describe('Stores: list and updates (e2e)', () => {
     });
 
     it.each([
+      ['_', ['Depot_Sud 100%']],
+      ['%', ['Depot_Sud 100%']],
+      ['100%', ['Depot_Sud 100%']],
+      // As a pattern, `l_r` would match "Quincail-ler-ie".
+      ['l_r', []],
+      ['\\', []],
+      ['quincaillerie', ['Quincaillerie A']],
+    ])('searches q=%j literally, not as a LIKE pattern', async (q, names) => {
+      await createStoreRecord(prisma, { name: 'Quincaillerie A' });
+      await createStoreRecord(prisma, { name: 'Depot_Sud 100%' });
+
+      const response = await list(`?q=${encodeURIComponent(q)}`).expect(200);
+
+      expect(response.body.items.map((s: { name: string }) => s.name)).toEqual(
+        names,
+      );
+    });
+
+    it.each([
       ['?pageSize=101', 'pageSize'],
       ['?page=0', 'page'],
       ['?page=100000000000000000000', 'page'],

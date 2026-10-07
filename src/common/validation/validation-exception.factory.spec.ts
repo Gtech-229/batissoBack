@@ -87,6 +87,22 @@ describe('toValidationDetails', () => {
       { field: 'role', errors: ["Ce champ n'est pas autorisé"] },
     ]);
   });
+
+  it('lists a message shared by two constraints only once', () => {
+    const details = toValidationDetails([
+      error({
+        property: 'settings',
+        constraints: {
+          isObject: 'Paramètres requis, sous forme d’objet',
+          nestedValidation: 'Paramètres requis, sous forme d’objet',
+        },
+      }),
+    ]);
+
+    expect(details).toEqual([
+      { field: 'settings', errors: ['Paramètres requis, sous forme d’objet'] },
+    ]);
+  });
 });
 
 describe('validationExceptionFactory', () => {

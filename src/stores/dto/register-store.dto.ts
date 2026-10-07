@@ -1,8 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
-  IsDefined,
   IsISO31661Alpha2,
+  IsObject,
   IsOptional,
   IsString,
   Length,
@@ -18,6 +18,12 @@ const trim = ({ value }: { value: unknown }) =>
 // the rule depends on another field (countryCode).
 const PHONE_DESCRIPTION =
   'Numéro du pays de la quincaillerie, au format local (76 00 00 00) ou international (+223 76 00 00 00)';
+
+// One message per nested object, shared by @IsObject (missing, null, array,
+// text, number) and @ValidateNested (its own English check on non-objects).
+const SETTINGS_MESSAGE =
+  'Les paramètres de la quincaillerie sont requis, sous forme d’objet';
+const MANAGER_MESSAGE = 'Le gérant est requis, sous forme d’objet';
 
 export class StoreSettingsInput {
   @ApiProperty({
@@ -125,16 +131,18 @@ export class RegisterStoreDto {
   tradeRegister: string;
 
   @ApiProperty({ description: 'Règles d’argent de la quincaillerie' })
-  @IsDefined({ message: 'Les paramètres de la quincaillerie sont requis' })
+  // @IsObject, not @IsDefined: @ValidateNested accepts an array and validates
+  // each element, so `settings: []` would pass and break the service.
+  @IsObject({ message: SETTINGS_MESSAGE })
   // @Type turns the plain JSON object into a StoreSettingsInput instance, so
   // @ValidateNested can run the validators declared on that class.
-  @ValidateNested()
+  @ValidateNested({ message: SETTINGS_MESSAGE })
   @Type(() => StoreSettingsInput)
   settings: StoreSettingsInput;
 
   @ApiProperty({ description: 'Premier gérant de la quincaillerie' })
-  @IsDefined({ message: 'Le gérant est requis' })
-  @ValidateNested()
+  @IsObject({ message: MANAGER_MESSAGE })
+  @ValidateNested({ message: MANAGER_MESSAGE })
   @Type(() => StoreManagerInput)
   manager: StoreManagerInput;
 }
