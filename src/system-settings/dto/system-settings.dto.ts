@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsInt, Max, Min, ValidateIf } from 'class-validator';
 import { SYSTEM_SETTINGS_LIMITS as LIMITS } from '../system-settings.service.js';
 
 const ATTEMPTS = LIMITS.maxLoginAttempts;
@@ -23,13 +23,17 @@ export class SystemSettingsResponse {
   maxAdminSessions: number;
 }
 
-/** Partial update: omitted settings keep their current value. */
+/**
+ * Partial update: omitted settings keep their current value. `ValidateIf`
+ * rather than `@IsOptional()`: only an omitted value skips validation, so
+ * `null` is refused with a 400 instead of reaching a non-null column.
+ */
 export class UpdateSystemSettingsDto {
   @ApiPropertyOptional({
     description: `Entre ${ATTEMPTS.min} et ${ATTEMPTS.max}`,
     example: 5,
   })
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsInt({ message: ATTEMPTS_MESSAGE })
   @Min(ATTEMPTS.min, { message: ATTEMPTS_MESSAGE })
   @Max(ATTEMPTS.max, { message: ATTEMPTS_MESSAGE })
@@ -39,7 +43,7 @@ export class UpdateSystemSettingsDto {
     description: `Entre ${SESSIONS.min} et ${SESSIONS.max}`,
     example: 3,
   })
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsInt({ message: SESSIONS_MESSAGE })
   @Min(SESSIONS.min, { message: SESSIONS_MESSAGE })
   @Max(SESSIONS.max, { message: SESSIONS_MESSAGE })

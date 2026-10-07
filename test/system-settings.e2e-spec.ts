@@ -72,6 +72,8 @@ describe('System settings (e2e)', () => {
     [{ maxLoginAttempts: 4.5 }, 'maxLoginAttempts'],
     [{ maxAdminSessions: 0 }, 'maxAdminSessions'],
     [{ maxAdminSessions: '3' }, 'maxAdminSessions'],
+    [{ maxLoginAttempts: null }, 'maxLoginAttempts'],
+    [{ maxAdminSessions: null }, 'maxAdminSessions'],
   ])('rejects %o', async (body, field) => {
     const response = await api()
       .patch('/api/v1/admin/settings')

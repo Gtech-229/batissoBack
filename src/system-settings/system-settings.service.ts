@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { definedOnly } from '../common/defined-only.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 export interface SystemSettingsValues {
@@ -59,17 +60,4 @@ export class SystemSettingsService {
       maxAdminSessions: row.maxAdminSessions,
     };
   }
-}
-
-/**
- * A DTO instance has every declared field, set to `undefined` when the client
- * omitted it (ES2022+ class fields). Spreading it as-is would overwrite the
- * defaults with `undefined`, so only keep the values actually sent.
- */
-function definedOnly(
-  values: Partial<SystemSettingsValues>,
-): Partial<SystemSettingsValues> {
-  return Object.fromEntries(
-    Object.entries(values).filter(([, value]) => value !== undefined),
-  );
 }

@@ -8,7 +8,9 @@ import { validationExceptionFactory } from './common/validation/validation-excep
 import { validate } from './config/env.validation.js';
 import { HealthModule } from './health/health.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { StoresModule } from './stores/stores.module.js';
 import { SystemSettingsModule } from './system-settings/system-settings.module.js';
+import { CountriesModule } from './countries/countries.module.js';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { SystemSettingsModule } from './system-settings/system-settings.module.j
     SystemSettingsModule,
     AdminAuthModule,
     AdminsModule,
+    CountriesModule,
+    StoresModule,
   ],
   providers: [
     // Registered as providers (not in main.ts) so e2e tests get them too.

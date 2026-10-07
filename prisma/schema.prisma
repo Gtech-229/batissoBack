@@ -33,10 +33,14 @@ model Admin {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  createdBy       Admin?           @relation("AdminCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAdmins   Admin[]          @relation("AdminCreatedBy")
-  sessions        AdminSession[]
-  updatedSettings SystemSettings[]
+  createdBy            Admin?           @relation("AdminCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAdmins        Admin[]          @relation("AdminCreatedBy")
+  sessions             AdminSession[]
+  updatedSettings      SystemSettings[]
+  // Feature 3: stores this admin registered, status changes, settings edits.
+  storesCreated        HardwareStore[]  @relation("StoreCreatedBy")
+  storeStatusChanges   HardwareStore[]  @relation("StoreStatusChangedBy")
+  storeSettingsUpdates StoreSettings[]
 
   @@map("admins")
 }
@@ -70,4 +74,117 @@ model SystemSettings {
   updatedBy Admin? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@map("system_settings")
+}
+
+enum StoreStatus {
+  PENDING
+  VERIFIED
+  SUSPENDED
+  CLOSED
+}
+
+enum StoreMemberRole {
+  SELLER
+  MANAGER
+}
+
+/// A country the platform operates in. Its currency is the currency of every
+/// store and account in it; there is never any conversion.
+model Country {
+  code           String   @id @db.VarChar(2) /// ISO 3166-1 alpha-2, uppercase
+  name           String
+  phonePrefix    String /// Derived from the code, e.g. +223
+  currencyCode   String   @db.VarChar(3) /// ISO 4217, e.g. XOF
+  currencySymbol String
+  decimals       Int /// Digits after the decimal point in amounts (XOF: 0)
+  language       String   @default("fr") @db.VarChar(2)
+  active         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  stores HardwareStore[]
+
+  @@map("countries")
+}
+
+/// A hardware store (quincaillerie) using Bâtisso.
+model HardwareStore {
+  id                String      @id @default(uuid(7)) @db.Uuid
+  countryCode       String      @db.VarChar(2)
+  name              String
+  address           String
+  city              String
+  phone             String /// E.164
+  tradeRegister     String
+  status            StoreStatus @default(PENDING)
+  verifiedAt        DateTime?
+  statusChangedAt   DateTime?
+  statusChangedById String?     @db.Uuid
+  statusReason      String?
+  /// Null for a store that registered itself (feature 21).
+  createdById       String?     @db.Uuid
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  country         Country        @relation(fields: [countryCode], references: [code], onDelete: Restrict)
+  createdBy       Admin?         @relation("StoreCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  statusChangedBy Admin?         @relation("StoreStatusChangedBy", fields: [statusChangedById], references: [id], onDelete: SetNull)
+  settings        StoreSettings?
+  members         StoreMember[]
+
+  @@index([status, createdAt])
+  // Stores of a country (country store counts, filters by country).
+  @@index([countryCode])
+  @@map("hardware_stores")
+}
+
+/// Money rules of one store. Amounts are integers in the smallest currency unit.
+model StoreSettings {
+  storeId             String   @id @db.Uuid
+  maxBalance          BigInt
+  validationThreshold BigInt
+  minDeposit          BigInt
+  refundAllowed       Boolean  @default(false) /// Off for every store in V1
+  reservationEnabled  Boolean  @default(false) /// Off for every store in V1
+  terms               String?
+  updatedAt           DateTime @updatedAt
+  updatedById         String?  @db.Uuid
+
+  store     HardwareStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  updatedBy Admin?        @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("store_settings")
+}
+
+/// A person using the mobile app (customer or store staff), identified by phone.
+/// Authentication fields arrive with feature 19.
+model User {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  phone     String   @unique /// E.164
+  firstName String
+  lastName  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships StoreMember[]
+
+  @@map("users")
+}
+
+/// A user working in a store, as seller or manager.
+model StoreMember {
+  id        String          @id @default(uuid(7)) @db.Uuid
+  userId    String          @db.Uuid
+  storeId   String          @db.Uuid
+  role      StoreMemberRole
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now())
+
+  user  User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  store HardwareStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storeId])
+  // Members of a store (store detail); the unique index above starts with userId.
+  @@index([storeId])
+  @@map("store_members")
 }

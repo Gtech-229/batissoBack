@@ -42,6 +42,23 @@ Check it works:
 Security settings (max login attempts before a 15-minute lock, max sessions per
 admin) are editable by the super admin at `PATCH /api/v1/admin/settings`.
 
+## First country and store
+
+There is no seed data, so a fresh database has no country. As an admin:
+
+1. Create the country: `POST /api/v1/admin/countries`
+   (`{ "code": "ML", "name": "Mali", "currencyCode": "XOF", "currencySymbol": "F CFA", "decimals": 0 }`).
+   The phone prefix is derived from the code. Countries start inactive.
+2. Activate it: `PATCH /api/v1/admin/countries/ML/activate` (a single active
+   country in V1).
+3. Register a store with its money settings and first manager:
+   `POST /api/v1/admin/stores`. Amounts are strings in the currency's smallest unit
+   (`"200000"` = 200 000 F); phone numbers must belong to the store's country.
+4. After checking its papers, verify it: `PATCH /api/v1/admin/stores/:id/verify`.
+   A store can then be suspended, reactivated, or closed (final).
+
+Lists are paginated: `?page=1&pageSize=20` returns `{ items, total, page, pageSize }`.
+
 ## Common commands
 
 | Command | What it does |
