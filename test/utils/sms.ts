@@ -1,12 +1,23 @@
 import type { SmsSender } from '../../src/sms/sms-sender.js';
 
-/** Keeps every SMS instead of sending it, so a test can read the codes. */
+/**
+ * Keeps every SMS instead of sending it, so a test can read the codes. `mode`
+ * simulates a provider that fails (`reject`) or never answers (`hang`).
+ */
 export class CapturingSmsSender implements SmsSender {
   messages: { phone: string; text: string }[] = [];
+  mode: 'deliver' | 'reject' | 'hang' = 'deliver';
 
   send(phone: string, text: string): Promise<void> {
     this.messages.push({ phone, text });
-    return Promise.resolve();
+    switch (this.mode) {
+      case 'reject':
+        return Promise.reject(new Error('Provider unavailable'));
+      case 'hang':
+        return new Promise<void>(() => {});
+      default:
+        return Promise.resolve();
+    }
   }
 
   /** The 6-digit code of the last SMS sent to `phone`. */
@@ -19,7 +30,9 @@ export class CapturingSmsSender implements SmsSender {
     return code;
   }
 
+  /** Forgets the messages and goes back to delivering normally. */
   clear(): void {
     this.messages = [];
+    this.mode = 'deliver';
   }
 }

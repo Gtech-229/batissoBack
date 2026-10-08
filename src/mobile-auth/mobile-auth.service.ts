@@ -1,5 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { randomBytes, randomInt } from 'node:crypto';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { generateKeyPairSync, randomBytes, randomInt } from 'node:crypto';
 import {
   hashPassword,
   hashToken,
@@ -26,6 +26,7 @@ import {
   CODE_LENGTH,
   CODE_MAX_ATTEMPTS,
   CODE_TTL_MS,
+  CODES_PER_DAY,
   CODES_PER_HOUR,
   PIN_LOCK_DURATION_MS,
   REFRESH_TOKEN_TTL_MS,
@@ -44,6 +45,20 @@ import { isValidDeviceSignature } from './device-key.js';
 import { PinHasher } from './pin-hasher.js';
 
 const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+// Matches no user: a device lookup for an unknown phone finds nothing, at the
+// same cost as a real one.
+const NO_USER_ID = '00000000-0000-0000-0000-000000000000';
+
+/** `+22376000000` -> `+223******00`: enough to recognize a log line, not to reuse it. */
+export function maskPhone(phone: string): string {
+  return (
+    phone.slice(0, 4) +
+    '*'.repeat(Math.max(0, phone.length - 6)) +
+    phone.slice(-2)
+  );
+}
 
 /** The SMS a user receives. French, like every message users see. */
 export function codeMessage(code: string): string {
@@ -63,6 +78,14 @@ export class MobileAuthService {
   // Compared against when there is no live code, so a wrong phone takes as long
   // as a wrong code and response times reveal nothing.
   private dummyHash?: Promise<string>;
+  // A real P-256 key nobody holds the private half of: signatures are checked
+  // against it when there is no device, so no signature ever matches it.
+  private readonly dummyPublicKey = generateKeyPairSync('ec', {
+    namedCurve: 'prime256v1',
+  })
+    .publicKey.export({ format: 'der', type: 'spki' })
+    .toString('base64');
+  private readonly logger = new Logger(MobileAuthService.name);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -93,25 +116,35 @@ export class MobileAuthService {
       where: { phone },
       select: { id: true },
     });
-    if (!user) {
-      return;
-    }
 
+    // The same transaction for every valid phone, known or not (F-15): only a
+    // known phone within the limits writes, a residual of two quick writes.
     const created = await this.prisma.$transaction(async (tx) => {
       // One request per phone at a time: without it, two parallel requests
       // could both pass the cooldown and send two SMS.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('phone-verification:' || ${phone}))`;
 
+      // The phone's codes of the last 24 hours, newest first: enough for the
+      // cooldown, the hourly cap, and the daily cap.
       const now = Date.now();
-      const lastHour = await tx.phoneVerification.findMany({
-        where: { phone, createdAt: { gt: new Date(now - HOUR_MS) } },
+      const lastDay = await tx.phoneVerification.findMany({
+        where: { phone, createdAt: { gt: new Date(now - DAY_MS) } },
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true },
       });
-      const tooSoon =
-        lastHour.length > 0 &&
-        now - lastHour[0].createdAt.getTime() < CODE_COOLDOWN_MS;
-      if (tooSoon || lastHour.length >= CODES_PER_HOUR) {
+      const sentAgo = (index: number) =>
+        now - lastDay[index].createdAt.getTime();
+      const tooSoon = lastDay.length > 0 && sentAgo(0) < CODE_COOLDOWN_MS;
+      const lastHourCount = lastDay.filter(
+        (_code, index) => sentAgo(index) < HOUR_MS,
+      ).length;
+      // The daily cap bounds code guessing: at most 50 tries a day (F-14).
+      if (
+        !user ||
+        tooSoon ||
+        lastHourCount >= CODES_PER_HOUR ||
+        lastDay.length >= CODES_PER_DAY
+      ) {
         return false;
       }
 
@@ -126,10 +159,24 @@ export class MobileAuthService {
       return true;
     });
 
-    // After the commit: the code exists before the user can type it.
+    // After the commit, so the code exists before the user can type it, and not
+    // awaited: the response time and outcome never depend on the provider, so
+    // they cannot reveal which phones have an account (F-15).
     if (created) {
-      await this.sms.send(phone, codeMessage(code));
+      this.sendCode(phone, code);
     }
+  }
+
+  /**
+   * Starts sending the SMS without waiting for it. A provider failure is logged
+   * (masked phone, error type only: never the text, which holds the code) and
+   * never reaches the client; the user can ask for a new code.
+   */
+  private sendCode(phone: string, code: string): void {
+    this.sms.send(phone, codeMessage(code)).catch((error: unknown) => {
+      const kind = error instanceof Error ? error.name : 'unknown error';
+      this.logger.error(`SMS to ${maskPhone(phone)} failed (${kind})`);
+    });
   }
 
   /**
@@ -336,21 +383,22 @@ export class MobileAuthService {
       },
       data: { usedAt: now },
     });
-    const user =
-      count === 1 && phone
-        ? await this.prisma.user.findUnique({ where: { phone } })
-        : null;
-    const device = user
-      ? await this.prisma.userDevice.findUnique({
-          where: { userId_deviceId: { userId: user.id, deviceId } },
-          select: { publicKey: true },
-        })
+    // The same lookups and signature check on every path, whatever the
+    // challenge, phone, or device (F-15): a missing device is checked against a
+    // throwaway key, so every refusal costs the same work.
+    const user = phone
+      ? await this.prisma.user.findUnique({ where: { phone } })
       : null;
-    if (
-      !user?.pinHash ||
-      !device?.publicKey ||
-      !isValidDeviceSignature(device.publicKey, challenge, signature)
-    ) {
+    const device = await this.prisma.userDevice.findUnique({
+      where: { userId_deviceId: { userId: user?.id ?? NO_USER_ID, deviceId } },
+      select: { publicKey: true },
+    });
+    const signatureOk = isValidDeviceSignature(
+      device?.publicKey ?? this.dummyPublicKey,
+      challenge,
+      signature,
+    );
+    if (count !== 1 || !user?.pinHash || !device?.publicKey || !signatureOk) {
       throw deviceVerificationRequired();
     }
 

@@ -1,4 +1,4 @@
-import type { INestApplication } from '@nestjs/common';
+import { Logger, type INestApplication } from '@nestjs/common';
 import { createHash, generateKeyPairSync } from 'node:crypto';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
@@ -147,6 +147,78 @@ describe('Mobile auth (e2e)', () => {
       await requestCode(TEST_PHONE).expect(202);
 
       expect(sms.messages).toHaveLength(5);
+    });
+
+    it.each([
+      [9, 1],
+      [10, 0],
+    ])(
+      'with %i codes in the last 24 hours, sends %i SMS (daily cap of 10, F-14)',
+      async (earlier, expected) => {
+        await createUser(prisma);
+        // Spread between 2 and 23 hours ago: past the cooldown and the hourly cap.
+        const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000);
+        await prisma.phoneVerification.createMany({
+          data: Array.from({ length: earlier }, (_, i) => ({
+            phone: TEST_PHONE,
+            codeHash: 'scrypt$old$old',
+            expiresAt: hoursAgo(2 + i * 2),
+            createdAt: hoursAgo(2.2 + i * 2),
+          })),
+        });
+
+        const response = await requestCode(TEST_PHONE).expect(202);
+
+        expect(response.body).toEqual({ message: CODE_REQUESTED_MESSAGE });
+        expect(sms.messages).toHaveLength(expected);
+      },
+    );
+
+    it('counts only the last 24 hours for the daily cap', async () => {
+      await createUser(prisma);
+      await prisma.phoneVerification.createMany({
+        data: Array.from({ length: 10 }, () => ({
+          phone: TEST_PHONE,
+          codeHash: 'scrypt$old$old',
+          expiresAt: new Date(Date.now() - 25 * 3_600_000),
+          createdAt: new Date(Date.now() - 25 * 3_600_000),
+        })),
+      });
+
+      await requestCode(TEST_PHONE).expect(202);
+
+      expect(sms.messages).toHaveLength(1);
+    });
+
+    it('answers 202 even when the SMS provider fails, and logs no code (F-15)', async () => {
+      await createUser(prisma);
+      sms.mode = 'reject';
+      const logged = vi
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => {});
+
+      const response = await requestCode(TEST_PHONE).expect(202);
+
+      expect(response.body).toEqual({ message: CODE_REQUESTED_MESSAGE });
+      expect(await prisma.phoneVerification.count()).toBe(1);
+      // The failure is logged once the rejection settles.
+      await vi.waitFor(() => expect(logged).toHaveBeenCalledTimes(1));
+      const line = JSON.stringify(logged.mock.calls);
+      expect(line).toContain('+223******00');
+      expect(line).not.toContain(TEST_PHONE);
+      expect(line).not.toContain(sms.lastCodeFor(TEST_PHONE));
+      logged.mockRestore();
+    });
+
+    it('does not wait for the SMS provider before answering (F-15)', async () => {
+      await createUser(prisma);
+      sms.mode = 'hang';
+      const started = Date.now();
+
+      await requestCode(TEST_PHONE).expect(202);
+
+      expect(Date.now() - started).toBeLessThan(2_000);
+      expect(sms.messages).toHaveLength(1);
     });
 
     it('sends a single SMS for parallel requests', async () => {

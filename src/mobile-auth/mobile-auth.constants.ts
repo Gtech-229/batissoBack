@@ -5,9 +5,14 @@ export const CODE_LENGTH = 6;
 export const CODE_TTL_MS = 10 * MINUTE_MS;
 export const CODE_MAX_ATTEMPTS = 5;
 
-/** SMS sending per phone: at most one code per minute and 5 per hour. */
+/**
+ * SMS sending per phone: at most one code per minute, 5 per hour, and 10 per
+ * rolling 24 hours. With 5 tries per code, the daily cap bounds guessing to 50
+ * tries a day (F-14).
+ */
 export const CODE_COOLDOWN_MS = MINUTE_MS;
 export const CODES_PER_HOUR = 5;
+export const CODES_PER_DAY = 10;
 
 /** The single-use token a verified code turns into, to set or check the PIN. */
 export const VERIFICATION_TTL_MS = 10 * MINUTE_MS;
