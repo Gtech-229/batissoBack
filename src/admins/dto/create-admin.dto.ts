@@ -1,33 +1,28 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
 import { IsEmail, IsString, Length } from 'class-validator';
 import {
   IsPassword,
   PASSWORD_RULE_MESSAGE,
 } from '../../common/validation/password.js';
-
-const trim = ({ value }: { value: unknown }) =>
-  typeof value === 'string' ? value.trim() : value;
+import { Trim, TrimLowerCase } from '../../common/validation/trim.js';
 
 export class CreateAdminDto {
   @ApiProperty({
     description: 'Adresse email (enregistrée en minuscules)',
     example: 'awa@batisso.com',
   })
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim().toLowerCase() : value,
-  )
+  @TrimLowerCase()
   @IsEmail({}, { message: 'L’adresse email est invalide' })
   email: string;
 
   @ApiProperty({ description: 'Prénom', example: 'Awa' })
-  @Transform(trim)
+  @Trim()
   @IsString({ message: 'Le prénom est requis' })
   @Length(1, 100, { message: 'Le prénom doit contenir 1 à 100 caractères' })
   firstName: string;
 
   @ApiProperty({ description: 'Nom', example: 'Diallo' })
-  @Transform(trim)
+  @Trim()
   @IsString({ message: 'Le nom est requis' })
   @Length(1, 100, { message: 'Le nom doit contenir 1 à 100 caractères' })
   lastName: string;

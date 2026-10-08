@@ -5,8 +5,13 @@ import { Environment, validate } from './env.validation.js';
 
 const VALID_URL = 'postgresql://batisso:batisso@localhost:5432/batisso';
 const SECRET = 'x'.repeat(32);
+const PEPPER = 'p'.repeat(32);
 /** The smallest valid environment. */
-const BASE = { DATABASE_URL: VALID_URL, JWT_ACCESS_SECRET: SECRET };
+const BASE = {
+  DATABASE_URL: VALID_URL,
+  JWT_ACCESS_SECRET: SECRET,
+  PIN_PEPPER: PEPPER,
+};
 
 describe('validate (environment variables)', () => {
   it('accepts a valid environment and converts PORT to a number', () => {
@@ -107,6 +112,39 @@ describe('validate (environment variables)', () => {
       const tooShort = 'short-secret-value';
 
       expect(() => validate({ ...BASE, JWT_ACCESS_SECRET: tooShort })).toThrow(
+        expect.objectContaining({
+          message: expect.not.stringContaining(tooShort) as string,
+        }),
+      );
+    });
+  });
+
+  describe('PIN_PEPPER', () => {
+    it('is required', () => {
+      const { PIN_PEPPER: _omitted, ...withoutPepper } = BASE;
+
+      expect(() => validate(withoutPepper)).toThrow(/PIN_PEPPER/);
+    });
+
+    it('rejects a pepper shorter than 32 characters', () => {
+      expect(() => validate({ ...BASE, PIN_PEPPER: 'p'.repeat(31) })).toThrow(
+        /PIN_PEPPER/,
+      );
+    });
+
+    it('refuses the .env.example placeholder, so an unedited copy cannot start', () => {
+      const example = parseEnv(readFileSync('.env.example', 'utf8'));
+
+      expect(example.PIN_PEPPER).toBeDefined();
+      expect(() =>
+        validate({ ...BASE, PIN_PEPPER: example.PIN_PEPPER }),
+      ).toThrow(/PIN_PEPPER/);
+    });
+
+    it('never puts the pepper value in the error message', () => {
+      const tooShort = 'short-pepper-value';
+
+      expect(() => validate({ ...BASE, PIN_PEPPER: tooShort })).toThrow(
         expect.objectContaining({
           message: expect.not.stringContaining(tooShort) as string,
         }),

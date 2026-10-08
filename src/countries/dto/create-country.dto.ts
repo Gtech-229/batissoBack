@@ -1,5 +1,4 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
 import {
   IsIn,
   IsInt,
@@ -11,11 +10,7 @@ import {
   Min,
   ValidateIf,
 } from 'class-validator';
-
-const trim = ({ value }: { value: unknown }) =>
-  typeof value === 'string' ? value.trim() : value;
-const trimUpper = ({ value }: { value: unknown }) =>
-  typeof value === 'string' ? value.trim().toUpperCase() : value;
+import { Trim, TrimUpperCase } from '../../common/validation/trim.js';
 
 export const COUNTRY_LANGUAGES = ['fr', 'en'] as const;
 
@@ -24,14 +19,14 @@ export class CreateCountryDto {
     description: 'Code ISO 3166-1 à 2 lettres (insensible à la casse)',
     example: 'ML',
   })
-  @Transform(trimUpper)
+  @TrimUpperCase()
   @IsISO31661Alpha2({
     message: 'Le code pays doit être un code ISO à 2 lettres (ex. ML)',
   })
   code: string;
 
   @ApiProperty({ description: 'Nom du pays', example: 'Mali' })
-  @Transform(trim)
+  @Trim()
   @IsString({ message: 'Le nom du pays est requis' })
   @Length(1, 100, {
     message: 'Le nom du pays doit contenir 1 à 100 caractères',
@@ -42,7 +37,7 @@ export class CreateCountryDto {
     description: 'Code devise ISO 4217 (montants de tout le pays)',
     example: 'XOF',
   })
-  @Transform(trimUpper)
+  @TrimUpperCase()
   @IsISO4217CurrencyCode({
     message: 'Le code devise doit être un code ISO 4217 valide (ex. XOF)',
   })
@@ -52,7 +47,7 @@ export class CreateCountryDto {
     description: 'Symbole affiché de la devise',
     example: 'F CFA',
   })
-  @Transform(trim)
+  @Trim()
   @IsString({ message: 'Le symbole de la devise est requis' })
   @Length(1, 10, {
     message: 'Le symbole de la devise doit contenir 1 à 10 caractères',

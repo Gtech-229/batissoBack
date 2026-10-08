@@ -49,6 +49,10 @@ describe('Super admin bootstrap and system settings (e2e)', () => {
     const settings = await app.get(SystemSettingsService).get();
     await app.close();
 
-    expect(settings).toEqual({ maxLoginAttempts: 5, maxAdminSessions: 3 });
+    expect(settings).toEqual({
+      maxLoginAttempts: 5,
+      maxAdminSessions: 3,
+      maxPinAttempts: 5,
+    });
   });
 });

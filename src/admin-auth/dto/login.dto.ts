@@ -1,15 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
 import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
+import { TrimLowerCase } from '../../common/validation/trim.js';
 
 export class LoginDto {
   @ApiProperty({
     description: 'Adresse email de l’administrateur (insensible à la casse)',
     example: 'admin@batisso.local',
   })
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim().toLowerCase() : value,
-  )
+  @TrimLowerCase()
   @IsEmail({}, { message: 'L’adresse email est invalide' })
   email: string;
 

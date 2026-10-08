@@ -1,5 +1,4 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
 import {
   IsEnum,
   IsISO31661Alpha2,
@@ -12,6 +11,7 @@ import {
   StoreStatus,
   type HardwareStore,
 } from '../../generated/prisma/client.js';
+import { Trim, TrimUpperCase } from '../../common/validation/trim.js';
 
 /** `GET /admin/stores?page=1&pageSize=20&status=PENDING&countryCode=ML&q=carrefour` */
 export class ListStoresQueryDto extends PaginationQueryDto {
@@ -24,9 +24,7 @@ export class ListStoresQueryDto extends PaginationQueryDto {
 
   @ApiPropertyOptional({ description: 'Filtrer par pays', example: 'ML' })
   @IsOptional()
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim().toUpperCase() : value,
-  )
+  @TrimUpperCase()
   @IsISO31661Alpha2({
     message: 'Le code pays doit être un code ISO à 2 lettres (ex. ML)',
   })
@@ -38,9 +36,7 @@ export class ListStoresQueryDto extends PaginationQueryDto {
     example: 'carrefour',
   })
   @IsOptional()
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Trim()
   @IsString({ message: 'La recherche doit être un texte' })
   @Length(1, 100, { message: 'La recherche doit contenir 1 à 100 caractères' })
   q?: string;

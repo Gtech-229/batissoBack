@@ -5,18 +5,23 @@ import { PrismaService } from '../prisma/prisma.service.js';
 export interface SystemSettingsValues {
   maxLoginAttempts: number;
   maxAdminSessions: number;
+  /** Wrong PINs before a mobile user is locked; 0 = no limit. */
+  maxPinAttempts: number;
 }
 
 /** Used until an admin saves settings for the first time (no seed data). */
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettingsValues = {
   maxLoginAttempts: 5,
   maxAdminSessions: 3,
+  maxPinAttempts: 5,
 };
 
 /** Allowed range of each setting, enforced by the update DTO. */
 export const SYSTEM_SETTINGS_LIMITS = {
   maxLoginAttempts: { min: 3, max: 20 },
   maxAdminSessions: { min: 1, max: 20 },
+  // 0 is also allowed for maxPinAttempts: it disables the PIN lock.
+  maxPinAttempts: { min: 3, max: 10 },
 } as const;
 
 // The settings table holds a single row.
@@ -33,10 +38,7 @@ export class SystemSettingsService {
     if (!row) {
       return { ...DEFAULT_SYSTEM_SETTINGS };
     }
-    return {
-      maxLoginAttempts: row.maxLoginAttempts,
-      maxAdminSessions: row.maxAdminSessions,
-    };
+    return toValues(row);
   }
 
   async update(
@@ -55,9 +57,15 @@ export class SystemSettingsService {
       },
       update: { ...changes, updatedById: adminId },
     });
-    return {
-      maxLoginAttempts: row.maxLoginAttempts,
-      maxAdminSessions: row.maxAdminSessions,
-    };
+    return toValues(row);
   }
+}
+
+/** Only the setting values: the row also holds its id and who saved it. */
+function toValues(row: SystemSettingsValues): SystemSettingsValues {
+  return {
+    maxLoginAttempts: row.maxLoginAttempts,
+    maxAdminSessions: row.maxAdminSessions,
+    maxPinAttempts: row.maxPinAttempts,
+  };
 }

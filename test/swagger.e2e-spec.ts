@@ -3,7 +3,11 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { App } from 'supertest/types.js';
 import { createTestApp } from './utils/app.js';
 
-type Operation = { summary?: string; responses?: Record<string, unknown> };
+type Operation = {
+  summary?: string;
+  responses?: Record<string, unknown>;
+  security?: Record<string, unknown>[];
+};
 
 describe('Swagger document (e2e)', () => {
   let app: INestApplication<App>;
@@ -54,5 +58,15 @@ describe('Swagger document (e2e)', () => {
       .map(([route]) => route);
 
     expect(undocumented).toEqual([]);
+  });
+
+  it('marks the mobile session routes with Bearer auth', () => {
+    const security = (route: string) =>
+      operations.find(([name]) => name === route)?.[1].security;
+
+    for (const route of ['GET /api/v1/me', 'POST /api/v1/auth/logout']) {
+      expect(security(route)).toEqual([{ bearer: [] }]);
+    }
+    expect(security('POST /api/v1/auth/login')).toBeUndefined();
   });
 });

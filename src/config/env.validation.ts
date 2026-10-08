@@ -12,6 +12,7 @@ import {
   validateSync,
 } from 'class-validator';
 import { IsPassword } from '../common/validation/password.js';
+import { TrimLowerCase } from '../common/validation/trim.js';
 
 export enum Environment {
   Development = 'development',
@@ -59,11 +60,18 @@ export class EnvironmentVariables {
   @MinLength(32)
   JWT_ACCESS_SECRET: string;
 
+  /**
+   * Mixed into every PIN hash (HMAC before scrypt) and never stored in the
+   * database, so a leaked database alone cannot be brute-forced over the million
+   * 6-digit PINs. Changing it invalidates every PIN. Never logged.
+   */
+  @IsString()
+  @MinLength(32)
+  PIN_PEPPER: string;
+
   /** Used once, to create the super admin when none exists. */
   @IsOptional()
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim().toLowerCase() : value,
-  )
+  @TrimLowerCase()
   @IsEmail()
   SUPER_ADMIN_EMAIL?: string;
 

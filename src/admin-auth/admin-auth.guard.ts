@@ -6,6 +6,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
+import { MobileRoute } from '../mobile-auth/decorators/mobile-route.decorator.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ACCESS_COOKIE } from './admin-auth.constants.js';
 import {
@@ -34,7 +35,11 @@ export class AdminAuthGuard implements CanActivate {
     // Method decorators win over class decorators.
     const targets = [context.getHandler(), context.getClass()];
 
-    if (this.reflector.getAllAndOverride(Public, targets)) {
+    // Mobile routes are the mobile guard's job: an admin cookie never opens them.
+    if (
+      this.reflector.getAllAndOverride(Public, targets) ||
+      this.reflector.getAllAndOverride(MobileRoute, targets)
+    ) {
       return true;
     }
 
@@ -92,10 +97,17 @@ export class AdminAuthGuard implements CanActivate {
       throw notAuthenticated();
     }
     try {
-      const claims =
-        await this.jwt.verifyAsync<Partial<AccessTokenClaims>>(token);
-      if (typeof claims.sub !== 'string' || typeof claims.sid !== 'string') {
-        throw new Error('missing claims');
+      const claims = await this.jwt.verifyAsync<
+        Partial<AccessTokenClaims> & { typ?: unknown }
+      >(token);
+      // A mobile token (`typ: 'user'`) never opens an admin route, even copied
+      // into the admin cookie.
+      if (
+        claims.typ !== undefined ||
+        typeof claims.sub !== 'string' ||
+        typeof claims.sid !== 'string'
+      ) {
+        throw new Error('not an admin access token');
       }
       return { sub: claims.sub, sid: claims.sid };
     } catch {

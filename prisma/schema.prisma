@@ -68,6 +68,9 @@ model SystemSettings {
   id               Int      @id @default(1)
   maxLoginAttempts Int
   maxAdminSessions Int
+  /// Wrong PINs before a mobile user is locked for 15 minutes; 0 = no limit.
+  /// The database default keeps an existing row valid.
+  maxPinAttempts   Int      @default(5)
   updatedAt        DateTime @updatedAt
   updatedById      String?  @db.Uuid
 
@@ -157,18 +160,97 @@ model StoreSettings {
 }
 
 /// A person using the mobile app (customer or store staff), identified by phone.
-/// Authentication fields arrive with feature 19.
 model User {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  phone     String   @unique /// E.164
-  firstName String
-  lastName  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String    @id @default(uuid(7)) @db.Uuid
+  phone             String    @unique /// E.164
+  firstName         String
+  lastName          String
+  /// scrypt hash of the 6-digit PIN; null until the user activates the app.
+  pinHash           String?
+  failedPinAttempts Int       @default(0)
+  pinLockedUntil    DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   memberships StoreMember[]
+  devices     UserDevice[]
+  sessions    UserSession[]
 
   @@map("users")
+}
+
+/// A one-time SMS code sent to a phone. Once the code is verified, it becomes a
+/// short single-use token (bound to one device) for setting or checking the PIN.
+model PhoneVerification {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  phone          String /// E.164
+  codeHash       String /// scrypt hash of the 6-digit code
+  expiresAt      DateTime
+  attempts       Int       @default(0)
+  verifiedAt     DateTime?
+  deviceId       String?   @db.VarChar(100)
+  tokenHash      String?   @unique /// SHA-256 of the verification token
+  tokenExpiresAt DateTime?
+  consumedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([phone, createdAt])
+  @@map("phone_verifications")
+}
+
+/// An app installation a user proved with an SMS code. Signing in on it then
+/// needs only the PIN.
+model UserDevice {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  userId     String   @db.Uuid
+  /// Random id the app creates once per installation (not a secret on its own).
+  deviceId   String   @db.VarChar(100)
+  name       String?  @db.VarChar(100)
+  /// P-256 public key (SPKI DER, base64) of the key pair created in the phone's
+  /// secure hardware. Signing a challenge with the private key proves the device.
+  publicKey  String?
+  trustedAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions UserSession[]
+
+  @@unique([userId, deviceId])
+  @@map("user_devices")
+}
+
+/// A random value a device must sign to sign in. Single-use, valid 2 minutes;
+/// issued for any phone and device, so asking for one reveals nothing.
+model DeviceChallenge {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  phone     String    @db.VarChar(30)
+  deviceId  String    @db.VarChar(100)
+  /// Not a secret: sent to the app, which signs it.
+  challenge String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@map("device_challenges")
+}
+
+/// One sign-in of a user on one device. Only the refresh token's hash is stored.
+model UserSession {
+  id               String    @id @default(uuid(7)) @db.Uuid
+  userId           String    @db.Uuid
+  deviceId         String    @db.Uuid /// UserDevice.id
+  refreshTokenHash String    @unique
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  lastUsedAt       DateTime  @default(now())
+
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device UserDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([deviceId])
+  @@map("user_sessions")
 }
 
 /// A user working in a store, as seller or manager.

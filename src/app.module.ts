@@ -7,6 +7,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { validationExceptionFactory } from './common/validation/validation-exception.factory.js';
 import { validate } from './config/env.validation.js';
 import { HealthModule } from './health/health.module.js';
+import { MobileAuthModule } from './mobile-auth/mobile-auth.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { StoresModule } from './stores/stores.module.js';
 import { SystemSettingsModule } from './system-settings/system-settings.module.js';
@@ -22,6 +23,7 @@ import { CountriesModule } from './countries/countries.module.js';
     AdminsModule,
     CountriesModule,
     StoresModule,
+    MobileAuthModule,
   ],
   providers: [
     // Registered as providers (not in main.ts) so e2e tests get them too.

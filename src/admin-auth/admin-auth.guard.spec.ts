@@ -7,6 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import type { PrismaService } from '../prisma/prisma.service.js';
+import { MobileRoute } from '../mobile-auth/decorators/mobile-route.decorator.js';
 import { AdminAuthGuard } from './admin-auth.guard.js';
 import { AllowWhilePasswordChangeRequired } from './decorators/allow-while-password-change-required.decorator.js';
 import { Public } from './decorators/public.decorator.js';
@@ -31,6 +32,10 @@ class DecoratedController {
 }
 @Roles(['SUPER_ADMIN'])
 class SuperAdminController {
+  route() {}
+}
+@MobileRoute()
+class MobileController {
   route() {}
 }
 
@@ -92,12 +97,38 @@ describe('AdminAuthGuard', () => {
     expect(prisma.adminSession.findUnique).not.toHaveBeenCalled();
   });
 
+  it('leaves a @MobileRoute() to the mobile guard, without reading any cookie', async () => {
+    const { guard, prisma } = guardWith(null);
+
+    await expect(
+      guard.canActivate(context(MobileController, 'route').ctx),
+    ).resolves.toBe(true);
+    expect(prisma.adminSession.findUnique).not.toHaveBeenCalled();
+  });
+
   it('refuses a protected route without the access cookie', async () => {
     const { guard } = guardWith(activeSession());
 
     await expect(
       guard.canActivate(context(PlainController, 'route').ctx),
     ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('refuses a mobile token copied into the admin cookie, without any lookup', async () => {
+    const { guard, prisma } = guardWith(activeSession());
+    const mobileToken = await jwt.signAsync({
+      sub: 'admin-1',
+      sid: 'session-1',
+      typ: 'user',
+    });
+
+    await expect(
+      guard.canActivate(
+        context(PlainController, 'route', { batisso_admin_access: mobileToken })
+          .ctx,
+      ),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(prisma.adminSession.findUnique).not.toHaveBeenCalled();
   });
 
   it('refuses a token signed with another secret', async () => {

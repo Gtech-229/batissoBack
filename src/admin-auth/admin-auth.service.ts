@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { minutesUntil } from '../common/minutes-until.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SystemSettingsService } from '../system-settings/system-settings.service.js';
 import {
@@ -301,8 +302,4 @@ export class AdminAuthService {
     this.dummyHash ??= hashPassword('dummy-password-for-equal-timing');
     return this.dummyHash;
   }
-}
-
-function minutesUntil(date: Date, now: Date): number {
-  return Math.max(1, Math.ceil((date.getTime() - now.getTime()) / 60_000));
 }

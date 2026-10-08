@@ -40,7 +40,11 @@ describe('System settings (e2e)', () => {
       .set('Cookie', adminCookie)
       .expect(200);
 
-    expect(response.body).toEqual({ maxLoginAttempts: 5, maxAdminSessions: 3 });
+    expect(response.body).toEqual({
+      maxLoginAttempts: 5,
+      maxAdminSessions: 3,
+      maxPinAttempts: 5,
+    });
   });
 
   it('refuses an update by an ADMIN', async () => {
@@ -58,7 +62,11 @@ describe('System settings (e2e)', () => {
       .send({ maxAdminSessions: 1 })
       .expect(200);
 
-    expect(response.body).toEqual({ maxLoginAttempts: 5, maxAdminSessions: 1 });
+    expect(response.body).toEqual({
+      maxLoginAttempts: 5,
+      maxAdminSessions: 1,
+      maxPinAttempts: 5,
+    });
     const read = await api()
       .get('/api/v1/admin/settings')
       .set('Cookie', adminCookie)
@@ -84,6 +92,47 @@ describe('System settings (e2e)', () => {
     expect(response.body.details[0].field).toBe(field);
     expect(response.body.details[0].errors[0]).toMatch(/doit être un entier/);
   });
+
+  it.each([7, 0])(
+    'lets the super admin set maxPinAttempts to %i (0 = no limit)',
+    async (value) => {
+      const response = await api()
+        .patch('/api/v1/admin/settings')
+        .set('Cookie', superCookie)
+        .send({ maxPinAttempts: value })
+        .expect(200);
+
+      expect(response.body).toEqual({
+        maxLoginAttempts: 5,
+        maxAdminSessions: 3,
+        maxPinAttempts: value,
+      });
+      const stored = await prisma.systemSettings.findUniqueOrThrow({
+        where: { id: 1 },
+      });
+      expect(stored.maxPinAttempts).toBe(value);
+    },
+  );
+
+  it.each([1, 2, 11, -1, 4.5, '5', null])(
+    'rejects maxPinAttempts %j in French',
+    async (value) => {
+      const response = await api()
+        .patch('/api/v1/admin/settings')
+        .set('Cookie', superCookie)
+        .send({ maxPinAttempts: value })
+        .expect(400);
+
+      expect(response.body.details).toEqual([
+        {
+          field: 'maxPinAttempts',
+          errors: [
+            'Le nombre de tentatives de PIN doit être 0 (sans limite) ou un entier entre 3 et 10',
+          ],
+        },
+      ]);
+    },
+  );
 
   it('applies a lower maxLoginAttempts from the next login', async () => {
     await api()

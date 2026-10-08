@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
+import { Type } from 'class-transformer';
 import {
   IsISO31661Alpha2,
   IsObject,
@@ -10,9 +10,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { AMOUNT_RULE_MESSAGE, IsAmount } from '../../common/money.js';
-
-const trim = ({ value }: { value: unknown }) =>
-  typeof value === 'string' ? value.trim() : value;
+import { Trim, TrimUpperCase } from '../../common/validation/trim.js';
 
 // Phone numbers are checked against the store's country in the service, since
 // the rule depends on another field (countryCode).
@@ -52,7 +50,7 @@ export class StoreSettingsInput {
     description: 'Conditions générales de la quincaillerie, montrées au client',
   })
   @IsOptional()
-  @Transform(trim)
+  @Trim()
   @IsString({ message: 'Les conditions générales doivent être un texte' })
   @MaxLength(10000, {
     message: 'Les conditions générales dépassent 10 000 caractères',
@@ -62,13 +60,13 @@ export class StoreSettingsInput {
 
 export class StoreManagerInput {
   @ApiProperty({ description: 'Prénom du gérant', example: 'Awa' })
-  @Transform(trim)
+  @Trim()
   @IsString({ message: 'Le prénom est requis' })
   @Length(1, 100, { message: 'Le prénom doit contenir 1 à 100 caractères' })
   firstName: string;
 
   @ApiProperty({ description: 'Nom du gérant', example: 'Diallo' })
-  @Transform(trim)
+  @Trim()
   @IsString({ message: 'Le nom est requis' })
   @Length(1, 100, { message: 'Le nom doit contenir 1 à 100 caractères' })
   lastName: string;
@@ -84,9 +82,7 @@ export class RegisterStoreDto {
     description: 'Code du pays (actif) de la quincaillerie',
     example: 'ML',
   })
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim().toUpperCase() : value,
-  )
+  @TrimUpperCase()
   @IsISO31661Alpha2({
     message: 'Le code pays doit être un code ISO à 2 lettres (ex. ML)',
   })
@@ -96,19 +92,19 @@ export class RegisterStoreDto {
     description: 'Nom de la quincaillerie',
     example: 'Quincaillerie du Carrefour',
   })
-  @Transform(trim)
+  @Trim()
   @IsString({ message: 'Le nom est requis' })
   @Length(1, 150, { message: 'Le nom doit contenir 1 à 150 caractères' })
   name: string;
 
   @ApiProperty({ description: 'Adresse', example: 'Rue 12, Hippodrome' })
-  @Transform(trim)
+  @Trim()
   @IsString({ message: 'L’adresse est requise' })
   @Length(1, 300, { message: 'L’adresse doit contenir 1 à 300 caractères' })
   address: string;
 
   @ApiProperty({ description: 'Ville', example: 'Bamako' })
-  @Transform(trim)
+  @Trim()
   @IsString({ message: 'La ville est requise' })
   @Length(1, 100, { message: 'La ville doit contenir 1 à 100 caractères' })
   city: string;
@@ -123,7 +119,7 @@ export class RegisterStoreDto {
       'Numéro du registre du commerce (vérifié par l’administrateur)',
     example: 'MA.BKO.2026.B.1234',
   })
-  @Transform(trim)
+  @Trim()
   @IsString({ message: 'Le numéro du registre du commerce est requis' })
   @Length(1, 100, {
     message: 'Le registre du commerce doit contenir 1 à 100 caractères',

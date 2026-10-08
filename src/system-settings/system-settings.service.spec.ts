@@ -24,6 +24,7 @@ describe('SystemSettingsService', () => {
     await expect(service.get()).resolves.toEqual({
       maxLoginAttempts: 5,
       maxAdminSessions: 3,
+      maxPinAttempts: 5,
     });
   });
 
@@ -41,6 +42,7 @@ describe('SystemSettingsService', () => {
       id: 1,
       maxLoginAttempts: 8,
       maxAdminSessions: 2,
+      maxPinAttempts: 0,
       updatedAt: new Date(),
       updatedById: 'admin-1',
     });
@@ -48,6 +50,7 @@ describe('SystemSettingsService', () => {
     await expect(service.get()).resolves.toEqual({
       maxLoginAttempts: 8,
       maxAdminSessions: 2,
+      maxPinAttempts: 0,
     });
   });
 
@@ -62,11 +65,16 @@ describe('SystemSettingsService', () => {
         id: 1,
         maxLoginAttempts: 10,
         maxAdminSessions: 3,
+        maxPinAttempts: 5,
         updatedById: 'admin-1',
       },
       update: { maxLoginAttempts: 10, updatedById: 'admin-1' },
     });
-    expect(result).toEqual({ maxLoginAttempts: 10, maxAdminSessions: 3 });
+    expect(result).toEqual({
+      maxLoginAttempts: 10,
+      maxAdminSessions: 3,
+      maxPinAttempts: 5,
+    });
   });
 
   it('ignores fields set to undefined, as an omitted DTO field is', async () => {
@@ -83,6 +91,10 @@ describe('SystemSettingsService', () => {
     };
     expect(call.create.maxLoginAttempts).toBe(5);
     expect(call.update).not.toHaveProperty('maxLoginAttempts');
-    expect(result).toEqual({ maxLoginAttempts: 5, maxAdminSessions: 1 });
+    expect(result).toEqual({
+      maxLoginAttempts: 5,
+      maxAdminSessions: 1,
+      maxPinAttempts: 5,
+    });
   });
 });

@@ -19,6 +19,8 @@ export function setupSwagger(app: INestApplication): void {
     .setVersion('1.0')
     // Admin routes read the httpOnly access cookie set by POST /admin/auth/login.
     .addCookieAuth(ACCESS_COOKIE)
+    // Mobile routes read `Authorization: Bearer <accessToken>` from POST /auth/pin or /auth/login.
+    .addBearerAuth()
     .build();
 
   const document = SwaggerModule.createDocument(app, config, {

@@ -1,10 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, Max, Min, ValidateIf } from 'class-validator';
+import { IsIn, IsInt, Max, Min, ValidateIf } from 'class-validator';
 import { SYSTEM_SETTINGS_LIMITS as LIMITS } from '../system-settings.service.js';
 
 const ATTEMPTS = LIMITS.maxLoginAttempts;
 const SESSIONS = LIMITS.maxAdminSessions;
 const ATTEMPTS_MESSAGE = `Le nombre de tentatives doit être un entier entre ${ATTEMPTS.min} et ${ATTEMPTS.max}`;
+const PIN = LIMITS.maxPinAttempts;
+// 0 (no limit) or a value of the range: a short list, so @IsIn says it exactly.
+const PIN_ATTEMPT_VALUES = [
+  0,
+  ...Array.from({ length: PIN.max - PIN.min + 1 }, (_, i) => PIN.min + i),
+];
+const PIN_MESSAGE = `Le nombre de tentatives de PIN doit être 0 (sans limite) ou un entier entre ${PIN.min} et ${PIN.max}`;
 const SESSIONS_MESSAGE = `Le nombre de sessions doit être un entier entre ${SESSIONS.min} et ${SESSIONS.max}`;
 
 export class SystemSettingsResponse {
@@ -21,6 +28,13 @@ export class SystemSettingsResponse {
     example: 3,
   })
   maxAdminSessions: number;
+
+  @ApiProperty({
+    description:
+      'Codes PIN erronés avant le blocage d’un utilisateur mobile pendant 15 minutes ; 0 = sans limite',
+    example: 5,
+  })
+  maxPinAttempts: number;
 }
 
 /**
@@ -48,4 +62,12 @@ export class UpdateSystemSettingsDto {
   @Min(SESSIONS.min, { message: SESSIONS_MESSAGE })
   @Max(SESSIONS.max, { message: SESSIONS_MESSAGE })
   maxAdminSessions?: number;
+
+  @ApiPropertyOptional({
+    description: `0 (sans limite) ou entre ${PIN.min} et ${PIN.max}`,
+    example: 5,
+  })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(PIN_ATTEMPT_VALUES, { message: PIN_MESSAGE })
+  maxPinAttempts?: number;
 }

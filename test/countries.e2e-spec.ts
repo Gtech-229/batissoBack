@@ -240,7 +240,7 @@ describe('Countries (e2e)', () => {
       'refuses null for %s with a 400, even when a store exists',
       async (field) => {
         await create(MALI).expect(201);
-        await addStore('ML', 'VERIFIED');
+        await addStore('ML', 'PENDING');
 
         const response = await update('ML', { [field]: null }).expect(400);
 
