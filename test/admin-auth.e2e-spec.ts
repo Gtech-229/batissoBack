@@ -448,6 +448,91 @@ describe('Admin authentication (e2e)', () => {
       expect(response.body.error).toBe('INVALID_CREDENTIALS');
     });
 
+    describe('lockout on wrong current passwords (F-05)', () => {
+      const failedAttempts = async (email: string) =>
+        (await prisma.admin.findUniqueOrThrow({ where: { email } }))
+          .failedLoginAttempts;
+
+      it('counts a wrong current password and resets the count on success', async () => {
+        await createAdmin(prisma, { email: 'awa@batisso.test' });
+        const access = (await loginCookies('awa@batisso.test')).get(
+          ACCESS,
+        )!.pair;
+
+        await changePassword(access, 'Wrong#Pass1', 'Nouveau#2026').expect(401);
+        expect(await failedAttempts('awa@batisso.test')).toBe(1);
+
+        await changePassword(access, TEST_PASSWORD, 'Nouveau#2026').expect(204);
+        expect(await failedAttempts('awa@batisso.test')).toBe(0);
+      });
+
+      it('locks the account after maxLoginAttempts, for password change and login alike', async () => {
+        await createAdmin(prisma, { email: 'awa@batisso.test' });
+        const access = (await loginCookies('awa@batisso.test')).get(
+          ACCESS,
+        )!.pair;
+
+        // Default maxLoginAttempts: 5.
+        for (let i = 0; i < 5; i++) {
+          await changePassword(access, 'Wrong#Pass1', 'Nouveau#2026').expect(
+            401,
+          );
+        }
+
+        const locked = await changePassword(
+          access,
+          TEST_PASSWORD,
+          'Nouveau#2026',
+        ).expect(403);
+        expect(locked.body.error).toBe('ACCOUNT_LOCKED');
+        const loginLocked = await login(
+          'awa@batisso.test',
+          TEST_PASSWORD,
+        ).expect(403);
+        expect(loginLocked.body.error).toBe('ACCOUNT_LOCKED');
+        // The password did not change.
+        await prisma.admin.update({
+          where: { email: 'awa@batisso.test' },
+          data: { lockedUntil: null },
+        });
+        await login('awa@batisso.test', TEST_PASSWORD).expect(200);
+      });
+
+      it('counts parallel wrong current passwords one by one', async () => {
+        await createAdmin(prisma, { email: 'awa@batisso.test' });
+        const access = (await loginCookies('awa@batisso.test')).get(
+          ACCESS,
+        )!.pair;
+
+        const responses = await Promise.all(
+          Array.from({ length: 12 }, () =>
+            changePassword(access, 'Wrong#Pass1', 'Nouveau#2026'),
+          ),
+        );
+
+        const statuses = responses.map((r) => r.status);
+        expect(statuses.filter((s) => s === 401)).toHaveLength(5);
+        expect(statuses.filter((s) => s === 403)).toHaveLength(7);
+        expect(
+          responses.filter((r) => r.status === 403).map((r) => r.body.error),
+        ).toEqual(Array(7).fill('ACCOUNT_LOCKED'));
+      });
+
+      it('shares the count with login failures', async () => {
+        await createAdmin(prisma, { email: 'awa@batisso.test' });
+        const access = (await loginCookies('awa@batisso.test')).get(
+          ACCESS,
+        )!.pair;
+        for (let i = 0; i < 4; i++) {
+          await login('awa@batisso.test', 'Wrong#Pass1').expect(401);
+        }
+
+        await changePassword(access, 'Wrong#Pass1', 'Nouveau#2026').expect(401);
+
+        await changePassword(access, TEST_PASSWORD, 'Nouveau#2026').expect(403);
+      });
+    });
+
     it('refuses a new password equal to the current one', async () => {
       await createAdmin(prisma, { email: 'awa@batisso.test' });
       const cookies = await loginCookies('awa@batisso.test');

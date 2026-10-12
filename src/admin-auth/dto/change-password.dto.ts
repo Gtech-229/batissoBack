@@ -8,7 +8,7 @@ import {
 export class ChangePasswordDto {
   @ApiProperty({
     description: 'Mot de passe actuel',
-    example: 'Change#Me2026',
+    example: '<votre-mot-de-passe>',
   })
   @IsString({ message: 'Le mot de passe actuel est requis' })
   @MinLength(1, { message: 'Le mot de passe actuel est requis' })

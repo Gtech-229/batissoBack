@@ -13,7 +13,7 @@ export class LoginDto {
 
   // Only the length is checked here: the password rule applies when a password
   // is chosen, not at login. The maximum keeps huge inputs away from scrypt.
-  @ApiProperty({ description: 'Mot de passe', example: 'Change#Me2026' })
+  @ApiProperty({ description: 'Mot de passe', example: '<votre-mot-de-passe>' })
   @IsString({ message: 'Le mot de passe est requis' })
   @MinLength(1, { message: 'Le mot de passe est requis' })
   @MaxLength(128, { message: 'Le mot de passe est trop long' })

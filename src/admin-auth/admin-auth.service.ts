@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { minutesUntil } from '../common/minutes-until.js';
+import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SystemSettingsService } from '../system-settings/system-settings.service.js';
 import {
@@ -21,9 +22,12 @@ import { TokensService } from './tokens.service.js';
 // Matches no admin: used to give unknown emails the same work as known ones.
 const NO_ADMIN_ID = '00000000-0000-0000-0000-000000000000';
 
+/** The lockout decision on one password attempt, taken under the row lock. */
+type PasswordAttempt =
+  { kind: 'ok' } | { kind: 'invalid' } | { kind: 'locked'; lockedUntil: Date };
+
 type LoginOutcome =
-  | { kind: 'locked'; lockedUntil: Date }
-  | { kind: 'invalid' }
+  | Exclude<PasswordAttempt, { kind: 'ok' }>
   | { kind: 'success'; cookies: SessionCookies };
 
 export interface LoginResult {
@@ -174,25 +178,117 @@ export class AdminAuthService {
     const admin = await this.prisma.admin.findUniqueOrThrow({
       where: { id: adminId },
     });
-    if (!(await verifyPassword(currentPassword, admin.passwordHash))) {
-      throw invalidCredentials();
-    }
-    if (newPassword === currentPassword) {
-      throw passwordUnchanged();
+    // Fast path only: the decision that counts is taken again under the lock.
+    if (admin.lockedUntil && admin.lockedUntil > new Date()) {
+      throw accountLocked(minutesUntil(admin.lockedUntil, new Date()));
     }
 
-    const passwordHash = await hashPassword(newPassword);
-    const now = new Date();
-    await this.prisma.$transaction([
-      this.prisma.admin.update({
+    // The slow scrypt work happens before the transaction (short row lock).
+    const passwordOk = await verifyPassword(
+      currentPassword,
+      admin.passwordHash,
+    );
+    const unchanged = newPassword === currentPassword;
+    const passwordHash =
+      passwordOk && !unchanged ? await hashPassword(newPassword) : null;
+    const { maxLoginAttempts } = await this.settings.get();
+
+    // A wrong current password counts in the same lockout as login (F-05):
+    // a live session must not allow unlimited guesses of the password.
+    const outcome = await this.prisma.$transaction(
+      async (
+        tx,
+      ): Promise<PasswordAttempt | { kind: 'unchanged' | 'changed' }> => {
+        const now = new Date();
+        const attempt = await this.countPasswordAttempt(
+          tx,
+          adminId,
+          passwordOk,
+          maxLoginAttempts,
+          now,
+        );
+        if (attempt.kind !== 'ok') {
+          return attempt;
+        }
+        if (!passwordHash) {
+          return { kind: 'unchanged' };
+        }
+        await tx.admin.update({
+          where: { id: adminId },
+          data: { passwordHash, mustChangePassword: false },
+        });
+        await tx.adminSession.updateMany({
+          where: { adminId, id: { not: sessionId }, revokedAt: null },
+          data: { revokedAt: now },
+        });
+        return { kind: 'changed' };
+      },
+    );
+
+    // Thrown after the commit, so a counted failure is kept.
+    switch (outcome.kind) {
+      case 'locked':
+        throw accountLocked(minutesUntil(outcome.lockedUntil, new Date()));
+      case 'invalid':
+        throw invalidCredentials();
+      case 'unchanged':
+        throw passwordUnchanged();
+    }
+  }
+
+  /**
+   * Counts one password attempt under a row lock on the admin, for login and
+   * password change alike, so parallel attempts are judged one after another
+   * against the real lock state (F-01). A locked admin is refused even with the
+   * right password, without counting; a failure counts and locks at
+   * `maxLoginAttempts`; a success resets the counter. An id that matches no
+   * admin gets the same round trips as a counted failure (F-02).
+   */
+  private async countPasswordAttempt(
+    tx: Prisma.TransactionClient,
+    adminId: string,
+    passwordOk: boolean,
+    maxLoginAttempts: number,
+    now: Date,
+  ): Promise<PasswordAttempt> {
+    // Raw SQL because Prisma has no row lock: FOR UPDATE makes every other
+    // attempt on this admin wait here until this transaction ends.
+    const [row] = await tx.$queryRaw<
+      { lockedUntil: Date | null; failedLoginAttempts: number }[]
+    >`SELECT "lockedUntil", "failedLoginAttempts" FROM "admins" WHERE "id" = ${adminId}::uuid FOR UPDATE`;
+
+    if (!row) {
+      await tx.admin.updateMany({
         where: { id: adminId },
-        data: { passwordHash, mustChangePassword: false },
-      }),
-      this.prisma.adminSession.updateMany({
-        where: { adminId, id: { not: sessionId }, revokedAt: null },
-        data: { revokedAt: now },
-      }),
-    ]);
+        data: { failedLoginAttempts: { increment: 1 } },
+      });
+      return { kind: 'invalid' };
+    }
+
+    if (row.lockedUntil && row.lockedUntil > now) {
+      return { kind: 'locked', lockedUntil: row.lockedUntil };
+    }
+
+    if (!passwordOk) {
+      const attempts = row.failedLoginAttempts + 1;
+      const reachesLimit = attempts >= maxLoginAttempts;
+      await tx.admin.update({
+        where: { id: adminId },
+        data: reachesLimit
+          ? {
+              failedLoginAttempts: 0,
+              lockedUntil: new Date(now.getTime() + LOCK_DURATION_MS),
+            }
+          : { failedLoginAttempts: attempts },
+      });
+      return { kind: 'invalid' };
+    }
+
+    await tx.admin.update({
+      where: { id: adminId },
+      data: { failedLoginAttempts: 0, lockedUntil: null },
+    });
+    return { kind: 'ok' };
   }
 
   /**
@@ -213,47 +309,18 @@ export class AdminAuthService {
       async (
         tx,
       ): Promise<LoginOutcome | { kind: 'opened'; sessionId: string }> => {
-        // Raw SQL because Prisma has no row lock: FOR UPDATE makes every other
-        // login of this admin wait here until this transaction ends.
-        const [row] = await tx.$queryRaw<
-          { lockedUntil: Date | null; failedLoginAttempts: number }[]
-        >`SELECT "lockedUntil", "failedLoginAttempts" FROM "admins" WHERE "id" = ${adminId}::uuid FOR UPDATE`;
         const now = new Date();
-
-        if (!row) {
-          // Unknown email: same round trips as a counted failure, on no row.
-          await tx.admin.updateMany({
-            where: { id: adminId },
-            data: { failedLoginAttempts: { increment: 1 } },
-          });
-          return { kind: 'invalid' };
+        const attempt = await this.countPasswordAttempt(
+          tx,
+          adminId,
+          passwordOk,
+          maxLoginAttempts,
+          now,
+        );
+        if (attempt.kind !== 'ok') {
+          return attempt;
         }
 
-        if (row.lockedUntil && row.lockedUntil > now) {
-          // Locked by a concurrent request: refused even with the right
-          // password, and not counted as another failure.
-          return { kind: 'locked', lockedUntil: row.lockedUntil };
-        }
-
-        if (!passwordOk) {
-          const attempts = row.failedLoginAttempts + 1;
-          const reachesLimit = attempts >= maxLoginAttempts;
-          await tx.admin.update({
-            where: { id: adminId },
-            data: reachesLimit
-              ? {
-                  failedLoginAttempts: 0,
-                  lockedUntil: new Date(now.getTime() + LOCK_DURATION_MS),
-                }
-              : { failedLoginAttempts: attempts },
-          });
-          return { kind: 'invalid' };
-        }
-
-        await tx.admin.update({
-          where: { id: adminId },
-          data: { failedLoginAttempts: 0, lockedUntil: null },
-        });
         const session = await tx.adminSession.create({
           data: {
             adminId: adminId,
