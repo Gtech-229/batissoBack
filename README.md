@@ -15,7 +15,7 @@ Built with NestJS 12, PostgreSQL 17 (Docker), Prisma 7, and Swagger.
 
 ```bash
 npm install
-cp .env.example .env        # then set JWT_ACCESS_SECRET, PIN_PEPPER (see below) and the super admin password
+cp .env.example .env        # then set JWT_ACCESS_SECRET, PIN_PEPPER and SUPER_ADMIN_PASSWORD (see below)
 npm run db:up               # PostgreSQL on localhost:5433 (dev + test databases)
 npm run prisma:generate     # generates the Prisma client into src/generated/
 npm run prisma:migrate      # creates the tables
@@ -130,6 +130,6 @@ Y`): prefix it with these 26 bytes to get SPKI:
 | `JWT_ACCESS_SECRET` | yes | | At least 32 random characters; signs admin access tokens. The `.env.example` placeholder is deliberately too short, so the API refuses to start until you set a real one: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
 | `PIN_PEPPER` | yes | | At least 32 random characters, mixed into every PIN hash and never stored in the database, so a leaked database alone cannot reveal PINs. Generate it like `JWT_ACCESS_SECRET` (the `.env.example` placeholder is too short on purpose) and keep it safe: **changing it later invalidates every PIN** |
 | `SUPER_ADMIN_EMAIL` | when no super admin exists | | Email of the super admin created at startup |
-| `SUPER_ADMIN_PASSWORD` | when no super admin exists | | 8 to 128 characters with an uppercase letter, a lowercase letter, a digit, and a special character. **Wrap it in quotes**: an unquoted `#` starts a comment |
+| `SUPER_ADMIN_PASSWORD` | when no super admin exists | | 8 to 128 characters with an uppercase letter, a lowercase letter, a digit, and a special character. **Wrap it in quotes**: an unquoted `#` starts a comment. The `.env.example` placeholder breaks the rule on purpose, so the API refuses to start until you choose a real password. Once the super admin exists, both `SUPER_ADMIN_*` variables can be removed |
 
 The app refuses to start if a variable is missing or invalid.

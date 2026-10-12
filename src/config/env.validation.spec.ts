@@ -175,6 +175,21 @@ describe('validate (environment variables)', () => {
       ).toBe('Batisso#2026');
     });
 
+    it('refuses the .env.example placeholder, so a published password never creates the super admin (F-04)', () => {
+      const example = parseEnv(readFileSync('.env.example', 'utf8'));
+      const placeholder = example.SUPER_ADMIN_PASSWORD ?? '';
+      const withPlaceholder = () =>
+        validate({ ...BASE, SUPER_ADMIN_PASSWORD: placeholder });
+
+      expect(placeholder).not.toBe('');
+      expect(withPlaceholder).toThrow(/SUPER_ADMIN_PASSWORD/);
+      expect(withPlaceholder).toThrow(
+        expect.objectContaining({
+          message: expect.not.stringContaining(placeholder) as string,
+        }),
+      );
+    });
+
     it('rejects a weak SUPER_ADMIN_PASSWORD without echoing it', () => {
       expect(() =>
         validate({ ...BASE, SUPER_ADMIN_PASSWORD: 'weakpassword' }),
