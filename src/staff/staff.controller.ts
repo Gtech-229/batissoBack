@@ -54,6 +54,12 @@ const UserIdPipe = new ParseUUIDPipe({ exceptionFactory: invalidUserId });
     'Quincaillerie introuvable : vous n’en êtes pas membre actif, ou vendeur introuvable',
   type: ErrorResponse,
 })
+// Every route answers 400 to a malformed store id (StoreAccessGuard). A route
+// that declares its own 400 replaces this one, so it names the store id too.
+@ApiBadRequestResponse({
+  description: 'Identifiant de quincaillerie invalide',
+  type: ErrorResponse,
+})
 @MobileRoute()
 @StoreRoles(['MANAGER'])
 @Controller('stores/:storeId')
@@ -101,7 +107,7 @@ export class StaffController {
   })
   @ApiBadRequestResponse({
     description:
-      'Données invalides, ou numéro d’un autre pays que la quincaillerie (`details`)',
+      'Identifiant de quincaillerie invalide ; données invalides, ou numéro d’un autre pays que la quincaillerie (`details`)',
     type: ErrorResponse,
   })
   @ApiConflictResponse({
@@ -137,7 +143,7 @@ export class StaffController {
   @ApiParam({ name: 'userId', description: 'Identifiant du vendeur' })
   @ApiOkResponse({ description: 'Vendeur désactivé', type: StoreMemberView })
   @ApiBadRequestResponse({
-    description: 'Identifiant invalide',
+    description: 'Identifiant de quincaillerie ou de vendeur invalide',
     type: ErrorResponse,
   })
   @ApiConflictResponse({
@@ -170,7 +176,7 @@ export class StaffController {
   @ApiParam({ name: 'userId', description: 'Identifiant du vendeur' })
   @ApiOkResponse({ description: 'Vendeur réactivé', type: StoreMemberView })
   @ApiBadRequestResponse({
-    description: 'Identifiant invalide',
+    description: 'Identifiant de quincaillerie ou de vendeur invalide',
     type: ErrorResponse,
   })
   @ApiConflictResponse({

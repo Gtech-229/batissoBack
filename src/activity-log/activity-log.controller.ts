@@ -47,7 +47,8 @@ export class ActivityLogController {
   @ApiParam({ name: 'storeId', description: 'Identifiant de la quincaillerie' })
   @ApiPaginatedResponse(ActivityEntry, 'Page du journal')
   @ApiBadRequestResponse({
-    description: 'Pagination invalide (`details`)',
+    description:
+      'Identifiant de quincaillerie invalide ; pagination invalide (`details`)',
     type: ErrorResponse,
   })
   @ApiUnauthorizedResponse({

@@ -69,4 +69,24 @@ describe('Swagger document (e2e)', () => {
     }
     expect(security('POST /api/v1/auth/login')).toBeUndefined();
   });
+
+  it('documents the 403 ACCOUNT_LOCKED of the admin password change (F-17)', () => {
+    const changePassword = operations.find(
+      ([route]) => route === 'PATCH /api/v1/admin/auth/password',
+    )?.[1];
+
+    expect(Object.keys(changePassword?.responses ?? {})).toContain('403');
+  });
+
+  it('documents the 400 for a malformed store id on every store route (F-20)', () => {
+    const storeRoutes = operations.filter(([route]) =>
+      route.includes('/stores/{storeId}'),
+    );
+    const without400 = storeRoutes
+      .filter(([, operation]) => !operation.responses?.['400'])
+      .map(([route]) => route);
+
+    expect(storeRoutes.length).toBeGreaterThanOrEqual(5);
+    expect(without400).toEqual([]);
+  });
 });

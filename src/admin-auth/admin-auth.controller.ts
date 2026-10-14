@@ -183,7 +183,7 @@ export class AdminAuthController {
    * @access Admin (allowed while a password change is required)
    * @cookie batisso_admin_access
    * @body ChangePasswordDto (currentPassword, newPassword)
-   * @returns 204, other sessions of this admin are signed out
+   * @returns 204, other sessions of this admin are signed out; 401 INVALID_CREDENTIALS; 403 ACCOUNT_LOCKED (shared login lockout)
    */
   @Patch('password')
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -192,7 +192,7 @@ export class AdminAuthController {
   @ApiOperation({
     summary: 'Changer mon mot de passe',
     description:
-      'Vérifie le mot de passe actuel, enregistre le nouveau et déconnecte les autres sessions de l’administrateur. La session courante reste ouverte.',
+      'Vérifie le mot de passe actuel, enregistre le nouveau et déconnecte les autres sessions de l’administrateur. La session courante reste ouverte. Un mot de passe actuel faux compte dans le même blocage que la connexion : après trop d’erreurs, le compte est bloqué 15 minutes.',
   })
   @ApiNoContentResponse({ description: 'Mot de passe changé' })
   @ApiBadRequestResponse({
@@ -202,6 +202,11 @@ export class AdminAuthController {
   @ApiUnauthorizedResponse({
     description:
       'Mot de passe actuel incorrect (`INVALID_CREDENTIALS`) ou non connecté',
+    type: ErrorResponse,
+  })
+  @ApiForbiddenResponse({
+    description:
+      'Compte bloqué après trop d’erreurs de mot de passe (`ACCOUNT_LOCKED`)',
     type: ErrorResponse,
   })
   changePassword(
