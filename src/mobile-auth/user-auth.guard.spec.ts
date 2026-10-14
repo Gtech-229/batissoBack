@@ -29,6 +29,7 @@ interface Session {
   userId: string;
   revokedAt: Date | null;
   expiresAt: Date;
+  device: { deviceId: string };
 }
 
 function liveSession(overrides: Partial<Session> = {}): Session {
@@ -37,6 +38,7 @@ function liveSession(overrides: Partial<Session> = {}): Session {
     userId: 'user-1',
     revokedAt: null,
     expiresAt: new Date(Date.now() + 60_000),
+    device: { deviceId: 'device-0001-abcd' },
     ...overrides,
   };
 }
@@ -161,6 +163,7 @@ describe('UserAuthGuard', () => {
     expect(request.mobileUser).toEqual({
       userId: 'user-1',
       sessionId: 'session-1',
+      deviceId: 'device-0001-abcd',
     });
   });
 });

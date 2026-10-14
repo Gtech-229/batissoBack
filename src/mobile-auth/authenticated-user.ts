@@ -2,6 +2,8 @@
 export interface AuthenticatedUser {
   userId: string;
   sessionId: string;
+  /** The app's id of the session's device (not a secret, not a proof). */
+  deviceId: string;
 }
 
 declare module 'express-serve-static-core' {

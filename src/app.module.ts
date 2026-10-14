@@ -1,6 +1,7 @@
 import { Module, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
+import { ActivityLogModule } from './activity-log/activity-log.module.js';
 import { AdminAuthModule } from './admin-auth/admin-auth.module.js';
 import { AdminsModule } from './admins/admins.module.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
@@ -9,6 +10,7 @@ import { validate } from './config/env.validation.js';
 import { HealthModule } from './health/health.module.js';
 import { MobileAuthModule } from './mobile-auth/mobile-auth.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { StaffModule } from './staff/staff.module.js';
 import { StoresModule } from './stores/stores.module.js';
 import { SystemSettingsModule } from './system-settings/system-settings.module.js';
 import { CountriesModule } from './countries/countries.module.js';
@@ -24,6 +26,8 @@ import { CountriesModule } from './countries/countries.module.js';
     CountriesModule,
     StoresModule,
     MobileAuthModule,
+    StaffModule,
+    ActivityLogModule,
   ],
   providers: [
     // Registered as providers (not in main.ts) so e2e tests get them too.

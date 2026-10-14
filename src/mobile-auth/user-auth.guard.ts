@@ -49,7 +49,14 @@ export class UserAuthGuard implements CanActivate {
     // effect immediately, not when the 15-minute token expires.
     const session = await this.prisma.userSession.findUnique({
       where: { id: claims.sid },
-      select: { id: true, userId: true, revokedAt: true, expiresAt: true },
+      select: {
+        id: true,
+        userId: true,
+        revokedAt: true,
+        expiresAt: true,
+        // The app's device id, recorded with what this session does (activity log).
+        device: { select: { deviceId: true } },
+      },
     });
     if (
       !session ||
@@ -60,7 +67,11 @@ export class UserAuthGuard implements CanActivate {
       throw notAuthenticated();
     }
 
-    request.mobileUser = { userId: session.userId, sessionId: session.id };
+    request.mobileUser = {
+      userId: session.userId,
+      sessionId: session.id,
+      deviceId: session.device.deviceId,
+    };
     return true;
   }
 }

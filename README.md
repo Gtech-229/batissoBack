@@ -95,6 +95,27 @@ P-256 / SHA-256** over the challenge's UTF-8 bytes, the signature in DER, base64
 Y`): prefix it with these 26 bytes to get SPKI:
 `3059301306072a8648ce3d020106082a8648ce3d030107034200`.
 
+## First seller
+
+Once a store is **verified**, its manager builds the team from the app (Bearer
+session). Every route under `/api/v1/stores/:storeId` checks that the caller is an
+active member of that store with the right role; a store they do not belong to
+answers 404.
+
+1. Add a seller: `POST /api/v1/stores/:storeId/sellers`
+   `{ "phone": "76 11 22 33", "firstName": "Moussa", "lastName": "Traoré" }`. A new
+   phone becomes a user without PIN: the seller then signs in with the steps of
+   "First mobile sign-in". An existing user keeps their names.
+2. See the team: `GET /api/v1/stores/:storeId/members` (managers first; inactive
+   sellers included).
+3. Deactivate or reactivate a seller:
+   `PATCH /api/v1/stores/:storeId/sellers/:userId/deactivate` (or `/reactivate`).
+   A deactivated seller keeps their account but loses access to the store at once.
+4. Read who did what: `GET /api/v1/stores/:storeId/activity` (paginated, newest
+   first).
+
+Managers manage sellers only; managers are registered by admins.
+
 ## Common commands
 
 | Command | What it does |
