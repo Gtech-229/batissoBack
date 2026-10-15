@@ -64,7 +64,12 @@ describe('Swagger document (e2e)', () => {
     const security = (route: string) =>
       operations.find(([name]) => name === route)?.[1].security;
 
-    for (const route of ['GET /api/v1/me', 'POST /api/v1/auth/logout']) {
+    for (const route of [
+      'GET /api/v1/me',
+      'GET /api/v1/me/accounts',
+      'POST /api/v1/auth/logout',
+      'POST /api/v1/stores/{storeId}/accounts',
+    ]) {
       expect(security(route)).toEqual([{ bearer: [] }]);
     }
     expect(security('POST /api/v1/auth/login')).toBeUndefined();

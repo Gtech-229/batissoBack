@@ -3,16 +3,15 @@ import { isPhoneCountry, normalizePhone } from '../common/phone.js';
 import {
   ActivityAction,
   StoreMemberRole,
-  StoreStatus,
   type Prisma,
 } from '../generated/prisma/client.js';
 import type { AuthenticatedUser } from '../mobile-auth/authenticated-user.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CurrentStoreContext } from '../store-access/current-store.js';
+import { lockVerifiedStore } from '../store-access/verified-store.js';
 import {
   invalidFields,
   PHONE_NOT_OF_COUNTRY,
-  storeNotFound,
 } from '../stores/stores.errors.js';
 import { toStoreMemberView, type StoreMemberView } from './dto/store-member.js';
 import type { AddSellerDto } from './dto/add-seller.dto.js';
@@ -21,8 +20,10 @@ import {
   alreadyInactive,
   alreadyMember,
   sellerNotFound,
-  storeNotVerified,
 } from './staff.errors.js';
+
+/** Ends the 409 STORE_NOT_VERIFIED message of every team change. */
+const TEAM_REFUSAL = 'son équipe ne peut être modifiée qu’une fois vérifiée';
 
 type Tx = Prisma.TransactionClient;
 
@@ -64,7 +65,11 @@ export class StaffService {
     dto: AddSellerDto,
   ): Promise<AddSellerResult> {
     return this.prisma.$transaction(async (tx) => {
-      const countryCode = await this.lockVerifiedStore(tx, store.storeId);
+      const { countryCode } = await lockVerifiedStore(
+        tx,
+        store.storeId,
+        TEAM_REFUSAL,
+      );
       const phone = isPhoneCountry(countryCode)
         ? normalizePhone(dto.phone, countryCode)
         : null;
@@ -148,7 +153,7 @@ export class StaffService {
     active: boolean,
   ): Promise<StoreMemberView> {
     return this.prisma.$transaction(async (tx) => {
-      await this.lockVerifiedStore(tx, store.storeId);
+      await lockVerifiedStore(tx, store.storeId, TEAM_REFUSAL);
 
       // One conditional write: only a seller of this store, in the other state.
       const { count } = await tx.storeMember.updateMany({
@@ -186,24 +191,6 @@ export class StaffService {
       });
       return toStoreMemberView(member);
     });
-  }
-
-  /**
-   * Reads the store `FOR SHARE` and requires it VERIFIED: a concurrent status
-   * change (which locks the row) waits for this team change, or the reverse,
-   * so a team never changes in a store that was just suspended or closed.
-   */
-  private async lockVerifiedStore(tx: Tx, storeId: string): Promise<string> {
-    const [row] = await tx.$queryRaw<
-      { status: StoreStatus; countryCode: string }[]
-    >`SELECT "status", "countryCode" FROM "hardware_stores" WHERE "id" = ${storeId}::uuid FOR SHARE`;
-    if (!row) {
-      throw storeNotFound();
-    }
-    if (row.status !== StoreStatus.VERIFIED) {
-      throw storeNotVerified(row.status);
-    }
-    return row.countryCode;
   }
 
   private log(

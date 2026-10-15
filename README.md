@@ -116,6 +116,32 @@ answers 404.
 
 Managers manage sellers only; managers are registered by admins.
 
+## First customer account
+
+In a **verified** store, a seller or a manager opens a customer's savings account
+at the counter (Bearer session):
+
+1. Open the account: `POST /api/v1/stores/:storeId/accounts`
+
+   ```json
+   {
+     "customer": { "phone": "76 44 55 66", "firstName": "Fanta", "lastName": "Keita" },
+     "beneficiary": { "name": "Ali Keita", "phone": "76 77 88 99" },
+     "termsAccepted": true
+   }
+   ```
+
+   The beneficiary is optional (its phone too). The answer gives the account
+   number (`C-000123`), balance `"0"`, the country's currency, and the
+   **Non affecté** (Unassigned) goal. A new phone becomes a user without PIN; an
+   existing user keeps their names. One account per customer and store; staff
+   cannot open one in their own name.
+2. Find accounts: `GET /api/v1/stores/:storeId/accounts?q=keita` (account
+   number, phone in local or international format, or name; paginated, newest
+   first). Detail: `GET /api/v1/stores/:storeId/accounts/:accountId`.
+3. The customer activates the app with the steps of "First mobile sign-in", then
+   sees their accounts in every store: `GET /api/v1/me/accounts`.
+
 ## Common commands
 
 | Command | What it does |

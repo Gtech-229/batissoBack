@@ -3,6 +3,7 @@ import { definedOnly } from '../common/defined-only.js';
 import type { ValidationErrorDetail } from '../common/errors/error-response.js';
 import { parseAmount } from '../common/money.js';
 import { paginated, toSkipTake, type Paginated } from '../common/pagination.js';
+import { escapeLike } from '../common/like.js';
 import { isPhoneCountry, normalizePhone } from '../common/phone.js';
 import { countryNotFound } from '../countries/countries.errors.js';
 import {
@@ -41,15 +42,6 @@ import {
   storeClosed,
   storeNotFound,
 } from './stores.errors.js';
-
-/**
- * Prisma's `contains` becomes `ILIKE '%value%'` without escaping, so `%` and `_`
- * in a search would act as wildcards. Backslash is PostgreSQL's default LIKE
- * escape: escape it first, then the two wildcards, so the text is matched as is.
- */
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
-}
 
 @Injectable()
 export class StoresService {

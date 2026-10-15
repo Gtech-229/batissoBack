@@ -1,6 +1,7 @@
 import { Module, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
+import { AccountsModule } from './accounts/accounts.module.js';
 import { ActivityLogModule } from './activity-log/activity-log.module.js';
 import { AdminAuthModule } from './admin-auth/admin-auth.module.js';
 import { AdminsModule } from './admins/admins.module.js';
@@ -28,6 +29,7 @@ import { CountriesModule } from './countries/countries.module.js';
     MobileAuthModule,
     StaffModule,
     ActivityLogModule,
+    AccountsModule,
   ],
   providers: [
     // Registered as providers (not in main.ts) so e2e tests get them too.

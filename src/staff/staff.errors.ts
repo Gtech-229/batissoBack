@@ -3,18 +3,8 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import type { StoreStatus } from '../generated/prisma/client.js';
-import { STORE_STATUS_LABELS } from '../stores/store-lifecycle.js';
 
 // `error` is the stable code the mobile app relies on; `message` is shown to users.
-
-/** Team changes need a verified store; the message names its current status. */
-export function storeNotVerified(status: StoreStatus): ConflictException {
-  return new ConflictException({
-    message: `Cette quincaillerie est ${STORE_STATUS_LABELS[status]} : son équipe ne peut être modifiée qu’une fois vérifiée`,
-    error: 'STORE_NOT_VERIFIED',
-  });
-}
 
 /** An active seller, or a manager, of this store already has this phone. */
 export function alreadyMember(): ConflictException {
