@@ -63,14 +63,16 @@ export class BeneficiaryInput {
   name: string;
 
   @ApiPropertyOptional({
-    description: `Numéro du bénéficiaire, ${PHONE_DESCRIPTION}`,
+    description: `Numéro du bénéficiaire, ${PHONE_DESCRIPTION} ; facultatif (absent ou \`null\` : pas de numéro)`,
     example: '76 77 88 99',
+    nullable: true,
+    type: String,
   })
   @IsOptional()
   @Trim()
   @IsString({ message: 'Le numéro du bénéficiaire est invalide' })
   @Length(1, 30, { message: 'Le numéro du bénéficiaire est invalide' })
-  phone?: string;
+  phone?: string | null;
 }
 
 export class OpenAccountDto {

@@ -73,8 +73,10 @@ export class AccountsService {
         return phone;
       };
       const phone = phoneOf('customer.phone', dto.customer.phone);
+      // `== null`: a client may send `phone: null` for "no phone", and
+      // @IsOptional lets null through the DTO (F-21).
       const beneficiaryPhone =
-        dto.beneficiary?.phone === undefined
+        dto.beneficiary?.phone == null
           ? null
           : phoneOf('beneficiary.phone', dto.beneficiary.phone);
       if (!phone || errors.length > 0) {

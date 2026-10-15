@@ -205,6 +205,41 @@ describe('Customer accounts (e2e)', () => {
       });
     });
 
+    it('treats a null beneficiary phone as no phone (F-21)', async () => {
+      const response = await openAccount({
+        beneficiary: { name: 'Ali Keita', phone: null },
+      }).expect(201);
+
+      expect(response.body.beneficiary).toEqual({
+        name: 'Ali Keita',
+        phone: null,
+      });
+      expect(
+        await prisma.account.findUniqueOrThrow({
+          where: { id: response.body.id },
+          select: { beneficiaryName: true, beneficiaryPhone: true },
+        }),
+      ).toEqual({ beneficiaryName: 'Ali Keita', beneficiaryPhone: null });
+    });
+
+    it('opens without a beneficiary when it is null', async () => {
+      const response = await openAccount({ beneficiary: null }).expect(201);
+
+      expect(response.body.beneficiary).toBeNull();
+    });
+
+    it('still refuses a null customer phone with a French 400', async () => {
+      const response = await openAccount({
+        customer: { phone: null, firstName: 'Fanta', lastName: 'Keita' },
+      }).expect(400);
+
+      expect(response.body.details).toContainEqual({
+        field: 'customer.phone',
+        errors: expect.arrayContaining(['Le numéro de téléphone est requis']),
+      });
+      expect(await prisma.account.count()).toBe(0);
+    });
+
     it('gives each account its own increasing number', async () => {
       const first = await openAccount().expect(201);
       const second = await openAccount({
