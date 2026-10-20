@@ -1,6 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
-import type { ReadStream } from 'node:fs';
+import { mkdir, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -13,14 +12,6 @@ import {
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
 const NAME = '0192f0a4-7b1c-7c3e-9d2a-5e6f7a8b9c0d.jpg';
-
-async function readAll(stream: ReadStream): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of stream) {
-    chunks.push(chunk as Buffer);
-  }
-  return Buffer.concat(chunks);
-}
 
 describe('detectImageType', () => {
   it('recognizes JPEG and PNG from their first bytes', () => {
@@ -85,9 +76,7 @@ describe('IdPhotoStorage', () => {
 
     expect(isPhotoName(name)).toBe(true);
     expect(name.endsWith('.jpg')).toBe(true);
-    const stream = await storage.open(name);
-    expect(stream).not.toBeNull();
-    expect(await readAll(stream!)).toEqual(JPEG);
+    expect(await storage.read(name)).toEqual(JPEG);
 
     await storage.remove(name);
     expect(await readdir(directory)).toEqual([]);
@@ -102,12 +91,56 @@ describe('IdPhotoStorage', () => {
   });
 
   it('answers null for a missing file and ignores removing one', async () => {
-    expect(await storage.open(NAME)).toBeNull();
+    expect(await storage.read(NAME)).toBeNull();
     await expect(storage.remove(NAME)).resolves.toBeUndefined();
   });
 
+  /** The error never names the directory or the file (F-04). */
+  const expectPathFree = (error: unknown) => {
+    const message = (error as Error).message;
+    expect(message).not.toContain(directory);
+    expect(message).not.toMatch(/photos|\.jpg|\.png|[\\/]/);
+  };
+
+  it('fails a write with the code only, never the path (F-04)', async () => {
+    // A lost or unmounted volume: the directory is gone after startup.
+    await rm(directory, { recursive: true, force: true });
+
+    const error: unknown = await storage.save(JPEG, 'jpeg').catch((e) => e);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe(
+      'Identity photo write failed (ENOENT)',
+    );
+    expect((error as NodeJS.ErrnoException).code).toBe('ENOENT');
+    expectPathFree(error);
+  });
+
+  it('fails a read with the code only, never the path (F-04)', async () => {
+    // Anything but a missing file: here the name is a directory (EISDIR).
+    await mkdir(join(directory, NAME));
+
+    const error: unknown = await storage.read(NAME).catch((e) => e);
+
+    expect((error as Error).message).toMatch(
+      /^Identity photo read failed \([A-Z]+\)$/,
+    );
+    expectPathFree(error);
+  });
+
+  it('fails a removal with the code only, never the path (F-04)', async () => {
+    await mkdir(join(directory, NAME));
+
+    const error: unknown = await storage.remove(NAME).catch((e) => e);
+
+    expect((error as Error).message).toMatch(
+      /^Identity photo removal failed \([A-Z]+\)$/,
+    );
+    expectPathFree(error);
+  });
+
   it('refuses a name it did not generate before touching the disk', async () => {
-    await expect(storage.open('../secret.jpg')).rejects.toThrow(
+    await expect(storage.read('../secret.jpg')).rejects.toThrow(
       'Invalid identity photo name',
     );
     await expect(storage.remove('a/b.jpg')).rejects.toThrow(

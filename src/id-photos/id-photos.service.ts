@@ -7,7 +7,6 @@ import type { AuthenticatedUser } from '../mobile-auth/authenticated-user.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CurrentStoreContext } from '../store-access/current-store.js';
 import { lockVerifiedStore } from '../store-access/verified-store.js';
-import type { ReadStream } from 'node:fs';
 import {
   contentTypeOf,
   detectImageType,
@@ -115,13 +114,13 @@ export class IdPhotosService {
   }
 
   /**
-   * The photo of this store's account, as a stream and its type. Views are not
+   * The photo of this store's account, as bytes and their type. Views are not
    * logged (decided by the user, 2026-10-15).
    */
   async view(
     storeId: string,
     accountId: string,
-  ): Promise<{ stream: ReadStream; contentType: string }> {
+  ): Promise<{ content: Buffer; contentType: string }> {
     const account = await this.prisma.account.findFirst({
       where: { id: accountId, storeId },
       select: { idPhotoPath: true },
@@ -132,13 +131,13 @@ export class IdPhotosService {
     if (!account.idPhotoPath) {
       throw noIdPhoto();
     }
-    const stream = await this.storage.open(account.idPhotoPath);
-    if (!stream) {
+    const content = await this.storage.read(account.idPhotoPath);
+    if (!content) {
       // The database points to a file that is gone (deleted by hand, lost
       // volume): an operator problem, logged without the customer's data.
       this.logger.warn('An identity photo file is missing from ID_PHOTO_DIR');
       throw noIdPhoto();
     }
-    return { stream, contentType: contentTypeOf(account.idPhotoPath) };
+    return { content, contentType: contentTypeOf(account.idPhotoPath) };
   }
 }

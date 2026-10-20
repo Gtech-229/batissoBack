@@ -1,8 +1,7 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
-import { mkdir, open, unlink, writeFile } from 'node:fs/promises';
-import type { ReadStream } from 'node:fs';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { EnvironmentVariables } from '../config/env.validation.js';
 
@@ -47,6 +46,23 @@ export function isPhotoName(name: string): boolean {
   return PHOTO_NAME.test(name);
 }
 
+function errorCode(error: unknown): string | undefined {
+  return (error as NodeJS.ErrnoException).code;
+}
+
+/**
+ * A Node fs error message holds the file's absolute path. What leaves this
+ * service only names the action and the code (`ENOSPC`, `EACCES`...), so the
+ * 500 log never shows the directory or a file name (F-04).
+ */
+function storageFailure(action: string, error: unknown): Error {
+  const code = errorCode(error) ?? 'unknown';
+  // The code stays readable for callers (a code is never a path).
+  return Object.assign(new Error(`Identity photo ${action} failed (${code})`), {
+    code,
+  });
+}
+
 /** `image/jpeg` or `image/png`, from a stored photo name. */
 export function contentTypeOf(name: string): string {
   return CONTENT_TYPES[name.slice(name.lastIndexOf('.') + 1)];
@@ -73,31 +89,41 @@ export class IdPhotoStorage implements OnModuleInit {
   /** Writes a new file and returns its generated name. */
   async save(content: Buffer, type: ImageType): Promise<string> {
     const name = `${randomUUID()}.${EXTENSIONS[type]}`;
-    // `wx`: fails instead of overwriting, should a name ever repeat.
-    await writeFile(this.pathOf(name), content, { flag: 'wx' });
+    const path = this.pathOf(name);
+    try {
+      // `wx`: fails instead of overwriting, should a name ever repeat.
+      await writeFile(path, content, { flag: 'wx' });
+    } catch (error) {
+      throw storageFailure('write', error);
+    }
     return name;
   }
 
-  /** A read stream of the file, or null when it is not on disk. */
-  async open(name: string): Promise<ReadStream | null> {
+  /**
+   * The file's bytes, or null when it is not on disk. Read whole (at most 5 MB):
+   * no file stays open while the answer is sent, and no read error can happen
+   * once it has started (F-05, F-04).
+   */
+  async read(name: string): Promise<Buffer | null> {
+    const path = this.pathOf(name);
     try {
-      const handle = await open(this.pathOf(name), 'r');
-      return handle.createReadStream();
+      return await readFile(path);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      if (errorCode(error) === 'ENOENT') {
         return null;
       }
-      throw error;
+      throw storageFailure('read', error);
     }
   }
 
   /** Deletes the file; a file already gone is not an error. */
   async remove(name: string): Promise<void> {
+    const path = this.pathOf(name);
     try {
-      await unlink(this.pathOf(name));
+      await unlink(path);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        throw error;
+      if (errorCode(error) !== 'ENOENT') {
+        throw storageFailure('removal', error);
       }
     }
   }

@@ -146,11 +146,12 @@ export class IdPhotosController {
     @CurrentStore() store: CurrentStoreContext,
     @Param('accountId', AccountIdPipe) accountId: string,
   ): Promise<StreamableFile> {
-    const { stream, contentType } = await this.photos.view(
+    const { content, contentType } = await this.photos.view(
       store.storeId,
       accountId,
     );
-    return new StreamableFile(stream, {
+    // Bytes already in memory: nothing can fail once the answer has started.
+    return new StreamableFile(content, {
       type: contentType,
       disposition: 'inline',
     });
