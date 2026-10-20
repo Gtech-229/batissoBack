@@ -141,6 +141,13 @@ export class AccountDetail {
   openedBy: AccountOpenerView;
 
   @ApiProperty({
+    description:
+      '`true` quand une photo d’identité est enregistrée (à lire sur la route de la photo)',
+    example: false,
+  })
+  hasIdPhoto: boolean;
+
+  @ApiProperty({
     description: 'Date d’ouverture',
     example: '2026-10-14T10:00:00.000Z',
   })
@@ -184,13 +191,15 @@ export function toAccountDetail(account: AccountWithDetail): AccountDetail {
       firstName: account.openedBy.firstName,
       lastName: account.openedBy.lastName,
     },
+    // Whether there is a photo, never where it is.
+    hasIdPhoto: account.idPhotoPath !== null,
   };
 }
 
-/** The detail without who opened it: shared by the staff and customer views. */
+/** The detail without the staff-only fields: shared by the staff and customer views. */
 export function toAccountFields(
   account: Account & { customer: User; goals: Goal[] },
-): Omit<AccountDetail, 'openedBy'> {
+): Omit<AccountDetail, 'openedBy' | 'hasIdPhoto'> {
   return {
     id: account.id,
     number: account.number,

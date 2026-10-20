@@ -112,6 +112,7 @@ describe('Customer accounts (e2e)', () => {
             lastName: 'Diallo',
           },
           createdAt: expect.any(String),
+          hasIdPhoto: false,
         });
         const body = response.body as {
           id: string;
@@ -544,6 +545,7 @@ describe('Customer accounts (e2e)', () => {
             phone: '+22376445566',
           },
           createdAt: expect.any(String),
+          hasIdPhoto: false,
         });
       });
 

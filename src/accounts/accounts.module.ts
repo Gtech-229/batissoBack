@@ -11,5 +11,7 @@ import { MyAccountsController } from './my-accounts.controller.js';
 @Module({
   controllers: [AccountsController, MyAccountsController],
   providers: [AccountsService],
+  // The identity photo routes answer with the account detail.
+  exports: [AccountsService],
 })
 export class AccountsModule {}

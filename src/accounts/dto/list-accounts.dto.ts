@@ -59,6 +59,12 @@ export class AccountSummary {
     example: '2026-10-14T10:00:00.000Z',
   })
   createdAt: Date;
+
+  @ApiProperty({
+    description: '`true` quand une photo d’identité est enregistrée',
+    example: false,
+  })
+  hasIdPhoto: boolean;
 }
 
 export function toAccountSummary(
@@ -77,5 +83,6 @@ export function toAccountSummary(
       phone: account.customer.phone,
     },
     createdAt: account.createdAt,
+    hasIdPhoto: account.idPhotoPath !== null,
   };
 }

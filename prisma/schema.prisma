@@ -97,6 +97,7 @@ enum ActivityAction {
   SELLER_DEACTIVATED
   SELLER_REACTIVATED
   ACCOUNT_OPENED
+  ID_PHOTO_UPLOADED
 }
 
 enum AccountStatus {
@@ -332,6 +333,9 @@ model Account {
   balance          BigInt        @default(0)
   beneficiaryName  String?       @db.VarChar(100)
   beneficiaryPhone String? /// E.164
+  /// The identity photo: a generated file name (uuid + .jpg or .png) in the
+  /// private ID_PHOTO_DIR directory; null until uploaded. Never in a response.
+  idPhotoPath      String?       @db.VarChar(100)
   status           AccountStatus @default(ACTIVE)
   /// When the customer accepted the store's terms, at the counter.
   termsAcceptedAt  DateTime

@@ -1,3 +1,6 @@
+# Identity photos (private, never committed)
+/storage
+
 # compiled output
 /dist
 /node_modules

@@ -142,6 +142,22 @@ at the counter (Bearer session):
 3. The customer activates the app with the steps of "First mobile sign-in", then
    sees their accounts in every store: `GET /api/v1/me/accounts`.
 
+## Customer identity photo
+
+A seller or a manager attaches the photo of the customer's identity document to
+their account (Bearer session):
+
+1. Upload or replace it: `PUT /api/v1/stores/:storeId/accounts/:accountId/id-photo`,
+   `multipart/form-data` with one file in the field `photo` (JPEG or PNG, checked
+   from its content, at most 5 MB). The store must be **verified**. The answer is
+   the account detail with `"hasIdPhoto": true`; a replaced photo is deleted.
+2. View it: `GET /api/v1/stores/:storeId/accounts/:accountId/id-photo` returns the
+   image itself (never cached). In Swagger, the upload route shows a file picker.
+
+Photos are stored privately in `ID_PHOTO_DIR` (default `storage/id-photos`,
+created at startup, ignored by git), never in a public folder or a JSON answer.
+Back this directory up with the database.
+
 ## Common commands
 
 | Command | What it does |
@@ -176,6 +192,7 @@ at the counter (Bearer session):
 | `CORS_ORIGINS` | no | none | Comma-separated web admin origins allowed to send cookies, e.g. `http://localhost:5173` |
 | `JWT_ACCESS_SECRET` | yes | | At least 32 random characters; signs admin access tokens. The `.env.example` placeholder is deliberately too short, so the API refuses to start until you set a real one: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
 | `PIN_PEPPER` | yes | | At least 32 random characters, mixed into every PIN hash and never stored in the database, so a leaked database alone cannot reveal PINs. Generate it like `JWT_ACCESS_SECRET` (the `.env.example` placeholder is too short on purpose) and keep it safe: **changing it later invalidates every PIN** |
+| `ID_PHOTO_DIR` | no | `storage/id-photos` | Private directory of the customers' identity photos, relative to the working directory or absolute; created at startup. Never served statically; back it up with the database |
 | `SUPER_ADMIN_EMAIL` | when no super admin exists | | Email of the super admin created at startup |
 | `SUPER_ADMIN_PASSWORD` | when no super admin exists | | 8 to 128 characters with an uppercase letter, a lowercase letter, a digit, and a special character. **Wrap it in quotes**: an unquoted `#` starts a comment. The `.env.example` placeholder breaks the rule on purpose, so the API refuses to start until you choose a real password. Once the super admin exists, both `SUPER_ADMIN_*` variables can be removed |
 

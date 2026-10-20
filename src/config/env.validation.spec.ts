@@ -119,6 +119,25 @@ describe('validate (environment variables)', () => {
     });
   });
 
+  describe('ID_PHOTO_DIR', () => {
+    it('defaults to storage/id-photos', () => {
+      expect(validate(BASE).ID_PHOTO_DIR).toBe('storage/id-photos');
+    });
+
+    it('keeps a configured directory', () => {
+      expect(
+        validate({ ...BASE, ID_PHOTO_DIR: '/var/batisso/id-photos' })
+          .ID_PHOTO_DIR,
+      ).toBe('/var/batisso/id-photos');
+    });
+
+    it('refuses an empty value', () => {
+      expect(() => validate({ ...BASE, ID_PHOTO_DIR: '' })).toThrow(
+        /ID_PHOTO_DIR/,
+      );
+    });
+  });
+
   describe('PIN_PEPPER', () => {
     it('is required', () => {
       const { PIN_PEPPER: _omitted, ...withoutPepper } = BASE;

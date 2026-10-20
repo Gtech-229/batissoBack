@@ -69,6 +69,14 @@ export class EnvironmentVariables {
   @MinLength(32)
   PIN_PEPPER: string;
 
+  /**
+   * Private directory of the customers' identity photos, relative to the working
+   * directory or absolute. Never served statically: only the API reads it.
+   */
+  @IsString()
+  @MinLength(1)
+  ID_PHOTO_DIR: string = 'storage/id-photos';
+
   /** Used once, to create the super admin when none exists. */
   @IsOptional()
   @TrimLowerCase()

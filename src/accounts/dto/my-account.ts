@@ -22,7 +22,10 @@ export class MyAccountStore {
 }
 
 /** One of the signed-in customer's accounts: the detail, with its store, without who opened it. */
-export class MyAccount extends OmitType(AccountDetail, ['openedBy'] as const) {
+export class MyAccount extends OmitType(AccountDetail, [
+  'openedBy',
+  'hasIdPhoto',
+] as const) {
   @ApiProperty({
     description: 'Quincaillerie du compte',
     type: MyAccountStore,
