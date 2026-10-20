@@ -158,6 +158,27 @@ Photos are stored privately in `ID_PHOTO_DIR` (default `storage/id-photos`,
 created at startup, ignored by git), never in a public folder or a JSON answer.
 Back this directory up with the database.
 
+## First deposit
+
+A seller or a manager records the cash a customer hands over (Bearer session,
+**verified** store):
+
+1. Record it: `POST /api/v1/stores/:storeId/accounts/:accountId/deposits` with
+   `{ "amount": "5000" }` and an `Idempotency-Key` header holding a UUID the app
+   generates for this deposit (in Swagger, any UUID). The answer (201) is the
+   receipt: reference (`D-00482`), amount, balance before and after, account,
+   customer, store, who recorded it.
+2. Retrying the **same** request with the **same** key returns the same receipt
+   (200) and records nothing new; a new deposit needs a new key.
+3. The amount must reach the store's minimum deposit, and the balance must stay
+   under its maximum (409 otherwise). Staff cannot record a deposit on their own
+   account.
+4. Read the history: `GET /api/v1/stores/:storeId/accounts/:accountId/operations`
+   (staff) or `GET /api/v1/me/accounts/:accountId/operations` (the customer), and
+   one receipt with `/operations/:operationId`.
+
+Operations can never be changed or deleted: the database refuses it.
+
 ## Common commands
 
 | Command | What it does |

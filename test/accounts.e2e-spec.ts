@@ -104,6 +104,7 @@ describe('Customer accounts (e2e)', () => {
               isSystem: true,
               targetAmount: null,
               status: 'IN_PROGRESS',
+              balance: '0',
             },
           ],
           openedBy: {

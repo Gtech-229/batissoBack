@@ -155,6 +155,7 @@ model HardwareStore {
   members         StoreMember[]
   activityLogs    ActivityLog[]
   accounts        Account[]
+  operations      Operation[]
 
   @@index([status, createdAt])
   // Stores of a country (country store counts, filters by country).
@@ -200,6 +201,9 @@ model User {
   // Feature 5a: savings accounts held, and accounts opened as staff.
   accounts       Account[]     @relation("AccountCustomer")
   openedAccounts Account[]     @relation("AccountOpenedBy")
+  // Feature 6: operations recorded, and validated (orders, feature 10).
+  operations     Operation[]   @relation("OperationAuthor")
+  validations    Operation[]   @relation("OperationValidatedBy")
 
   @@map("users")
 }
@@ -344,10 +348,11 @@ model Account {
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
-  customer User          @relation("AccountCustomer", fields: [customerId], references: [id], onDelete: Restrict)
-  store    HardwareStore @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  openedBy User          @relation("AccountOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
-  goals    Goal[]
+  customer   User          @relation("AccountCustomer", fields: [customerId], references: [id], onDelete: Restrict)
+  store      HardwareStore @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  openedBy   User          @relation("AccountOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
+  goals      Goal[]
+  operations Operation[]
 
   @@unique([customerId, storeId])
   // The store's accounts, newest first (staff list and search).
@@ -366,10 +371,92 @@ model Goal {
   targetAmount BigInt?
   status       GoalStatus @default(IN_PROGRESS)
   isSystem     Boolean    @default(false)
+  /// Projection, like Account.balance: changed only in the transaction of an
+  /// operation (or a goal movement, feature 8). The goals of an account always
+  /// sum to its balance.
+  balance      BigInt     @default(0)
   createdAt    DateTime   @default(now())
 
-  account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  account    Account     @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  operations Operation[]
 
   @@index([accountId])
   @@map("goals")
+}
+
+enum OperationType {
+  DEPOSIT
+  MATERIAL_DEBIT
+  CORRECTION
+  REFUND /// V2: no endpoint in V1
+}
+
+enum OperationDirection {
+  CREDIT
+  DEBIT
+}
+
+enum OperationStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  CANCELLED
+}
+
+enum OperationChannel {
+  CASH
+  MOBILE_MONEY /// V2: no endpoint in V1
+}
+
+/// One money movement on an account: the source of truth of every balance.
+/// Append-only: a database trigger (migration `ledger`) refuses any UPDATE or
+/// DELETE; a mistake is fixed by a new CORRECTION linked to the original.
+/// Later features (orders, corrections, reports, the nightly check) rely on
+/// this shape.
+model Operation {
+  id                   String             @id @default(uuid(7)) @db.Uuid
+  /// Human reference: a type prefix and at least 5 digits (D-00482).
+  reference            String             @unique @db.VarChar(20)
+  accountId            String             @db.Uuid
+  storeId              String             @db.Uuid
+  /// Every operation targets a goal; deposits go to the Unassigned goal.
+  goalId               String             @db.Uuid
+  type                 OperationType
+  /// Smallest currency unit, always > 0 (check constraint); `direction` says
+  /// which way it moves.
+  amount               BigInt
+  direction            OperationDirection
+  currencyCode         String             @db.VarChar(3)
+  balanceBefore        BigInt
+  balanceAfter         BigInt
+  status               OperationStatus
+  /// The staff member who recorded it.
+  authorId             String             @db.Uuid
+  /// The manager who validated it (orders above the threshold, feature 10).
+  validatedById        String?            @db.Uuid
+  customerConfirmedAt  DateTime?
+  /// The operation a CORRECTION fixes (feature 11).
+  correctedOperationId String?            @db.Uuid
+  reason               String?            @db.VarChar(500)
+  channel              OperationChannel
+  externalReference    String?            @db.VarChar(100)
+  /// The client's key for this request: a retry never records twice.
+  idempotencyKey       String             @unique @db.Uuid
+  /// The app's deviceId of the author's session.
+  device               String?            @db.VarChar(100)
+  createdAt            DateTime           @default(now())
+
+  account            Account       @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  store              HardwareStore @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  goal               Goal          @relation(fields: [goalId], references: [id], onDelete: Restrict)
+  author             User          @relation("OperationAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  validatedBy        User?         @relation("OperationValidatedBy", fields: [validatedById], references: [id], onDelete: Restrict)
+  correctedOperation Operation?    @relation("OperationCorrection", fields: [correctedOperationId], references: [id], onDelete: Restrict)
+  correctedBy        Operation[]   @relation("OperationCorrection")
+
+  // An account's history, newest first.
+  @@index([accountId, createdAt])
+  // A store's operations by period (cash closing, reports).
+  @@index([storeId, createdAt])
+  @@map("operations")
 }

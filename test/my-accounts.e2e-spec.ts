@@ -105,6 +105,7 @@ describe('The customer’s own accounts (e2e)', () => {
             isSystem: true,
             targetAmount: null,
             status: 'IN_PROGRESS',
+            balance: '0',
           },
         ],
         store: { id: storeId, name: 'Quincaillerie du Carrefour' },

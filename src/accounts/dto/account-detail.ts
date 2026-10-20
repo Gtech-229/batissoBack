@@ -70,6 +70,13 @@ export class GoalView {
     example: GoalStatus.IN_PROGRESS,
   })
   status: GoalStatus;
+
+  @ApiProperty({
+    description:
+      'Solde de l’objectif, en unités de la devise, en texte ; les objectifs d’un compte totalisent son solde',
+    example: '20000',
+  })
+  balance: string;
 }
 
 export class AccountOpenerView {
@@ -176,6 +183,7 @@ export function toGoalView(goal: Goal): GoalView {
     targetAmount:
       goal.targetAmount === null ? null : formatAmount(goal.targetAmount),
     status: goal.status,
+    balance: formatAmount(goal.balance),
   };
 }
 

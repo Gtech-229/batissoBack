@@ -20,6 +20,7 @@ const goal = (overrides: Partial<Goal>): Goal => ({
   targetAmount: null,
   status: 'IN_PROGRESS',
   isSystem: true,
+  balance: 0n,
   createdAt: new Date('2026-10-14T10:00:00.000Z'),
   ...overrides,
 });

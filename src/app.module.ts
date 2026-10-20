@@ -10,6 +10,7 @@ import { validationExceptionFactory } from './common/validation/validation-excep
 import { validate } from './config/env.validation.js';
 import { HealthModule } from './health/health.module.js';
 import { IdPhotosModule } from './id-photos/id-photos.module.js';
+import { LedgerModule } from './ledger/ledger.module.js';
 import { MobileAuthModule } from './mobile-auth/mobile-auth.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { StaffModule } from './staff/staff.module.js';
@@ -32,6 +33,7 @@ import { CountriesModule } from './countries/countries.module.js';
     ActivityLogModule,
     AccountsModule,
     IdPhotosModule,
+    LedgerModule,
   ],
   providers: [
     // Registered as providers (not in main.ts) so e2e tests get them too.
