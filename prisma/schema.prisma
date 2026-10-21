@@ -156,6 +156,7 @@ model HardwareStore {
   activityLogs    ActivityLog[]
   accounts        Account[]
   operations      Operation[]
+  notifications   Notification[]
 
   @@index([status, createdAt])
   // Stores of a country (country store counts, filters by country).
@@ -199,11 +200,13 @@ model User {
   devices        UserDevice[]
   sessions       UserSession[]
   // Feature 5a: savings accounts held, and accounts opened as staff.
-  accounts       Account[]     @relation("AccountCustomer")
-  openedAccounts Account[]     @relation("AccountOpenedBy")
+  accounts       Account[]      @relation("AccountCustomer")
+  openedAccounts Account[]      @relation("AccountOpenedBy")
   // Feature 6: operations recorded, and validated (orders, feature 10).
-  operations     Operation[]   @relation("OperationAuthor")
-  validations    Operation[]   @relation("OperationValidatedBy")
+  operations     Operation[]    @relation("OperationAuthor")
+  validations    Operation[]    @relation("OperationValidatedBy")
+  // Feature 7: notifications sent to this user.
+  notifications  Notification[]
 
   @@map("users")
 }
@@ -238,11 +241,15 @@ model UserDevice {
   /// P-256 public key (SPKI DER, base64) of the key pair created in the phone's
   /// secure hardware. Signing a challenge with the private key proves the device.
   publicKey  String?
+  /// The installation's push (FCM) registration token; null: no push. Unique: a
+  /// token moving to another account is taken off the previous one.
+  pushToken  String?  @unique @db.VarChar(4096)
   trustedAt  DateTime @default(now())
   lastSeenAt DateTime @default(now())
 
-  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sessions UserSession[]
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions      UserSession[]
+  notifications Notification[]
 
   @@unique([userId, deviceId])
   @@map("user_devices")
@@ -446,17 +453,74 @@ model Operation {
   device               String?            @db.VarChar(100)
   createdAt            DateTime           @default(now())
 
-  account            Account       @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  store              HardwareStore @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  goal               Goal          @relation(fields: [goalId], references: [id], onDelete: Restrict)
-  author             User          @relation("OperationAuthor", fields: [authorId], references: [id], onDelete: Restrict)
-  validatedBy        User?         @relation("OperationValidatedBy", fields: [validatedById], references: [id], onDelete: Restrict)
-  correctedOperation Operation?    @relation("OperationCorrection", fields: [correctedOperationId], references: [id], onDelete: Restrict)
-  correctedBy        Operation[]   @relation("OperationCorrection")
+  account            Account        @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  store              HardwareStore  @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  goal               Goal           @relation(fields: [goalId], references: [id], onDelete: Restrict)
+  author             User           @relation("OperationAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  validatedBy        User?          @relation("OperationValidatedBy", fields: [validatedById], references: [id], onDelete: Restrict)
+  correctedOperation Operation?     @relation("OperationCorrection", fields: [correctedOperationId], references: [id], onDelete: Restrict)
+  correctedBy        Operation[]    @relation("OperationCorrection")
+  notifications      Notification[]
 
   // An account's history, newest first.
   @@index([accountId, createdAt])
   // A store's operations by period (cash closing, reports).
   @@index([storeId, createdAt])
   @@map("operations")
+}
+
+/// What a notification is about. Each feature adds its own events.
+enum NotificationType {
+  DEPOSIT_RECORDED
+}
+
+enum NotificationChannel {
+  /// The in-app list: delivered as soon as it is written.
+  APP
+  /// One row per device with a push token.
+  PUSH
+  SMS
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+/// One send of one message to one user on one channel: the notification log.
+/// Rows are written in the transaction of the event (a committed deposit always
+/// has its rows, a rolled-back one never), then sent after the commit. PENDING
+/// and FAILED rows are retried by the scheduled jobs (feature 17). Never holds
+/// a phone number, a push token, or a provider's error text.
+model Notification {
+  id          String              @id @default(uuid(7)) @db.Uuid
+  userId      String              @db.Uuid
+  storeId     String?             @db.Uuid
+  operationId String?             @db.Uuid
+  type        NotificationType
+  channel     NotificationChannel
+  title       String              @db.VarChar(100)
+  body        String              @db.VarChar(500)
+  /// The target device of a PUSH row.
+  deviceId    String?             @db.Uuid
+  status      NotificationStatus  @default(PENDING)
+  attempts    Int                 @default(0)
+  /// The error kind of the last failed send (e.g. "TimeoutError"), never its text.
+  lastError   String?             @db.VarChar(100)
+  sentAt      DateTime?
+  /// When the user read it in the app (APP rows only).
+  readAt      DateTime?
+  createdAt   DateTime            @default(now())
+
+  user      User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  store     HardwareStore? @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  operation Operation?     @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  device    UserDevice?    @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  // A user's in-app list, newest first.
+  @@index([userId, channel, createdAt])
+  // The retry job: PENDING and FAILED rows, oldest first.
+  @@index([status, createdAt])
+  @@map("notifications")
 }

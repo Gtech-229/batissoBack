@@ -4,19 +4,23 @@ import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { AppModule } from '../../src/app.module.js';
 import { configureApp } from '../../src/configure-app.js';
+import { PUSH_SENDER, type PushSender } from '../../src/push/push-sender.js';
 import { SMS_SENDER, type SmsSender } from '../../src/sms/sms-sender.js';
 import { cookiesFrom, TEST_PASSWORD } from './admins.js';
 
 /**
- * The real app, configured like main.ts, against batisso_test. Pass `sms` to
- * replace the console SMS sender (to read the codes a test receives).
+ * The real app, configured like main.ts, against batisso_test. Pass `sms` or
+ * `push` to replace the console senders (to read what a test receives).
  */
 export async function createTestApp(
-  options: { sms?: SmsSender } = {},
+  options: { sms?: SmsSender; push?: PushSender } = {},
 ): Promise<INestApplication<App>> {
   let builder = Test.createTestingModule({ imports: [AppModule] });
   if (options.sms) {
     builder = builder.overrideProvider(SMS_SENDER).useValue(options.sms);
+  }
+  if (options.push) {
+    builder = builder.overrideProvider(PUSH_SENDER).useValue(options.push);
   }
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<INestApplication<App>>();

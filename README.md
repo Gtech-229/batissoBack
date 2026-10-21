@@ -179,6 +179,21 @@ A seller or a manager records the cash a customer hands over (Bearer session,
 
 Operations can never be changed or deleted: the database refuses it.
 
+## Notifications
+
+Every deposit notifies the customer three ways: an item in the app's list, a
+push to each of their phones that registered a token, and an SMS. No real SMS or
+push provider is configured yet: in development the API log shows each message
+(`[SMS] To +223...: Dépôt de ...` and `[Push] Dépôt reçu: ...`); in production
+it only warns that nothing was sent. Each send is recorded in the `notifications`
+table with its status (`PENDING`, `SENT`, `FAILED`).
+
+1. Register the phone for push (as the customer, Bearer session):
+   `PUT /api/v1/me/devices/push-token` with `{ "token": "<FCM token>" }`
+   (`{ "token": null }` turns push off on this phone).
+2. Read the list: `GET /api/v1/me/notifications` (newest first, with
+   `unreadCount`), and mark one read: `PATCH /api/v1/me/notifications/:id/read`.
+
 ## Common commands
 
 | Command | What it does |

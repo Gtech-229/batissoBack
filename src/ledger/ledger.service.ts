@@ -15,6 +15,7 @@ import {
   Prisma,
 } from '../generated/prisma/client.js';
 import type { AuthenticatedUser } from '../mobile-auth/authenticated-user.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CurrentStoreContext } from '../store-access/current-store.js';
 import { lockVerifiedStore } from '../store-access/verified-store.js';
@@ -57,7 +58,10 @@ interface DepositRequest {
  */
 @Injectable()
 export class LedgerService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   /**
    * Records cash handed over at the counter, in one transaction: the store
@@ -93,92 +97,108 @@ export class LedgerService {
     }
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        await lockVerifiedStore(tx, store.storeId, DEPOSIT_REFUSAL);
+      const { result, toNotify } = await this.prisma.$transaction(
+        async (tx) => {
+          await lockVerifiedStore(tx, store.storeId, DEPOSIT_REFUSAL);
 
-        // FOR UPDATE: deposits on one account run one after the other, so each
-        // reads the balance the previous one wrote.
-        const [account] = await tx.$queryRaw<
-          { customerId: string; balance: bigint; currencyCode: string }[]
-        >`SELECT "customerId", "balance", "currencyCode" FROM "accounts"
+          // FOR UPDATE: deposits on one account run one after the other, so each
+          // reads the balance the previous one wrote.
+          const [account] = await tx.$queryRaw<
+            { customerId: string; balance: bigint; currencyCode: string }[]
+          >`SELECT "customerId", "balance", "currencyCode" FROM "accounts"
           WHERE "id" = ${accountId}::uuid AND "storeId" = ${store.storeId}::uuid
           FOR UPDATE`;
-        if (!account) {
-          throw accountNotFound();
-        }
+          if (!account) {
+            throw accountNotFound();
+          }
 
-        // Asked again under the lock: a retry sent in parallel waited here for
-        // the first request, which may have just recorded the deposit.
-        const parallel = await this.replay(tx, idempotencyKey, request);
-        if (parallel) {
-          return parallel;
-        }
+          // Asked again under the lock: a retry sent in parallel waited here for
+          // the first request, which may have just recorded the deposit.
+          const parallel = await this.replay(tx, idempotencyKey, request);
+          if (parallel) {
+            // Already notified by the request that recorded it.
+            return { result: parallel, toNotify: [] };
+          }
 
-        if (account.customerId === actor.userId) {
-          throw ownAccountDeposit();
-        }
+          if (account.customerId === actor.userId) {
+            throw ownAccountDeposit();
+          }
 
-        // FOR SHARE: an admin's change to the limits waits for this deposit.
-        const [settings] = await tx.$queryRaw<
-          { minDeposit: bigint; maxBalance: bigint }[]
-        >`SELECT "minDeposit", "maxBalance" FROM "store_settings"
+          // FOR SHARE: an admin's change to the limits waits for this deposit.
+          const [settings] = await tx.$queryRaw<
+            { minDeposit: bigint; maxBalance: bigint }[]
+          >`SELECT "minDeposit", "maxBalance" FROM "store_settings"
           WHERE "storeId" = ${store.storeId}::uuid
           FOR SHARE`;
-        const currency = account.currencyCode;
-        if (amount < settings.minDeposit) {
-          throw belowMinDeposit(formatAmount(settings.minDeposit), currency);
-        }
-        // Computed from the locked row, never from a client value.
-        const balanceAfter = account.balance + amount;
-        if (balanceAfter > settings.maxBalance) {
-          const room = settings.maxBalance - account.balance;
-          throw maxBalanceExceeded(
-            formatAmount(settings.maxBalance),
-            formatAmount(room > 0n ? room : 0n),
-            currency,
-          );
-        }
+          const currency = account.currencyCode;
+          if (amount < settings.minDeposit) {
+            throw belowMinDeposit(formatAmount(settings.minDeposit), currency);
+          }
+          // Computed from the locked row, never from a client value.
+          const balanceAfter = account.balance + amount;
+          if (balanceAfter > settings.maxBalance) {
+            const room = settings.maxBalance - account.balance;
+            throw maxBalanceExceeded(
+              formatAmount(settings.maxBalance),
+              formatAmount(room > 0n ? room : 0n),
+              currency,
+            );
+          }
 
-        // Every deposit goes to the Unassigned goal until feature 8.
-        const goal = await tx.goal.findFirstOrThrow({
-          where: { accountId, isSystem: true },
-          select: { id: true },
-        });
-        const [{ value }] = await tx.$queryRaw<{ value: bigint }[]>`
+          // Every deposit goes to the Unassigned goal until feature 8.
+          const goal = await tx.goal.findFirstOrThrow({
+            where: { accountId, isSystem: true },
+            select: { id: true },
+          });
+          const [{ value }] = await tx.$queryRaw<{ value: bigint }[]>`
           SELECT nextval('operation_reference_deposit_seq') AS value
         `;
 
-        const operation = await tx.operation.create({
-          data: {
-            reference: formatDepositReference(value),
-            accountId,
-            storeId: store.storeId,
-            goalId: goal.id,
-            type: OperationType.DEPOSIT,
-            amount,
-            direction: OperationDirection.CREDIT,
-            currencyCode: currency,
-            balanceBefore: account.balance,
-            balanceAfter,
-            // The cash is in hand: confirmed at once.
-            status: OperationStatus.CONFIRMED,
-            channel: OperationChannel.CASH,
-            authorId: actor.userId,
-            idempotencyKey,
-            device: actor.deviceId,
-          },
-          include: RECEIPT_INCLUDE,
-        });
-        await tx.account.update({
-          where: { id: accountId },
-          data: { balance: balanceAfter },
-        });
-        await tx.goal.update({
-          where: { id: goal.id },
-          data: { balance: { increment: amount } },
-        });
-        return { receipt: toOperationReceipt(operation), replayed: false };
-      });
+          const operation = await tx.operation.create({
+            data: {
+              reference: formatDepositReference(value),
+              accountId,
+              storeId: store.storeId,
+              goalId: goal.id,
+              type: OperationType.DEPOSIT,
+              amount,
+              direction: OperationDirection.CREDIT,
+              currencyCode: currency,
+              balanceBefore: account.balance,
+              balanceAfter,
+              // The cash is in hand: confirmed at once.
+              status: OperationStatus.CONFIRMED,
+              channel: OperationChannel.CASH,
+              authorId: actor.userId,
+              idempotencyKey,
+              device: actor.deviceId,
+            },
+            include: RECEIPT_INCLUDE,
+          });
+          await tx.account.update({
+            where: { id: accountId },
+            data: { balance: balanceAfter },
+          });
+          await tx.goal.update({
+            where: { id: goal.id },
+            data: { balance: { increment: amount } },
+          });
+          // In this transaction: the deposit and its notifications commit, or
+          // roll back, together.
+          const notificationIds = await this.notifications.recordDeposit(
+            tx,
+            operation,
+          );
+          return {
+            result: { receipt: toOperationReceipt(operation), replayed: false },
+            toNotify: notificationIds,
+          };
+        },
+      );
+      // After the commit, without waiting: the answer never depends on an SMS
+      // or push provider (dispatch never throws).
+      void this.notifications.dispatch(toNotify);
+      return result;
     } catch (error) {
       // The same key sent in parallel for another account: the account locks
       // did not serialize the two, so the unique index refused the second
