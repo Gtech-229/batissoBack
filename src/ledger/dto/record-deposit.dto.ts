@@ -1,4 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsUUID } from 'class-validator';
 import { IsAmount } from '../../common/money.js';
 
 export class RecordDepositDto {
@@ -10,4 +11,13 @@ export class RecordDepositDto {
   })
   @IsAmount()
   amount: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Objectif du compte qui reçoit le dépôt (non fermé) ; sans lui, « Non affecté »',
+    example: '0192f0a4-7b1c-7c3e-9d2a-5e6f7a8b9c0d',
+  })
+  @IsOptional()
+  @IsUUID('all', { message: 'Identifiant d’objectif invalide' })
+  goalId?: string;
 }

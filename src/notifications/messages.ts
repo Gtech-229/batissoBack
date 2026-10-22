@@ -32,3 +32,19 @@ export function depositMessage(deposit: {
     body: `Dépôt de ${money(deposit.amount)} reçu par ${deposit.storeName} sur votre compte ${deposit.accountNumber}. Nouveau solde : ${money(deposit.balanceAfter)}. Réf. ${deposit.reference}.`,
   };
 }
+
+export function goalReachedMessage(goal: {
+  label: string;
+  balance: bigint;
+  targetAmount: bigint;
+  currencyCode: string;
+  accountNumber: string;
+  storeName: string;
+}): NotificationMessage {
+  const money = (value: bigint) =>
+    `${groupThousands(value)} ${goal.currencyCode}`;
+  return {
+    title: 'Objectif atteint',
+    body: `Votre objectif « ${goal.label} » atteint ${money(goal.balance)} (objectif : ${money(goal.targetAmount)}) sur votre compte ${goal.accountNumber} chez ${goal.storeName}.`,
+  };
+}

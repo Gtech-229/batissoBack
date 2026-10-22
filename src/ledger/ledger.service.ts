@@ -13,6 +13,7 @@ import {
   OperationDirection,
   OperationStatus,
   OperationType,
+  GoalStatus,
   Prisma,
 } from '../generated/prisma/client.js';
 import type { AuthenticatedUser } from '../mobile-auth/authenticated-user.js';
@@ -35,6 +36,8 @@ import {
   ownAccountDeposit,
 } from './ledger.errors.js';
 import { formatDepositReference } from './operation-reference.js';
+import { nextGoalState } from '../goals/goal-state.js';
+import { goalClosed, goalNotFound } from '../goals/goals.errors.js';
 
 export interface DepositResult {
   receipt: OperationReceipt;
@@ -48,6 +51,8 @@ interface DepositRequest {
   accountId: string;
   amount: bigint;
   authorId: string;
+  /** The chosen goal; undefined means the Unassigned goal. */
+  goalId: string | undefined;
 }
 
 /**
@@ -88,6 +93,7 @@ export class LedgerService {
       accountId,
       amount,
       authorId: actor.userId,
+      goalId: dto.goalId?.toLowerCase(),
     };
 
     // A retry of a recorded deposit gets its receipt, whatever changed since
@@ -146,11 +152,9 @@ export class LedgerService {
             );
           }
 
-          // Every deposit goes to the Unassigned goal until feature 8.
-          const goal = await tx.goal.findFirstOrThrow({
-            where: { accountId, isSystem: true },
-            select: { id: true },
-          });
+          // The chosen goal of this account, or the Unassigned goal. Read
+          // under the account lock: goal balances only change under it.
+          const goal = await this.depositGoal(tx, accountId, request.goalId);
           const [{ value }] = await tx.$queryRaw<{ value: bigint }[]>`
           SELECT nextval('operation_reference_deposit_seq') AS value
         `;
@@ -180,9 +184,16 @@ export class LedgerService {
             where: { id: accountId },
             data: { balance: balanceAfter },
           });
+          // The goal gains the amount; crossing its target makes it REACHED.
+          const goalBalance = goal.balance + amount;
+          const state = nextGoalState(goal, goalBalance);
           await tx.goal.update({
             where: { id: goal.id },
-            data: { balance: { increment: amount } },
+            data: {
+              balance: goalBalance,
+              status: state.status,
+              reachedAt: state.reachedAt,
+            },
           });
           // In this transaction: the deposit and its notifications commit, or
           // roll back, together.
@@ -190,6 +201,19 @@ export class LedgerService {
             tx,
             operation,
           );
+          if (state.justReached) {
+            notificationIds.push(
+              ...(await this.notifications.recordGoalReached(tx, {
+                customerId: operation.account.customerId,
+                storeId: operation.storeId,
+                storeName: operation.store.name,
+                accountNumber: operation.account.number,
+                currencyCode: operation.currencyCode,
+                operationId: operation.id,
+                goal: { ...goal, balance: goalBalance },
+              })),
+            );
+          }
           return {
             result: { receipt: toOperationReceipt(operation), replayed: false },
             toNotify: notificationIds,
@@ -315,6 +339,30 @@ export class LedgerService {
   }
 
   /**
+   * The goal a deposit goes to: the chosen goal of this account (404 when it
+   * is not one, 409 when closed), or the Unassigned goal.
+   */
+  private async depositGoal(
+    tx: Prisma.TransactionClient,
+    accountId: string,
+    goalId: string | undefined,
+  ) {
+    if (goalId === undefined) {
+      return tx.goal.findFirstOrThrow({
+        where: { accountId, isSystem: true },
+      });
+    }
+    const goal = await tx.goal.findFirst({ where: { id: goalId, accountId } });
+    if (!goal) {
+      throw goalNotFound();
+    }
+    if (goal.status === GoalStatus.CLOSED) {
+      throw goalClosed();
+    }
+    return goal;
+  }
+
+  /**
    * The deposit this key already recorded, if any. Null: the key is new. The
    * same store, account, amount, and author: that deposit's receipt. Anything
    * else: 409 IDEMPOTENCY_KEY_REUSED.
@@ -336,7 +384,11 @@ export class LedgerService {
       operation.storeId === request.storeId &&
       operation.accountId === request.accountId &&
       operation.amount === request.amount &&
-      operation.authorId === request.authorId;
+      operation.authorId === request.authorId &&
+      // No goal in the request means the Unassigned goal.
+      (request.goalId === undefined
+        ? operation.goal.isSystem
+        : operation.goalId === request.goalId);
     if (!sameDeposit) {
       throw idempotencyKeyReused();
     }

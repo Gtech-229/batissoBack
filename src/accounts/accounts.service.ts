@@ -214,6 +214,7 @@ export class AccountsService {
         customer: true,
         store: { select: { id: true, name: true } },
         goals: ACCOUNT_DETAIL_INCLUDE.goals,
+        projects: ACCOUNT_DETAIL_INCLUDE.projects,
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });

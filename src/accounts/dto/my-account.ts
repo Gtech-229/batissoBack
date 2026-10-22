@@ -3,6 +3,7 @@ import type {
   Account,
   Goal,
   HardwareStore,
+  Project,
   User,
 } from '../../generated/prisma/client.js';
 import { AccountDetail, toAccountFields } from './account-detail.js';
@@ -37,6 +38,7 @@ export function toMyAccount(
   account: Account & {
     customer: User;
     goals: Goal[];
+    projects: Project[];
     store: Pick<HardwareStore, 'id' | 'name'>;
   },
 ): MyAccount {

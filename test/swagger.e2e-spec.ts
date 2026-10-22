@@ -73,6 +73,7 @@ describe('Swagger document (e2e)', () => {
       'GET /api/v1/me/accounts/{accountId}/operations',
       'GET /api/v1/me/notifications',
       'PUT /api/v1/me/devices/push-token',
+      'POST /api/v1/me/accounts/{accountId}/goals',
     ]) {
       expect(security(route)).toEqual([{ bearer: [] }]);
     }

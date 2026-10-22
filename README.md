@@ -194,6 +194,28 @@ table with its status (`PENDING`, `SENT`, `FAILED`).
 2. Read the list: `GET /api/v1/me/notifications` (newest first, with
    `unreadCount`), and mark one read: `PATCH /api/v1/me/notifications/:id/read`.
 
+## Goals
+
+An account's balance is split into goals: the **Non affecté** (Unassigned) goal
+every account has, and the customer's own goals, optionally grouped in projects.
+The goals always add up to the balance. As the customer (Bearer session):
+
+1. Create a project and a goal: `POST /api/v1/me/accounts/:accountId/projects`
+   `{ "name": "Ma maison" }`, then `POST /api/v1/me/accounts/:accountId/goals`
+   `{ "label": "Ciment", "targetAmount": "150000", "projectId": "<id>" }`
+   (`projectId` is optional).
+2. The seller deposits straight into it: add `"goalId": "<goal id>"` to the
+   deposit body (without it, the money goes to Non affecté).
+3. Move money between goals: `POST /api/v1/me/accounts/:accountId/goal-movements`
+   with an `Idempotency-Key` header and `{ "sourceGoalId": "...",
+   "targetGoalId": "...", "amount": "20000" }`. The balance does not change.
+   History: `GET /api/v1/me/accounts/:accountId/goal-movements`.
+4. Rename or retarget a goal: `PATCH .../goals/:goalId`; close it:
+   `POST .../goals/:goalId/close` (what it holds goes back to Non affecté).
+
+When a goal's balance reaches its target, the goal becomes `REACHED` and the
+customer gets an "Objectif atteint" notification (in the app and by push).
+
 ## Common commands
 
 | Command | What it does |

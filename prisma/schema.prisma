@@ -207,6 +207,8 @@ model User {
   validations    Operation[]    @relation("OperationValidatedBy")
   // Feature 7: notifications sent to this user.
   notifications  Notification[]
+  // Feature 8: money moved between goals.
+  goalMovements  GoalMovement[]
 
   @@map("users")
 }
@@ -355,11 +357,13 @@ model Account {
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
-  customer   User          @relation("AccountCustomer", fields: [customerId], references: [id], onDelete: Restrict)
-  store      HardwareStore @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  openedBy   User          @relation("AccountOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
-  goals      Goal[]
-  operations Operation[]
+  customer      User           @relation("AccountCustomer", fields: [customerId], references: [id], onDelete: Restrict)
+  store         HardwareStore  @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  openedBy      User           @relation("AccountOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
+  goals         Goal[]
+  operations    Operation[]
+  projects      Project[]
+  goalMovements GoalMovement[]
 
   @@unique([customerId, storeId])
   // The store's accounts, newest first (staff list and search).
@@ -382,13 +386,71 @@ model Goal {
   /// operation (or a goal movement, feature 8). The goals of an account always
   /// sum to its balance.
   balance      BigInt     @default(0)
+  /// The project the goal belongs to, if any (a goal can stand alone).
+  projectId    String?    @db.Uuid
+  /// When the balance last reached the target (status REACHED).
+  reachedAt    DateTime?
   createdAt    DateTime   @default(now())
 
-  account    Account     @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  operations Operation[]
+  account      Account        @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  project      Project?       @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  operations   Operation[]
+  movementsOut GoalMovement[] @relation("GoalMovementSource")
+  movementsIn  GoalMovement[] @relation("GoalMovementTarget")
 
   @@index([accountId])
   @@map("goals")
+}
+
+/// A construction project of an account ("Ma maison"), grouping goals.
+/// Never deleted.
+model Project {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  accountId String   @db.Uuid
+  name      String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  goals   Goal[]
+
+  @@index([accountId])
+  @@map("projects")
+}
+
+/// Why money moved between two goals of an account.
+enum GoalMovementReason {
+  /// The customer moved it.
+  MOVE
+  /// A goal was closed: its balance went back to Unassigned.
+  GOAL_CLOSED
+}
+
+/// Money moved from one goal to another of the same account. Not an operation:
+/// the account balance does not change, only how it is split. Append-only, like
+/// operations (a database trigger refuses UPDATE and DELETE).
+model GoalMovement {
+  id             String             @id @default(uuid(7)) @db.Uuid
+  accountId      String             @db.Uuid
+  sourceGoalId   String             @db.Uuid
+  targetGoalId   String             @db.Uuid
+  /// Smallest currency unit, > 0 (check constraint).
+  amount         BigInt
+  reason         GoalMovementReason
+  /// The user who moved it (the customer, for a move or a closing).
+  authorId       String             @db.Uuid
+  /// The client's key for a move; null for a closing (no retry to dedupe).
+  idempotencyKey String?            @unique @db.Uuid
+  device         String?            @db.VarChar(100)
+  createdAt      DateTime           @default(now())
+
+  account    Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  sourceGoal Goal    @relation("GoalMovementSource", fields: [sourceGoalId], references: [id], onDelete: Restrict)
+  targetGoal Goal    @relation("GoalMovementTarget", fields: [targetGoalId], references: [id], onDelete: Restrict)
+  author     User    @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  // An account's movements, newest first.
+  @@index([accountId, createdAt])
+  @@map("goal_movements")
 }
 
 enum OperationType {
@@ -472,6 +534,7 @@ model Operation {
 /// What a notification is about. Each feature adds its own events.
 enum NotificationType {
   DEPOSIT_RECORDED
+  GOAL_REACHED
 }
 
 enum NotificationChannel {

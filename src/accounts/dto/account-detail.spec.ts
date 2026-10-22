@@ -21,6 +21,8 @@ const goal = (overrides: Partial<Goal>): Goal => ({
   status: 'IN_PROGRESS',
   isSystem: true,
   balance: 0n,
+  projectId: null,
+  reachedAt: null,
   createdAt: new Date('2026-10-14T10:00:00.000Z'),
   ...overrides,
 });
@@ -44,6 +46,7 @@ const account = (
   customer: user('1', 'Fanta'),
   openedBy: user('2', 'Moussa'),
   goals: [goal({})],
+  projects: [],
   ...overrides,
 });
 

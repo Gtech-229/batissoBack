@@ -5,6 +5,7 @@ import {
   GoalStatus,
   type Account,
   type Goal,
+  type Project,
   type Prisma,
   type User,
 } from '../../generated/prisma/client.js';
@@ -77,6 +78,35 @@ export class GoalView {
     example: '20000',
   })
   balance: string;
+
+  @ApiProperty({
+    description: 'Projet de l’objectif, ou `null` (objectif hors projet)',
+    example: null,
+    nullable: true,
+    type: String,
+  })
+  projectId: string | null;
+
+  @ApiProperty({
+    description:
+      'Date à laquelle le solde a atteint le montant visé (état `REACHED`), ou `null`',
+    example: null,
+    nullable: true,
+    type: Date,
+  })
+  reachedAt: Date | null;
+}
+
+/** A construction project of the account, grouping goals. */
+export class ProjectView {
+  @ApiProperty({ description: 'Identifiant du projet', example: ID_EXAMPLE })
+  id: string;
+
+  @ApiProperty({ description: 'Nom du projet', example: 'Ma maison' })
+  name: string;
+
+  @ApiProperty({ example: '2026-10-22T10:00:00.000Z' })
+  createdAt: Date;
 }
 
 export class AccountOpenerView {
@@ -142,6 +172,13 @@ export class AccountDetail {
   goals: GoalView[];
 
   @ApiProperty({
+    description:
+      'Projets du compte (les objectifs y renvoient par `projectId`)',
+    type: [ProjectView],
+  })
+  projects: ProjectView[];
+
+  @ApiProperty({
     description: 'Membre de l’équipe qui a ouvert le compte',
     type: AccountOpenerView,
   })
@@ -166,13 +203,25 @@ export type AccountWithDetail = Account & {
   customer: User;
   openedBy: User;
   goals: Goal[];
+  projects: Project[];
 };
 
-/** Prisma include for `AccountWithDetail`: the system goal first, then by age. */
+/** Goals in display order: the system goal first, then by age. */
+export const GOALS_ORDER = {
+  orderBy: [{ isSystem: 'desc' }, { createdAt: 'asc' }],
+} satisfies Prisma.Account$goalsArgs;
+
+/** Projects by age. */
+export const PROJECTS_ORDER = {
+  orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+} satisfies Prisma.Account$projectsArgs;
+
+/** Prisma include for `AccountWithDetail`. */
 export const ACCOUNT_DETAIL_INCLUDE = {
   customer: true,
   openedBy: true,
-  goals: { orderBy: [{ isSystem: 'desc' }, { createdAt: 'asc' }] },
+  goals: GOALS_ORDER,
+  projects: PROJECTS_ORDER,
 } satisfies Prisma.AccountInclude;
 
 export function toGoalView(goal: Goal): GoalView {
@@ -184,7 +233,13 @@ export function toGoalView(goal: Goal): GoalView {
       goal.targetAmount === null ? null : formatAmount(goal.targetAmount),
     status: goal.status,
     balance: formatAmount(goal.balance),
+    projectId: goal.projectId,
+    reachedAt: goal.reachedAt,
   };
+}
+
+export function toProjectView(project: Project): ProjectView {
+  return { id: project.id, name: project.name, createdAt: project.createdAt };
 }
 
 /**
@@ -206,7 +261,7 @@ export function toAccountDetail(account: AccountWithDetail): AccountDetail {
 
 /** The detail without the staff-only fields: shared by the staff and customer views. */
 export function toAccountFields(
-  account: Account & { customer: User; goals: Goal[] },
+  account: Account & { customer: User; goals: Goal[]; projects: Project[] },
 ): Omit<AccountDetail, 'openedBy' | 'hasIdPhoto'> {
   return {
     id: account.id,
@@ -226,6 +281,7 @@ export function toAccountFields(
         : { name: account.beneficiaryName, phone: account.beneficiaryPhone },
     termsAcceptedAt: account.termsAcceptedAt,
     goals: account.goals.map(toGoalView),
+    projects: account.projects.map(toProjectView),
     createdAt: account.createdAt,
   };
 }

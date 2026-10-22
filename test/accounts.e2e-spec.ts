@@ -105,8 +105,11 @@ describe('Customer accounts (e2e)', () => {
               targetAmount: null,
               status: 'IN_PROGRESS',
               balance: '0',
+              projectId: null,
+              reachedAt: null,
             },
           ],
+          projects: [],
           openedBy: {
             userId: opener.userId,
             firstName: openerName,

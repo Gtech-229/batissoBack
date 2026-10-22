@@ -1,4 +1,8 @@
-import { depositMessage, groupThousands } from './messages.js';
+import {
+  depositMessage,
+  goalReachedMessage,
+  groupThousands,
+} from './messages.js';
 
 describe('groupThousands', () => {
   it.each([
@@ -38,6 +42,31 @@ describe('depositMessage', () => {
 
   it('fits the database columns', () => {
     expect(message.title.length).toBeLessThanOrEqual(100);
+    expect(message.body.length).toBeLessThanOrEqual(500);
+  });
+});
+
+describe('goalReachedMessage', () => {
+  const message = goalReachedMessage({
+    label: 'Ciment',
+    balance: 150000n,
+    targetAmount: 150000n,
+    currencyCode: 'XOF',
+    accountNumber: 'C-000123',
+    storeName: 'Quincaillerie du Carrefour',
+  });
+
+  it('gives the agreed French title and body', () => {
+    expect(message).toEqual({
+      title: 'Objectif atteint',
+      body: 'Votre objectif « Ciment » atteint 150 000 XOF (objectif : 150 000 XOF) sur votre compte C-000123 chez Quincaillerie du Carrefour.',
+    });
+  });
+
+  it('never claims the money is "sécurisé" or "garanti", and fits the columns', () => {
+    expect(`${message.title} ${message.body}`.toLowerCase()).not.toMatch(
+      /sécuris|garanti/,
+    );
     expect(message.body.length).toBeLessThanOrEqual(500);
   });
 });

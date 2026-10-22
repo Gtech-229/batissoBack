@@ -21,8 +21,20 @@ import {
   type NotificationList,
   type NotificationView,
 } from './dto/notification-view.js';
-import { depositMessage } from './messages.js';
+import { depositMessage, goalReachedMessage } from './messages.js';
 import { notificationNotFound } from './notifications.errors.js';
+
+/** A goal that just reached its target, through a deposit or a move. */
+export interface GoalReachedEvent {
+  customerId: string;
+  storeId: string;
+  storeName: string;
+  accountNumber: string;
+  currencyCode: string;
+  /** The deposit that made it reach the target; null for a move. */
+  operationId: string | null;
+  goal: { label: string; balance: bigint; targetAmount: bigint | null };
+}
 
 /** The kind of a failure, short enough for `lastError`: never its text. */
 function errorKind(error: unknown): string {
@@ -63,19 +75,74 @@ export class NotificationsService {
       balanceAfter: operation.balanceAfter,
       reference: operation.reference,
     });
+    return this.writeRows(
+      tx,
+      {
+        userId,
+        storeId: operation.storeId,
+        operationId: operation.id,
+        type: NotificationType.DEPOSIT_RECORDED,
+        title,
+        body,
+      },
+      { sms: true },
+    );
+  }
+
+  /**
+   * The rows announcing that a goal reached its target: in-app and push only
+   * (user decision, 2026-10-22: it moves no money, so no SMS). Linked to the
+   * operation that made it reach the target.
+   */
+  async recordGoalReached(
+    tx: Prisma.TransactionClient,
+    event: GoalReachedEvent,
+  ): Promise<string[]> {
+    const { goal } = event;
+    const { title, body } = goalReachedMessage({
+      label: goal.label,
+      balance: goal.balance,
+      targetAmount: goal.targetAmount ?? goal.balance,
+      currencyCode: event.currencyCode,
+      accountNumber: event.accountNumber,
+      storeName: event.storeName,
+    });
+    return this.writeRows(
+      tx,
+      {
+        userId: event.customerId,
+        storeId: event.storeId,
+        operationId: event.operationId,
+        type: NotificationType.GOAL_REACHED,
+        title,
+        body,
+      },
+      { sms: false },
+    );
+  }
+
+  /**
+   * One message's rows: the APP item (SENT as soon as written: the list is the
+   * delivery), a PUSH row per device with a token, and an SMS row when asked.
+   * Returns the ids of the rows to dispatch after the commit.
+   */
+  private async writeRows(
+    tx: Prisma.TransactionClient,
+    common: {
+      userId: string;
+      storeId: string;
+      /** Null when no operation caused it (a move between goals). */
+      operationId: string | null;
+      type: NotificationType;
+      title: string;
+      body: string;
+    },
+    channels: { sms: boolean },
+  ): Promise<string[]> {
     const devices = await tx.userDevice.findMany({
-      where: { userId, pushToken: { not: null } },
+      where: { userId: common.userId, pushToken: { not: null } },
       select: { id: true },
     });
-    const common = {
-      userId,
-      storeId: operation.storeId,
-      operationId: operation.id,
-      type: NotificationType.DEPOSIT_RECORDED,
-      title,
-      body,
-    };
-
     await tx.notification.create({
       data: {
         ...common,
@@ -84,15 +151,21 @@ export class NotificationsService {
         sentAt: new Date(),
       },
     });
+    const rows = [
+      ...(channels.sms
+        ? [{ ...common, channel: NotificationChannel.SMS }]
+        : []),
+      ...devices.map((device) => ({
+        ...common,
+        channel: NotificationChannel.PUSH,
+        deviceId: device.id,
+      })),
+    ];
+    if (rows.length === 0) {
+      return [];
+    }
     const toSend = await tx.notification.createManyAndReturn({
-      data: [
-        { ...common, channel: NotificationChannel.SMS },
-        ...devices.map((device) => ({
-          ...common,
-          channel: NotificationChannel.PUSH,
-          deviceId: device.id,
-        })),
-      ],
+      data: rows,
       select: { id: true },
     });
     return toSend.map((row) => row.id);
