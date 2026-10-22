@@ -14,6 +14,7 @@ import {
   paginated,
   toSkipTake,
   type PaginationQueryDto,
+  ONE_SNAPSHOT,
 } from '../common/pagination.js';
 import {
   toNotificationView,
@@ -100,23 +101,26 @@ export class NotificationsService {
   /**
    * The user's in-app list, newest first: the APP rows only (the SMS and push
    * rows of the same message are delivery records). The page, the total, and
-   * the unread count come from one snapshot.
+   * the unread count come from one snapshot (REPEATABLE READ).
    */
   async list(
     userId: string,
     query: PaginationQueryDto,
   ): Promise<NotificationList> {
     const where = { userId, channel: NotificationChannel.APP };
-    const [rows, total, unreadCount] = await this.prisma.$transaction([
-      this.prisma.notification.findMany({
-        where,
-        // id breaks ties within one millisecond (uuid v7 is time-ordered).
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        ...toSkipTake(query),
-      }),
-      this.prisma.notification.count({ where }),
-      this.prisma.notification.count({ where: { ...where, readAt: null } }),
-    ]);
+    const [rows, total, unreadCount] = await this.prisma.$transaction(
+      [
+        this.prisma.notification.findMany({
+          where,
+          // id breaks ties within one millisecond (uuid v7 is time-ordered).
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          ...toSkipTake(query),
+        }),
+        this.prisma.notification.count({ where }),
+        this.prisma.notification.count({ where: { ...where, readAt: null } }),
+      ],
+      ONE_SNAPSHOT,
+    );
     return {
       ...paginated(rows.map(toNotificationView), total, query),
       unreadCount,

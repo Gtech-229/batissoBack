@@ -4,6 +4,7 @@ import {
   toSkipTake,
   type Paginated,
   type PaginationQueryDto,
+  ONE_SNAPSHOT,
 } from '../common/pagination.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { toActivityEntry, type ActivityEntry } from './dto/activity-entry.js';
@@ -18,19 +19,22 @@ export class ActivityLogService {
     storeId: string,
     query: PaginationQueryDto,
   ): Promise<Paginated<ActivityEntry>> {
-    // One transaction so the page and the total come from the same snapshot.
-    const [entries, total] = await this.prisma.$transaction([
-      this.prisma.activityLog.findMany({
-        where: { storeId },
-        include: {
-          user: { select: { id: true, firstName: true, lastName: true } },
-        },
-        // id breaks ties within one millisecond (uuid v7 is time-ordered).
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        ...toSkipTake(query),
-      }),
-      this.prisma.activityLog.count({ where: { storeId } }),
-    ]);
+    // REPEATABLE READ: the page and the total come from the same snapshot.
+    const [entries, total] = await this.prisma.$transaction(
+      [
+        this.prisma.activityLog.findMany({
+          where: { storeId },
+          include: {
+            user: { select: { id: true, firstName: true, lastName: true } },
+          },
+          // id breaks ties within one millisecond (uuid v7 is time-ordered).
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          ...toSkipTake(query),
+        }),
+        this.prisma.activityLog.count({ where: { storeId } }),
+      ],
+      ONE_SNAPSHOT,
+    );
     return paginated(entries.map(toActivityEntry), total, query);
   }
 }

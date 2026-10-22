@@ -2,7 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { definedOnly } from '../common/defined-only.js';
 import type { ValidationErrorDetail } from '../common/errors/error-response.js';
 import { parseAmount } from '../common/money.js';
-import { paginated, toSkipTake, type Paginated } from '../common/pagination.js';
+import {
+  paginated,
+  toSkipTake,
+  type Paginated,
+  ONE_SNAPSHOT,
+} from '../common/pagination.js';
 import { escapeLike } from '../common/like.js';
 import { isPhoneCountry, normalizePhone } from '../common/phone.js';
 import { countryNotFound } from '../countries/countries.errors.js';
@@ -126,17 +131,20 @@ export class StoresService {
         ],
       }),
     };
-    // One transaction so the page and the total come from the same snapshot.
-    const [stores, total] = await this.prisma.$transaction([
-      this.prisma.hardwareStore.findMany({
-        where,
-        // id breaks ties between stores created in the same millisecond, so
-        // pages never repeat or skip a store.
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        ...toSkipTake(query),
-      }),
-      this.prisma.hardwareStore.count({ where }),
-    ]);
+    // REPEATABLE READ: the page and the total come from the same snapshot.
+    const [stores, total] = await this.prisma.$transaction(
+      [
+        this.prisma.hardwareStore.findMany({
+          where,
+          // id breaks ties between stores created in the same millisecond, so
+          // pages never repeat or skip a store.
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          ...toSkipTake(query),
+        }),
+        this.prisma.hardwareStore.count({ where }),
+      ],
+      ONE_SNAPSHOT,
+    );
     return paginated(stores.map(toStoreSummary), total, query);
   }
 

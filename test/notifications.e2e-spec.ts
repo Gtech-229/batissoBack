@@ -502,4 +502,91 @@ describe('Notifications (e2e)', () => {
       await api().get('/api/v1/me/notifications').expect(401);
     });
   });
+
+  // F-02: the paths that would duplicate or leak notifications if they regressed.
+  describe('refusals and parallel retries', () => {
+    const depositOn = (account: string, key: string, as = seller) =>
+      api()
+        .post(`/api/v1/stores/${storeId}/accounts/${account}/deposits`)
+        .set('Authorization', as.authorization)
+        .set('Idempotency-Key', key)
+        .send({ amount: '5000' });
+
+    it('writes and sends nothing for a deposit on one’s own account', async () => {
+      // The customer also works in the store: their own account is refused.
+      await prisma.storeMember.create({
+        data: { userId: customer.userId, storeId, role: 'SELLER' },
+      });
+
+      const response = await depositOn(
+        accountId,
+        randomUUID(),
+        customer,
+      ).expect(409);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(response.body.error).toBe('OWN_ACCOUNT');
+      expect(await prisma.notification.count()).toBe(0);
+      expect(sms.messages).toEqual([]);
+      expect(push.messages).toEqual([]);
+    });
+
+    it('notifies once when the same key is sent twice in parallel', async () => {
+      await setPushToken(customer.deviceId, 'token-fanta-phone');
+      const key = randomUUID();
+
+      const responses = await Promise.all([
+        depositOn(accountId, key),
+        depositOn(accountId, key),
+      ]);
+      await settled();
+
+      expect(responses.map((r) => r.status).sort((a, b) => a - b)).toEqual([
+        200, 201,
+      ]);
+      const operationId = responses[0].body.id as string;
+      expect(responses[1].body.id).toBe(operationId);
+      // One set of rows for the one deposit: APP, PUSH, SMS.
+      expect(
+        (await rows()).map((row) => [row.channel, row.operationId]),
+      ).toEqual([
+        ['APP', operationId],
+        ['PUSH', operationId],
+        ['SMS', operationId],
+      ]);
+      expect(sms.messages).toHaveLength(1);
+      expect(push.messages).toHaveLength(1);
+    });
+
+    it('notifies only the recorded deposit when one key is sent for two accounts', async () => {
+      const otherAccountId = (
+        await api()
+          .post(`/api/v1/stores/${storeId}/accounts`)
+          .set('Authorization', seller.authorization)
+          .send({
+            customer: { phone: '76 11 22 33', firstName: 'Ali', lastName: 'C' },
+            termsAccepted: true,
+          })
+          .expect(201)
+      ).body.id as string;
+      const key = randomUUID();
+
+      const responses = await Promise.all([
+        depositOn(accountId, key),
+        depositOn(otherAccountId, key),
+      ]);
+      await settled();
+
+      expect(responses.map((r) => r.status).sort((a, b) => a - b)).toEqual([
+        201, 409,
+      ]);
+      const recorded = responses.find((r) => r.status === 201)!;
+      const notified = await rows();
+      expect(notified).toHaveLength(2);
+      expect(
+        notified.every((row) => row.operationId === recorded.body.id),
+      ).toBe(true);
+      expect(sms.messages).toHaveLength(1);
+    });
+  });
 });

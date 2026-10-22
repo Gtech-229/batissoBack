@@ -8,8 +8,22 @@ import {
 } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsInt, Max, Min } from 'class-validator';
+import { Prisma } from '../generated/prisma/client.js';
 
 export const MAX_PAGE_SIZE = 100;
+
+/**
+ * Options of the batch transaction that reads a page and its counts:
+ * `prisma.$transaction([findMany, count], ONE_SNAPSHOT)`. At PostgreSQL's
+ * default READ COMMITTED, each statement sees what was committed when it
+ * starts, so a write landing in between can make the total disagree with the
+ * page. At REPEATABLE READ every statement reads the snapshot taken by the
+ * first one. The transaction only reads, so it never fails with a
+ * serialization error at this level (F-03).
+ */
+export const ONE_SNAPSHOT = {
+  isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+} as const;
 // Bounds `skip` (at most 10 million rows) so Prisma never gets an oversized value.
 export const MAX_PAGE = 100_000;
 const PAGE_MESSAGE = `Le numéro de page doit être un entier entre 1 et ${MAX_PAGE}`;

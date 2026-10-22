@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import type { ValidationErrorDetail } from '../common/errors/error-response.js';
 import { escapeLike } from '../common/like.js';
-import { paginated, toSkipTake, type Paginated } from '../common/pagination.js';
+import {
+  paginated,
+  toSkipTake,
+  type Paginated,
+  ONE_SNAPSHOT,
+} from '../common/pagination.js';
 import { isPhoneCountry, normalizePhone } from '../common/phone.js';
 import { ActivityAction, type Prisma } from '../generated/prisma/client.js';
 import type { AuthenticatedUser } from '../mobile-auth/authenticated-user.js';
@@ -168,17 +173,20 @@ export class AccountsService {
       storeId,
       ...(query.q && { OR: await this.searchConditions(storeId, query.q) }),
     };
-    // One transaction so the page and the total come from the same snapshot.
-    const [accounts, total] = await this.prisma.$transaction([
-      this.prisma.account.findMany({
-        where,
-        include: { customer: true },
-        // id breaks ties within one millisecond (uuid v7 is time-ordered).
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        ...toSkipTake(query),
-      }),
-      this.prisma.account.count({ where }),
-    ]);
+    // REPEATABLE READ: the page and the total come from the same snapshot.
+    const [accounts, total] = await this.prisma.$transaction(
+      [
+        this.prisma.account.findMany({
+          where,
+          include: { customer: true },
+          // id breaks ties within one millisecond (uuid v7 is time-ordered).
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          ...toSkipTake(query),
+        }),
+        this.prisma.account.count({ where }),
+      ],
+      ONE_SNAPSHOT,
+    );
     return paginated(accounts.map(toAccountSummary), total, query);
   }
 

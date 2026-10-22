@@ -6,6 +6,7 @@ import {
   toSkipTake,
   type Paginated,
   type PaginationQueryDto,
+  ONE_SNAPSHOT,
 } from '../common/pagination.js';
 import {
   OperationChannel,
@@ -278,21 +279,24 @@ export class LedgerService {
     return this.receiptWhere({ id: operationId, accountId, storeId });
   }
 
-  /** A page of operations, newest first; the total from the same snapshot. */
+  /** A page of operations, newest first; the total from the same snapshot (REPEATABLE READ). */
   async operationsOf(
     where: Prisma.OperationWhereInput,
     query: PaginationQueryDto,
   ): Promise<Paginated<OperationReceipt>> {
-    const [operations, total] = await this.prisma.$transaction([
-      this.prisma.operation.findMany({
-        where,
-        include: RECEIPT_INCLUDE,
-        // id breaks ties within one millisecond (uuid v7 is time-ordered).
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        ...toSkipTake(query),
-      }),
-      this.prisma.operation.count({ where }),
-    ]);
+    const [operations, total] = await this.prisma.$transaction(
+      [
+        this.prisma.operation.findMany({
+          where,
+          include: RECEIPT_INCLUDE,
+          // id breaks ties within one millisecond (uuid v7 is time-ordered).
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          ...toSkipTake(query),
+        }),
+        this.prisma.operation.count({ where }),
+      ],
+      ONE_SNAPSHOT,
+    );
     return paginated(operations.map(toOperationReceipt), total, query);
   }
 
