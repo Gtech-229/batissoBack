@@ -155,6 +155,7 @@ describe('Projects and goals (e2e)', () => {
         balance: '0',
         projectId: project.body.id,
         reachedAt: null,
+        equivalence: null,
       });
     });
 
@@ -200,12 +201,16 @@ describe('Projects and goals (e2e)', () => {
       ['a zero target', { targetAmount: '0' }, 'targetAmount'],
       ['a missing target', { targetAmount: undefined }, 'targetAmount'],
       ['a malformed project id', { projectId: 'p-1' }, 'projectId'],
+      ['a null project id (F-05)', { projectId: null }, 'projectId'],
+      ['a null article id (F-05)', { articleId: null }, 'articleId'],
     ])('refuses a goal with %s (French 400)', async (_, body, field) => {
       const response = await createGoal(body).expect(400);
 
       expect(response.body.details).toContainEqual(
         expect.objectContaining({ field }),
       );
+      // Only the Unassigned goal: nothing was created.
+      expect(await prisma.goal.count({ where: { isSystem: false } })).toBe(0);
     });
 
     it('refuses an empty project name', async () => {

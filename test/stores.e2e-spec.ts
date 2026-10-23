@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
+import { DEFAULT_ARTICLE_CATEGORIES } from '../src/catalogue/default-categories.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { createAdmin } from './utils/admins.js';
 import { accessCookieFor, createTestApp } from './utils/app.js';
@@ -64,13 +65,17 @@ describe('Stores (e2e)', () => {
 
       const store = await prisma.hardwareStore.findUniqueOrThrow({
         where: { id: response.body.id },
-        include: { settings: true, members: true },
+        include: { settings: true, members: true, categories: true },
       });
       expect(store.createdById).toBe(adminId);
       expect(store.settings?.maxBalance).toBe(2000000n);
       expect(store.members).toEqual([
         expect.objectContaining({ role: 'MANAGER', active: true }),
       ]);
+      // The store starts with the default catalogue categories.
+      expect(store.categories.map((category) => category.name).sort()).toEqual(
+        [...DEFAULT_ARTICLE_CATEGORIES].sort(),
+      );
     });
 
     it('reuses an existing person as manager without renaming them', async () => {

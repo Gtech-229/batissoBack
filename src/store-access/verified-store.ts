@@ -1,7 +1,7 @@
 import { ConflictException } from '@nestjs/common';
 import { StoreStatus, type Prisma } from '../generated/prisma/client.js';
 import { STORE_STATUS_LABELS } from '../stores/store-lifecycle.js';
-import { storeNotFound } from '../stores/stores.errors.js';
+import { storeClosed, storeNotFound } from '../stores/stores.errors.js';
 
 /** What a change in a verified store needs to know about it. */
 export interface VerifiedStore {
@@ -23,6 +23,28 @@ export function storeNotVerified(
     message: `Cette quincaillerie est ${STORE_STATUS_LABELS[status]} : ${refusal}`,
     error: 'STORE_NOT_VERIFIED',
   });
+}
+
+/**
+ * Reads the store `FOR SHARE` inside the caller's transaction and refuses a
+ * CLOSED store (409 STORE_CLOSED: a closed store accepts no change). For the
+ * changes allowed in every other status, such as the catalogue: a concurrent
+ * closing (which locks the row) waits for this change, or the reverse.
+ */
+export async function lockStoreNotClosed(
+  tx: Prisma.TransactionClient,
+  storeId: string,
+): Promise<void> {
+  const [row] = await tx.$queryRaw<{ status: StoreStatus }[]>`
+    SELECT "status" FROM "hardware_stores"
+    WHERE "id" = ${storeId}::uuid
+    FOR SHARE`;
+  if (!row) {
+    throw storeNotFound();
+  }
+  if (row.status === StoreStatus.CLOSED) {
+    throw storeClosed();
+  }
 }
 
 /**

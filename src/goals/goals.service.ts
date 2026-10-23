@@ -1,11 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { accountNotFound } from '../accounts/accounts.errors.js';
 import {
+  GOAL_INCLUDE,
   toGoalView,
   toProjectView,
   type GoalView,
   type ProjectView,
 } from '../accounts/dto/account-detail.js';
+import {
+  articleNotFound,
+  articleUnavailable,
+} from '../catalogue/catalogue.errors.js';
 import { formatAmount, parseAmount } from '../common/money.js';
 import {
   ONE_SNAPSHOT,
@@ -285,6 +290,9 @@ export class GoalsService {
         throw projectNotFound();
       }
     }
+    if (dto.articleId !== undefined) {
+      await this.linkableArticle(this.prisma, accountId, dto.articleId);
+    }
     // A new goal holds nothing yet: below any target, so IN_PROGRESS.
     const goal = await this.prisma.goal.create({
       data: {
@@ -292,24 +300,36 @@ export class GoalsService {
         label: dto.label,
         targetAmount: parseAmount(dto.targetAmount),
         projectId: dto.projectId ?? null,
+        articleId: dto.articleId ?? null,
       },
+      include: GOAL_INCLUDE,
     });
     return toGoalView(goal);
   }
 
-  /** Renames or retargets a goal; the status follows the new target, silently. */
+  /**
+   * Renames, retargets, or links a goal to an article (null unlinks); the
+   * status follows the new target, silently.
+   */
   async updateGoal(
     userId: string,
     accountId: string,
     goalId: string,
     dto: UpdateGoalDto,
   ): Promise<GoalView> {
-    if (dto.label === undefined && dto.targetAmount === undefined) {
+    if (
+      dto.label === undefined &&
+      dto.targetAmount === undefined &&
+      dto.articleId === undefined
+    ) {
       throw nothingToUpdate();
     }
     return this.prisma.$transaction(async (tx) => {
       await this.ownAccount(tx, userId, accountId, { lock: true });
       const goal = await this.editableGoal(tx, accountId, goalId);
+      if (dto.articleId) {
+        await this.linkableArticle(tx, accountId, dto.articleId);
+      }
       const targetAmount =
         dto.targetAmount === undefined
           ? goal.targetAmount
@@ -321,7 +341,14 @@ export class GoalsService {
       );
       const updated = await tx.goal.update({
         where: { id: goalId },
-        data: { label: dto.label, targetAmount, status, reachedAt },
+        data: {
+          label: dto.label,
+          targetAmount,
+          status,
+          reachedAt,
+          articleId: dto.articleId,
+        },
+        include: GOAL_INCLUDE,
       });
       return toGoalView(updated);
     });
@@ -363,6 +390,7 @@ export class GoalsService {
       const closed = await tx.goal.update({
         where: { id: goalId },
         data: { balance: 0n, status: GoalStatus.CLOSED },
+        include: GOAL_INCLUDE,
       });
       return toGoalView(closed);
     });
@@ -390,6 +418,30 @@ export class GoalsService {
         });
     if (rows.length === 0) {
       throw accountNotFound();
+    }
+  }
+
+  /**
+   * An article a goal of this account may be linked to: one of the account's
+   * store (another store's is a 404), still on sale (409 ARTICLE_UNAVAILABLE).
+   */
+  private async linkableArticle(
+    client: Tx,
+    accountId: string,
+    articleId: string,
+  ): Promise<void> {
+    const article = await client.article.findFirst({
+      where: {
+        id: articleId,
+        store: { accounts: { some: { id: accountId } } },
+      },
+      select: { available: true },
+    });
+    if (!article) {
+      throw articleNotFound();
+    }
+    if (!article.available) {
+      throw articleUnavailable();
     }
   }
 

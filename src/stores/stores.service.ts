@@ -8,6 +8,7 @@ import {
   type Paginated,
   ONE_SNAPSHOT,
 } from '../common/pagination.js';
+import { DEFAULT_ARTICLE_CATEGORIES } from '../catalogue/default-categories.js';
 import { escapeLike } from '../common/like.js';
 import { isPhoneCountry, normalizePhone } from '../common/phone.js';
 import { countryNotFound } from '../countries/countries.errors.js';
@@ -53,8 +54,9 @@ export class StoresService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Registers a store as PENDING, with its settings and its first manager, in
-   * one transaction: either all three exist afterwards, or none does.
+   * Registers a store as PENDING, with its settings, its first manager, and the
+   * default article categories, in one transaction: either all exist
+   * afterwards, or none does.
    */
   async register(dto: RegisterStoreDto, adminId: string): Promise<StoreDetail> {
     return this.prisma.$transaction(async (tx) => {
@@ -110,6 +112,11 @@ export class StoresService {
           },
           members: {
             create: { userId: manager.id, role: StoreMemberRole.MANAGER },
+          },
+          categories: {
+            createMany: {
+              data: DEFAULT_ARTICLE_CATEGORIES.map((name) => ({ name })),
+            },
           },
         },
         include: STORE_DETAIL_INCLUDE,

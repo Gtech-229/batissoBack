@@ -98,6 +98,11 @@ enum ActivityAction {
   SELLER_REACTIVATED
   ACCOUNT_OPENED
   ID_PHOTO_UPLOADED
+  ARTICLE_CATEGORY_CREATED
+  ARTICLE_CATEGORY_RENAMED
+  ARTICLE_CREATED
+  ARTICLE_UPDATED
+  ARTICLE_PRICE_CHANGED
 }
 
 enum AccountStatus {
@@ -148,15 +153,17 @@ model HardwareStore {
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 
-  country         Country        @relation(fields: [countryCode], references: [code], onDelete: Restrict)
-  createdBy       Admin?         @relation("StoreCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  statusChangedBy Admin?         @relation("StoreStatusChangedBy", fields: [statusChangedById], references: [id], onDelete: SetNull)
+  country         Country           @relation(fields: [countryCode], references: [code], onDelete: Restrict)
+  createdBy       Admin?            @relation("StoreCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  statusChangedBy Admin?            @relation("StoreStatusChangedBy", fields: [statusChangedById], references: [id], onDelete: SetNull)
   settings        StoreSettings?
   members         StoreMember[]
   activityLogs    ActivityLog[]
   accounts        Account[]
   operations      Operation[]
   notifications   Notification[]
+  categories      ArticleCategory[]
+  articles        Article[]
 
   @@index([status, createdAt])
   // Stores of a country (country store counts, filters by country).
@@ -390,10 +397,14 @@ model Goal {
   projectId    String?    @db.Uuid
   /// When the balance last reached the target (status REACHED).
   reachedAt    DateTime?
+  /// The article the goal saves for, if any: its view shows the balance as a
+  /// quantity of that article (material equivalence, feature 9).
+  articleId    String?    @db.Uuid
   createdAt    DateTime   @default(now())
 
   account      Account        @relation(fields: [accountId], references: [id], onDelete: Restrict)
   project      Project?       @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  article      Article?       @relation(fields: [articleId], references: [id], onDelete: Restrict)
   operations   Operation[]
   movementsOut GoalMovement[] @relation("GoalMovementSource")
   movementsIn  GoalMovement[] @relation("GoalMovementTarget")
@@ -415,6 +426,64 @@ model Project {
 
   @@index([accountId])
   @@map("projects")
+}
+
+/// A category of a store's catalogue ("Ciment"). Each store has its own list,
+/// created with the default set and extended by its managers. The name is
+/// unique per store ignoring case (an index on lower(name) in the migration).
+/// Never deleted.
+model ArticleCategory {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  storeId   String   @db.Uuid
+  name      String   @db.VarChar(60)
+  createdAt DateTime @default(now())
+
+  store    HardwareStore @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  articles Article[]
+
+  @@index([storeId])
+  @@map("article_categories")
+}
+
+/// An article of a store's catalogue. The name is unique per store ignoring
+/// case (an index on lower(name) in the migration). Never deleted: an article
+/// no longer sold is marked unavailable.
+model Article {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  storeId      String   @db.Uuid
+  categoryId   String   @db.Uuid
+  name         String   @db.VarChar(100)
+  /// Free text: "sac de 50 kg", "barre de 12 m".
+  unit         String   @db.VarChar(50)
+  /// The price of the day, in the currency's smallest unit (> 0, a CHECK).
+  /// Changed only together with a new PriceHistory row.
+  currentPrice BigInt
+  available    Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  store    HardwareStore   @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  category ArticleCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  prices   PriceHistory[]
+  goals    Goal[]
+
+  @@index([storeId, categoryId])
+  @@map("articles")
+}
+
+/// Every price an article has had, from its creation; the newest row is its
+/// current price. The API only inserts rows.
+model PriceHistory {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  articleId String   @db.Uuid
+  /// In the currency's smallest unit (> 0, a CHECK).
+  price     BigInt
+  startsAt  DateTime @default(now())
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Restrict)
+
+  @@index([articleId, startsAt])
+  @@map("price_history")
 }
 
 /// Why money moved between two goals of an account.

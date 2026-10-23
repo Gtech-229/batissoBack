@@ -5,6 +5,7 @@ import { AccountsModule } from './accounts/accounts.module.js';
 import { ActivityLogModule } from './activity-log/activity-log.module.js';
 import { AdminAuthModule } from './admin-auth/admin-auth.module.js';
 import { AdminsModule } from './admins/admins.module.js';
+import { CatalogueModule } from './catalogue/catalogue.module.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { validationExceptionFactory } from './common/validation/validation-exception.factory.js';
 import { validate } from './config/env.validation.js';
@@ -38,6 +39,7 @@ import { CountriesModule } from './countries/countries.module.js';
     LedgerModule,
     NotificationsModule,
     GoalsModule,
+    CatalogueModule,
   ],
   providers: [
     // Registered as providers (not in main.ts) so e2e tests get them too.

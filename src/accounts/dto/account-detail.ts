@@ -1,9 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { materialEquivalence } from '../../catalogue/equivalence.js';
 import { formatAmount } from '../../common/money.js';
 import {
   AccountStatus,
   GoalStatus,
   type Account,
+  type Article,
   type Goal,
   type Project,
   type Prisma,
@@ -37,6 +39,53 @@ export class BeneficiaryView {
     type: String,
   })
   phone: string | null;
+}
+
+/** The article a goal saves for, at the price of the day. */
+export class GoalArticleView {
+  @ApiProperty({ description: 'Identifiant de l’article', example: ID_EXAMPLE })
+  id: string;
+
+  @ApiProperty({ description: 'Nom', example: 'Ciment CPA 45' })
+  name: string;
+
+  @ApiProperty({ description: 'Unité de vente', example: 'sac de 50 kg' })
+  unit: string;
+
+  @ApiProperty({
+    description: 'Prix du jour, en unités de la devise, en texte',
+    example: '5000',
+  })
+  unitPrice: string;
+
+  @ApiProperty({
+    description:
+      'En vente ; un article retiré de la vente reste lié aux objectifs qui l’avaient choisi',
+    example: true,
+  })
+  available: boolean;
+}
+
+/** A goal's balance shown as material (feature 9). */
+export class GoalEquivalence {
+  @ApiProperty({ description: 'Article de l’objectif', type: GoalArticleView })
+  article: GoalArticleView;
+
+  @ApiProperty({
+    description:
+      'Unités entières que le solde de l’objectif achète au prix du jour, en texte',
+    example: '6',
+  })
+  quantity: string;
+
+  @ApiProperty({
+    description:
+      'Unités entières que le montant visé achète au prix du jour, en texte',
+    example: '30',
+    nullable: true,
+    type: String,
+  })
+  targetQuantity: string | null;
 }
 
 export class GoalView {
@@ -95,6 +144,14 @@ export class GoalView {
     type: Date,
   })
   reachedAt: Date | null;
+
+  @ApiProperty({
+    description:
+      'Équivalence en matériaux, ou `null` si l’objectif n’est lié à aucun article',
+    nullable: true,
+    type: GoalEquivalence,
+  })
+  equivalence: GoalEquivalence | null;
 }
 
 /** A construction project of the account, grouping goals. */
@@ -202,12 +259,19 @@ export class AccountDetail {
 export type AccountWithDetail = Account & {
   customer: User;
   openedBy: User;
-  goals: Goal[];
+  goals: GoalWithArticle[];
   projects: Project[];
 };
 
-/** Goals in display order: the system goal first, then by age. */
+/** A goal with the article it saves for, if any: what `toGoalView` needs. */
+export type GoalWithArticle = Goal & { article: Article | null };
+
+/** Prisma include for `GoalWithArticle`. */
+export const GOAL_INCLUDE = { article: true } satisfies Prisma.GoalInclude;
+
+/** Goals in display order (the system goal first, then by age), with their article. */
 export const GOALS_ORDER = {
+  include: GOAL_INCLUDE,
   orderBy: [{ isSystem: 'desc' }, { createdAt: 'asc' }],
 } satisfies Prisma.Account$goalsArgs;
 
@@ -224,7 +288,7 @@ export const ACCOUNT_DETAIL_INCLUDE = {
   projects: PROJECTS_ORDER,
 } satisfies Prisma.AccountInclude;
 
-export function toGoalView(goal: Goal): GoalView {
+export function toGoalView(goal: GoalWithArticle): GoalView {
   return {
     id: goal.id,
     label: goal.label,
@@ -235,6 +299,27 @@ export function toGoalView(goal: Goal): GoalView {
     balance: formatAmount(goal.balance),
     projectId: goal.projectId,
     reachedAt: goal.reachedAt,
+    equivalence:
+      goal.article === null ? null : toGoalEquivalence(goal, goal.article),
+  };
+}
+
+function toGoalEquivalence(goal: Goal, article: Article): GoalEquivalence {
+  const { quantity, targetQuantity } = materialEquivalence(
+    goal.balance,
+    goal.targetAmount,
+    article.currentPrice,
+  );
+  return {
+    article: {
+      id: article.id,
+      name: article.name,
+      unit: article.unit,
+      unitPrice: formatAmount(article.currentPrice),
+      available: article.available,
+    },
+    quantity: quantity.toString(),
+    targetQuantity: targetQuantity === null ? null : targetQuantity.toString(),
   };
 }
 
@@ -261,7 +346,11 @@ export function toAccountDetail(account: AccountWithDetail): AccountDetail {
 
 /** The detail without the staff-only fields: shared by the staff and customer views. */
 export function toAccountFields(
-  account: Account & { customer: User; goals: Goal[]; projects: Project[] },
+  account: Account & {
+    customer: User;
+    goals: GoalWithArticle[];
+    projects: Project[];
+  },
 ): Omit<AccountDetail, 'openedBy' | 'hasIdPhoto'> {
   return {
     id: account.id,

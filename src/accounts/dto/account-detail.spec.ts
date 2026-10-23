@@ -1,5 +1,9 @@
-import type { Goal, User } from '../../generated/prisma/client.js';
-import { toAccountDetail, type AccountWithDetail } from './account-detail.js';
+import type { Article, User } from '../../generated/prisma/client.js';
+import {
+  toAccountDetail,
+  type AccountWithDetail,
+  type GoalWithArticle,
+} from './account-detail.js';
 
 const user = (id: string, firstName: string): User => ({
   id,
@@ -13,7 +17,7 @@ const user = (id: string, firstName: string): User => ({
   updatedAt: new Date('2026-10-01T00:00:00.000Z'),
 });
 
-const goal = (overrides: Partial<Goal>): Goal => ({
+const goal = (overrides: Partial<GoalWithArticle>): GoalWithArticle => ({
   id: 'g1',
   accountId: 'a1',
   label: 'Non affecté',
@@ -23,9 +27,23 @@ const goal = (overrides: Partial<Goal>): Goal => ({
   balance: 0n,
   projectId: null,
   reachedAt: null,
+  articleId: null,
+  article: null,
   createdAt: new Date('2026-10-14T10:00:00.000Z'),
   ...overrides,
 });
+
+const cement: Article = {
+  id: 'art1',
+  storeId: 's1',
+  categoryId: 'cat1',
+  name: 'Ciment CPA 45',
+  unit: 'sac de 50 kg',
+  currentPrice: 5000n,
+  available: true,
+  createdAt: new Date('2026-10-14T10:00:00.000Z'),
+  updatedAt: new Date('2026-10-14T10:00:00.000Z'),
+};
 
 const account = (
   overrides: Partial<AccountWithDetail> = {},
@@ -99,5 +117,43 @@ describe('toAccountDetail', () => {
     const detail = toAccountDetail(account({ beneficiaryPhone: null }));
 
     expect(detail.beneficiary).toEqual({ name: 'Ali Keita', phone: null });
+  });
+
+  it('gives no equivalence for a goal without an article', () => {
+    expect(toAccountDetail(account()).goals[0].equivalence).toBeNull();
+  });
+
+  it('shows a linked goal as whole units of its article at the price of the day', () => {
+    const detail = toAccountDetail(
+      account({
+        goals: [
+          goal({
+            id: 'g2',
+            isSystem: false,
+            label: 'Ciment',
+            targetAmount: 152500n,
+            balance: 34999n,
+            articleId: cement.id,
+            article: cement,
+          }),
+        ],
+      }),
+    );
+
+    expect(detail.goals[0].equivalence).toEqual({
+      article: {
+        id: 'art1',
+        name: 'Ciment CPA 45',
+        unit: 'sac de 50 kg',
+        unitPrice: '5000',
+        available: true,
+      },
+      quantity: '6',
+      targetQuantity: '30',
+    });
+    // Only the public fields of the article.
+    const json = JSON.stringify(detail.goals[0].equivalence);
+    expect(json).not.toContain('categoryId');
+    expect(json).not.toContain('"storeId"');
   });
 });

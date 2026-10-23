@@ -108,6 +108,7 @@ describe('The customer’s own accounts (e2e)', () => {
             balance: '0',
             projectId: null,
             reachedAt: null,
+            equivalence: null,
           },
         ],
         projects: [],

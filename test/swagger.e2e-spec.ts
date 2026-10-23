@@ -74,10 +74,34 @@ describe('Swagger document (e2e)', () => {
       'GET /api/v1/me/notifications',
       'PUT /api/v1/me/devices/push-token',
       'POST /api/v1/me/accounts/{accountId}/goals',
+      'GET /api/v1/stores/{storeId}/article-categories',
+      'POST /api/v1/stores/{storeId}/articles',
+      'POST /api/v1/stores/{storeId}/articles/{articleId}/prices',
+      'GET /api/v1/me/accounts/{accountId}/articles',
     ]) {
       expect(security(route)).toEqual([{ bearer: [] }]);
     }
     expect(security('POST /api/v1/auth/login')).toBeUndefined();
+  });
+
+  it('documents the catalogue routes', () => {
+    const routes = operations.map(([route]) => route);
+
+    expect(routes).toEqual(
+      expect.arrayContaining([
+        'GET /api/v1/stores/{storeId}/article-categories',
+        'POST /api/v1/stores/{storeId}/article-categories',
+        'PATCH /api/v1/stores/{storeId}/article-categories/{categoryId}',
+        'GET /api/v1/stores/{storeId}/articles',
+        'POST /api/v1/stores/{storeId}/articles',
+        'GET /api/v1/stores/{storeId}/articles/{articleId}',
+        'PATCH /api/v1/stores/{storeId}/articles/{articleId}',
+        'POST /api/v1/stores/{storeId}/articles/{articleId}/prices',
+        'GET /api/v1/stores/{storeId}/articles/{articleId}/prices',
+        'GET /api/v1/me/accounts/{accountId}/article-categories',
+        'GET /api/v1/me/accounts/{accountId}/articles',
+      ]),
+    );
   });
 
   it('documents the 403 ACCOUNT_LOCKED of the admin password change (F-17)', () => {

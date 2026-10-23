@@ -36,7 +36,7 @@ export function goalClosed(): ConflictException {
 
 export function nothingToUpdate(): BadRequestException {
   return new BadRequestException(
-    'Indiquez un nouveau libellé ou un nouveau montant visé',
+    'Indiquez un nouveau libellé, un nouveau montant visé ou un article',
   );
 }
 

@@ -1,12 +1,15 @@
 import { ApiProperty, OmitType } from '@nestjs/swagger';
 import type {
   Account,
-  Goal,
   HardwareStore,
   Project,
   User,
 } from '../../generated/prisma/client.js';
-import { AccountDetail, toAccountFields } from './account-detail.js';
+import {
+  AccountDetail,
+  toAccountFields,
+  type GoalWithArticle,
+} from './account-detail.js';
 
 export class MyAccountStore {
   @ApiProperty({
@@ -37,7 +40,7 @@ export class MyAccount extends OmitType(AccountDetail, [
 export function toMyAccount(
   account: Account & {
     customer: User;
-    goals: Goal[];
+    goals: GoalWithArticle[];
     projects: Project[];
     store: Pick<HardwareStore, 'id' | 'name'>;
   },

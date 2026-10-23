@@ -216,6 +216,33 @@ The goals always add up to the balance. As the customer (Bearer session):
 When a goal's balance reaches its target, the goal becomes `REACHED` and the
 customer gets an "Objectif atteint" notification (in the app and by push).
 
+## Catalogue
+
+Each store has its own catalogue. A new store starts with 11 default
+categories (Ciment, Fer et acier, ...). As a manager (Bearer session):
+
+1. Categories: `GET` / `POST /api/v1/stores/:storeId/article-categories`
+   `{ "name": "Carrelage" }`, rename with `PATCH .../article-categories/:categoryId`.
+2. Articles: `POST /api/v1/stores/:storeId/articles` `{ "name": "Ciment CPA 45",
+   "categoryId": "<id>", "unit": "sac de 50 kg", "price": "5000" }`; list with
+   `GET .../articles?categoryId=&available=true&q=ciment`; change the name,
+   category, unit, or `available` with `PATCH .../articles/:articleId`.
+3. Prices: `POST .../articles/:articleId/prices` `{ "price": "5500" }` applies
+   at once; `GET .../articles/:articleId/prices` is the history, newest first.
+
+Sellers read everything; only managers change it (never in a closed store).
+Names are unique per store, ignoring case. Nothing is deleted: an article no
+longer sold gets `available: false`.
+
+As the customer, savings show as material:
+
+- Link a goal to an article: `"articleId": "<id>"` when creating the goal, or
+  `PATCH .../goals/:goalId` (`null` unlinks). The goal's `equivalence` then
+  gives how many units its balance and its target buy at today's price.
+- `GET /api/v1/me/accounts/:accountId/articles` lists the articles on sale with
+  the units the account balance buys (`?goalId=` for one goal's balance);
+  `GET .../article-categories` lists the categories.
+
 ## Common commands
 
 | Command | What it does |
