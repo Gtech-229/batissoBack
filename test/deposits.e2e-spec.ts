@@ -381,6 +381,23 @@ describe('Cash deposits (e2e)', () => {
       expect(await operations()).toHaveLength(1);
     });
 
+    it('answers a retry sent with the store and account ids in capitals (F-02)', async () => {
+      const key = randomUUID();
+      const capitals = {
+        key,
+        store: storeId.toUpperCase(),
+        account: accountId.toUpperCase(),
+      };
+      const first = await deposit('5000', capitals).expect(201);
+
+      const retry = await deposit('5000', capitals).expect(200);
+
+      expect(retry.body).toEqual(first.body);
+      // The lowercase spelling is the same deposit too.
+      await deposit('5000', { key }).expect(200);
+      expect(await operations()).toHaveLength(1);
+    });
+
     it('still answers a retry after the store was suspended: the money is in', async () => {
       const key = randomUUID();
       const first = await deposit('5000', { key }).expect(201);

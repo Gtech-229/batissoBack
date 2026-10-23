@@ -226,6 +226,51 @@ describe('Article categories (e2e)', () => {
       });
     });
 
+    it('logs what each of parallel renames really replaced (F-08)', async () => {
+      // Five rounds of four simultaneous renames: enough overlap that, without
+      // the row lock, two renames read the same old name.
+      for (let round = 0; round < 5; round++) {
+        const responses = await Promise.all(
+          [1, 2, 3, 4].map((n) => rename(categoryId, `Liants ${round}-${n}`)),
+        );
+        expect(responses.map((r) => r.status)).toEqual([200, 200, 200, 200]);
+      }
+
+      const logs = await prisma.activityLog.findMany({
+        where: { action: 'ARTICLE_CATEGORY_RENAMED' },
+      });
+      const name = (value: unknown) => (value as { name: string }).name;
+      const olds = logs.map((log) => name(log.oldValue));
+      const news = logs.map((log) => name(log.newValue));
+      expect(logs).toHaveLength(20);
+      // The renames ran one after the other, so the names form one chain:
+      // every old name was replaced exactly once, and each old name is
+      // "Ciment" or a name an earlier rename wrote. (The rows' createdAt is the
+      // transaction start, so the chain, not the dates, gives the order.)
+      expect(new Set(olds).size).toBe(20);
+      for (const old of olds) {
+        expect(old === 'Ciment' || news.includes(old)).toBe(true);
+      }
+      const category = await prisma.articleCategory.findUniqueOrThrow({
+        where: { id: categoryId },
+      });
+      // The final name is the one no rename replaced.
+      expect(news.filter((n) => !olds.includes(n))).toEqual([category.name]);
+    });
+
+    it('logs the id in lowercase when the URL has capitals', async () => {
+      await rename(categoryId.toUpperCase(), 'Liants').expect(200);
+
+      expect(
+        await prisma.activityLog.findFirstOrThrow({
+          where: { action: 'ARTICLE_CATEGORY_RENAMED' },
+        }),
+      ).toMatchObject({
+        oldValue: { categoryId, name: 'Ciment' },
+        newValue: { categoryId, name: 'Liants' },
+      });
+    });
+
     it('lets a category change the case of its own name, and logs it', async () => {
       await rename(categoryId, 'CIMENT').expect(200);
 

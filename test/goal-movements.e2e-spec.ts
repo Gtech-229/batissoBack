@@ -299,6 +299,24 @@ describe('Moving money between goals (e2e)', () => {
       expect(await prisma.goalMovement.count()).toBe(1);
     });
 
+    it('answers a retry sent with the account id in capitals (F-02)', async () => {
+      const key = randomUUID();
+      const account = accountId.toUpperCase();
+      const first = await move(unassignedId, cementId, '20000', {
+        key,
+        account,
+      }).expect(201);
+
+      const retry = await move(unassignedId, cementId, '20000', {
+        key,
+        account,
+      }).expect(200);
+
+      expect(retry.body).toEqual(first.body);
+      expect(await prisma.goalMovement.count()).toBe(1);
+      expect(await balanceOf(cementId)).toBe(20000n);
+    });
+
     it('moves once when the same key is sent twice in parallel', async () => {
       const key = randomUUID();
 

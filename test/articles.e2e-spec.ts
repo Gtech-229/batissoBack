@@ -397,6 +397,26 @@ describe('Articles (e2e)', () => {
       ).toBe(0);
     });
 
+    it('treats the current category id in capitals as no change (F-07)', async () => {
+      const before = await prisma.article.findUniqueOrThrow({
+        where: { id: articleId },
+      });
+
+      const response = await update(articleId, {
+        categoryId: cementId.toUpperCase(),
+      }).expect(200);
+
+      expect(response.body).toMatchObject({
+        category: { id: cementId },
+        updatedAt: before.updatedAt.toISOString(),
+      });
+      expect(
+        await prisma.activityLog.count({
+          where: { action: 'ARTICLE_UPDATED' },
+        }),
+      ).toBe(0);
+    });
+
     it('logs only the fields that really change', async () => {
       await update(articleId, {
         name: 'Ciment CPA 45',

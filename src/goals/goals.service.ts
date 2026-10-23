@@ -88,7 +88,9 @@ export class GoalsService {
     idempotencyKey: string,
   ): Promise<{ movement: GoalMovementView; replayed: boolean }> {
     const request: MoveRequest = {
-      accountId,
+      // Lowercase like the goal ids: the replay compares it with the stored
+      // id, and the URL may carry capitals (F-02).
+      accountId: accountId.toLowerCase(),
       authorId: actor.userId,
       sourceGoalId: dto.sourceGoalId.toLowerCase(),
       targetGoalId: dto.targetGoalId.toLowerCase(),

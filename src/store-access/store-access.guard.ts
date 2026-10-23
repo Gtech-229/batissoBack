@@ -54,7 +54,9 @@ export class StoreAccessGuard implements CanActivate {
     }
 
     request.storeMember = {
-      storeId,
+      // Lowercase, as PostgreSQL returns ids: the URL may carry capitals, and
+      // code comparing ids (idempotent replays) must see one spelling (F-02).
+      storeId: storeId.toLowerCase(),
       role: membership.role,
       storeStatus: membership.store.status,
     };

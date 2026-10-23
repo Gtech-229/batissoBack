@@ -10,7 +10,7 @@ import {
 } from 'class-validator';
 import { formatAmount, IsAmount } from '../../common/money.js';
 import { PaginationQueryDto } from '../../common/pagination.js';
-import { Trim } from '../../common/validation/trim.js';
+import { Trim, TrimLowerCase } from '../../common/validation/trim.js';
 import type {
   Article,
   ArticleCategory,
@@ -32,6 +32,8 @@ export class CreateArticleDto {
     description: 'Catégorie de la quincaillerie',
     example: '0192f0a4-7b1c-7c3e-9d2a-5e6f7a8b9c0d',
   })
+  // Lowercase, as stored: compared with the article's category (F-07).
+  @TrimLowerCase()
   @IsUUID('all', { message: CATEGORY_MESSAGE })
   categoryId: string;
 
@@ -77,6 +79,7 @@ export class UpdateArticleDto {
     example: '0192f0a4-7b1c-7c3e-9d2a-5e6f7a8b9c0d',
   })
   @ValidateIf((_object, value) => value !== undefined)
+  @TrimLowerCase()
   @IsUUID('all', { message: CATEGORY_MESSAGE })
   categoryId?: string;
 

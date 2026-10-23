@@ -90,7 +90,9 @@ export class LedgerService {
     const amount = parseAmount(dto.amount);
     const request: DepositRequest = {
       storeId: store.storeId,
-      accountId,
+      // Lowercase like the goal id: the replay compares it with the stored
+      // id, and the URL may carry capitals (F-02).
+      accountId: accountId.toLowerCase(),
       amount,
       authorId: actor.userId,
       goalId: dto.goalId?.toLowerCase(),

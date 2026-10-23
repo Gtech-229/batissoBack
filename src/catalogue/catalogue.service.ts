@@ -158,24 +158,20 @@ export class CatalogueService {
     return this.unique(categoryExists, () =>
       this.prisma.$transaction(async (tx) => {
         await lockStoreNotClosed(tx, storeId);
-        const current = await tx.articleCategory.findFirst({
-          where: { id: categoryId, storeId },
-        });
-        if (!current) {
-          throw categoryNotFound();
-        }
+        const current = await this.lockCategory(tx, storeId, categoryId);
         // The same name changes nothing: no write, so no log row (F-06).
         if (current.name === dto.name) {
           return toArticleCategoryView(current);
         }
         const category = await tx.articleCategory.update({
-          where: { id: categoryId },
+          where: { id: current.id },
           data: { name: dto.name },
         });
+        // current.id, not the URL's spelling: ids are logged in lowercase.
         await this.log(tx, storeId, actor, {
           action: ActivityAction.ARTICLE_CATEGORY_RENAMED,
-          oldValue: { categoryId, name: current.name },
-          newValue: { categoryId, name: category.name },
+          oldValue: { categoryId: current.id, name: current.name },
+          newValue: { categoryId: current.id, name: category.name },
         });
         return toArticleCategoryView(category);
       }),
@@ -412,6 +408,22 @@ export class CatalogueService {
       where: { id: articleId },
       include: ARTICLE_INCLUDE,
     });
+  }
+
+  /**
+   * Locks one category of this store `FOR UPDATE` and returns it; another
+   * store's category is a 404. A second rename waits, then reads the name the
+   * first one wrote, so each log row records what it really replaced (F-08).
+   */
+  private async lockCategory(tx: Tx, storeId: string, categoryId: string) {
+    const rows = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "article_categories"
+      WHERE "id" = ${categoryId}::uuid AND "storeId" = ${storeId}::uuid
+      FOR UPDATE`;
+    if (rows.length === 0) {
+      throw categoryNotFound();
+    }
+    return tx.articleCategory.findUniqueOrThrow({ where: { id: rows[0].id } });
   }
 
   /** A category must belong to this store: another store's is a 404. */

@@ -150,6 +150,18 @@ describe('StoreAccessGuard', () => {
     },
   );
 
+  it('gives the store id in lowercase when the URL has capitals (F-02)', async () => {
+    const { guard } = guardWith(membership());
+    const { ctx, request } = context(
+      StaffController,
+      'managersOnly',
+      STORE_ID.toUpperCase(),
+    );
+
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    expect(request.storeMember).toMatchObject({ storeId: STORE_ID });
+  });
+
   it('reads class-level roles, and lets method roles override them', async () => {
     const seller = guardWith(membership({ role: 'SELLER' }));
     await expect(
