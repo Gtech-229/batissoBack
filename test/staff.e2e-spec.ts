@@ -250,6 +250,18 @@ describe('Store staff (e2e)', () => {
       ]);
     });
 
+    it('logs the seller id in lowercase when the URL has capitals (F-09)', async () => {
+      await setActive(seller.userId.toUpperCase(), 'deactivate').expect(200);
+
+      expect(await logs()).toMatchObject([
+        {
+          action: 'SELLER_DEACTIVATED',
+          oldValue: { userId: seller.userId, active: true },
+          newValue: { userId: seller.userId, active: false },
+        },
+      ]);
+    });
+
     it('refuses repeating the same change with 409', async () => {
       await setActive(seller.userId, 'reactivate')
         .expect(409)

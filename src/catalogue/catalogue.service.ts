@@ -314,8 +314,9 @@ export class CatalogueService {
         });
         await this.log(tx, storeId, actor, {
           action: ActivityAction.ARTICLE_UPDATED,
-          oldValue: { articleId, ...oldValue },
-          newValue: { articleId, ...newValue },
+          // current.id, not the URL's spelling: ids are logged in lowercase.
+          oldValue: { articleId: current.id, ...oldValue },
+          newValue: { articleId: current.id, ...newValue },
         });
         return toArticleView(article);
       }),
@@ -355,8 +356,11 @@ export class CatalogueService {
       });
       await this.log(tx, storeId, actor, {
         action: ActivityAction.ARTICLE_PRICE_CHANGED,
-        oldValue: { articleId, price: formatAmount(current.currentPrice) },
-        newValue: { articleId, price: formatAmount(price) },
+        oldValue: {
+          articleId: current.id,
+          price: formatAmount(current.currentPrice),
+        },
+        newValue: { articleId: current.id, price: formatAmount(price) },
       });
       return toArticleView(article);
     });

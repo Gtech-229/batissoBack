@@ -50,7 +50,8 @@ describe('IdPhotosService.upload, when a file cannot be removed', () => {
 
   const upload = () =>
     service.upload(store, actor, 'a1', { buffer: JPEG } as Express.Multer.File);
-  const warnings = () => warn.mock.calls.map(([message]) => String(message));
+  const warnings = () =>
+    warn.mock.calls.map((call: unknown[]) => String(call[0]));
 
   it('still answers with the detail when the old file stays (F-01)', async () => {
     transaction.mockResolvedValue(OLD_NAME);

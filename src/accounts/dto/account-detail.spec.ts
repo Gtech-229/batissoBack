@@ -13,6 +13,7 @@ const user = (id: string, firstName: string): User => ({
   pinHash: 'scrypt$secret',
   failedPinAttempts: 2,
   pinLockedUntil: null,
+  qrCode: null,
   createdAt: new Date('2026-10-01T00:00:00.000Z'),
   updatedAt: new Date('2026-10-01T00:00:00.000Z'),
 });
@@ -56,6 +57,7 @@ const account = (
   balance: 9007199254740993n,
   beneficiaryName: 'Ali Keita',
   beneficiaryPhone: '+22376778899',
+  idPhotoPath: null,
   status: 'ACTIVE',
   termsAcceptedAt: new Date('2026-10-14T10:00:00.000Z'),
   openedById: '2',

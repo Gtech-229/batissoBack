@@ -345,15 +345,6 @@ describe('Identity photos (e2e)', () => {
   });
 
   describe('GET /stores/:storeId/accounts/:accountId/id-photo', () => {
-    // Collects the raw bytes, whatever the Content-Type.
-    const binary = (
-      res: NodeJS.ReadableStream,
-      done: (error: Error | null, body: Buffer) => void,
-    ) => {
-      const chunks: Buffer[] = [];
-      res.on('data', (chunk: Buffer) => chunks.push(chunk));
-      res.on('end', () => done(null, Buffer.concat(chunks)));
-    };
     const getPhoto = (as = seller, account = accountId, store = storeId) =>
       api()
         .get(`/api/v1/stores/${store}/accounts/${account}/id-photo`)
@@ -373,10 +364,8 @@ describe('Identity photos (e2e)', () => {
         await upload(content, { contentType }).expect(200);
         const logsBefore = await prisma.activityLog.count();
 
-        const response = await getPhoto(who())
-          .buffer(true)
-          .parse(binary)
-          .expect(200);
+        // 'blob': the raw bytes as a Buffer, whatever the Content-Type.
+        const response = await getPhoto(who()).responseType('blob').expect(200);
 
         expect(response.body).toEqual(content);
         expect(response.headers['content-type']).toBe(contentType);
@@ -391,7 +380,7 @@ describe('Identity photos (e2e)', () => {
       await upload(JPEG).expect(200);
       await upload(PNG, { contentType: 'image/png' }).expect(200);
 
-      const response = await getPhoto().buffer(true).parse(binary).expect(200);
+      const response = await getPhoto().responseType('blob').expect(200);
 
       expect(response.body).toEqual(PNG);
       expect(response.headers['content-type']).toBe('image/png');

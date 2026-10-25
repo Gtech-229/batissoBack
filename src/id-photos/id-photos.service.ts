@@ -62,8 +62,10 @@ export class IdPhotosService {
         await lockVerifiedStore(tx, store.storeId, PHOTO_REFUSAL);
         // FOR UPDATE: two uploads to the same account run one after the other,
         // so each sees the other's file and removes it.
-        const [account] = await tx.$queryRaw<{ idPhotoPath: string | null }[]>`
-          SELECT "idPhotoPath" FROM "accounts"
+        const [account] = await tx.$queryRaw<
+          { id: string; idPhotoPath: string | null }[]
+        >`
+          SELECT "id", "idPhotoPath" FROM "accounts"
           WHERE "id" = ${accountId}::uuid AND "storeId" = ${store.storeId}::uuid
           FOR UPDATE`;
         if (!account) {
@@ -79,7 +81,11 @@ export class IdPhotosService {
             userId: actor.userId,
             action: ActivityAction.ID_PHOTO_UPLOADED,
             // Never the file name: the log is read by every manager.
-            newValue: { accountId, replaced: account.idPhotoPath !== null },
+            // account.id, not the URL's spelling: ids are logged in lowercase.
+            newValue: {
+              accountId: account.id,
+              replaced: account.idPhotoPath !== null,
+            },
             device: actor.deviceId,
           },
         });

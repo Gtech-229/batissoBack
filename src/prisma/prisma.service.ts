@@ -3,6 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client.js';
 
+/**
+ * How long a query waits for a free pool connection before failing. pg's
+ * default (0) waits forever: a stuck pool then hangs requests (and e2e tests)
+ * for minutes. Failing after 10 s gives a visible error on the normal 500 path.
+ */
+const CONNECTION_TIMEOUT_MS = 10_000;
+
 @Injectable()
 export class PrismaService
   extends PrismaClient
@@ -11,6 +18,7 @@ export class PrismaService
   constructor(configService: ConfigService) {
     const adapter = new PrismaPg({
       connectionString: configService.getOrThrow<string>('DATABASE_URL'),
+      connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
     });
     super({ adapter });
   }

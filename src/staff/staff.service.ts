@@ -177,17 +177,17 @@ export class StaffService {
         throw active ? alreadyActive() : alreadyInactive();
       }
 
+      const member = await tx.storeMember.findUniqueOrThrow({
+        where: { userId_storeId: { userId, storeId: store.storeId } },
+        include: { user: true },
+      });
+      // member.userId, not the URL's spelling: ids are logged in lowercase.
       await this.log(tx, store, actor, {
         action: active
           ? ActivityAction.SELLER_REACTIVATED
           : ActivityAction.SELLER_DEACTIVATED,
-        oldValue: { userId, active: !active },
-        newValue: { userId, active },
-      });
-
-      const member = await tx.storeMember.findUniqueOrThrow({
-        where: { userId_storeId: { userId, storeId: store.storeId } },
-        include: { user: true },
+        oldValue: { userId: member.userId, active: !active },
+        newValue: { userId: member.userId, active },
       });
       return toStoreMemberView(member);
     });

@@ -417,6 +417,24 @@ describe('Articles (e2e)', () => {
       ).toBe(0);
     });
 
+    it('logs the article id in lowercase when the URL has capitals (F-09)', async () => {
+      await update(articleId.toUpperCase(), { available: false }).expect(200);
+      await api()
+        .post(`${articlesUrl()}/${articleId.toUpperCase()}/prices`)
+        .set('Authorization', manager.authorization)
+        .send({ price: '6000' })
+        .expect(201);
+
+      const rows = await prisma.activityLog.findMany({
+        where: { action: { in: ['ARTICLE_UPDATED', 'ARTICLE_PRICE_CHANGED'] } },
+      });
+      expect(rows).toHaveLength(2);
+      for (const row of rows) {
+        expect(row.oldValue).toMatchObject({ articleId });
+        expect(row.newValue).toMatchObject({ articleId });
+      }
+    });
+
     it('logs only the fields that really change', async () => {
       await update(articleId, {
         name: 'Ciment CPA 45',

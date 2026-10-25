@@ -143,11 +143,44 @@ describe('Deposits into a goal, and reaching a target (e2e)', () => {
       expect((await goalOf(cementId)).balance).toBe(5000n);
     });
 
-    it('answers 404 for a goal that is not this account’s, writing nothing', async () => {
-      const response = await deposit('5000', randomUUID()).expect(404);
+    it('answers 404 for a goal of another account of the store, writing nothing (F-03)', async () => {
+      // A real goal of a second account in the same store: only the deposit's
+      // accountId filter keeps it out (a random id would be refused anyway).
+      const neighbour = await signedInStaff(app, prisma, {
+        phone: '+22376112233',
+      });
+      const otherAccountId = (
+        await api()
+          .post(`/api/v1/stores/${storeId}/accounts`)
+          .set('Authorization', seller.authorization)
+          .send({
+            customer: { phone: neighbour.phone, firstName: 'A', lastName: 'B' },
+            termsAccepted: true,
+          })
+          .expect(201)
+      ).body.id as string;
+      const foreignGoalId = (
+        await prisma.goal.findFirstOrThrow({
+          where: { accountId: otherAccountId, isSystem: true },
+        })
+      ).id;
+
+      const response = await deposit('5000', foreignGoalId).expect(404);
 
       expect(response.body.message).toBe('Objectif introuvable');
       expect(await prisma.operation.count()).toBe(0);
+      expect((await goalOf(foreignGoalId)).balance).toBe(0n);
+      expect((await goalOf(unassignedId)).balance).toBe(0n);
+      expect(
+        (await prisma.account.findUniqueOrThrow({ where: { id: accountId } }))
+          .balance,
+      ).toBe(0n);
+    });
+
+    it('answers 404 for an unknown goal id', async () => {
+      await deposit('5000', randomUUID())
+        .expect(404)
+        .expect((r) => expect(r.body.message).toBe('Objectif introuvable'));
     });
 
     it('refuses a closed goal with 409 GOAL_CLOSED', async () => {

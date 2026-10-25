@@ -13,6 +13,7 @@ const person = (id: string, firstName: string) => ({
   pinHash: 'scrypt$secret',
   failedPinAttempts: 0,
   pinLockedUntil: null,
+  qrCode: null,
   createdAt: DATE,
   updatedAt: DATE,
 });
@@ -48,6 +49,9 @@ const operation: OperationWithReceipt = {
     status: 'IN_PROGRESS',
     isSystem: true,
     balance: 0n,
+    projectId: null,
+    reachedAt: null,
+    articleId: null,
     createdAt: DATE,
   },
   account: {
@@ -81,6 +85,7 @@ const operation: OperationWithReceipt = {
     statusChangedById: null,
     statusReason: null,
     createdById: null,
+    qrCode: null,
     createdAt: DATE,
     updatedAt: DATE,
   },
