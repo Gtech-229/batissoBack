@@ -78,6 +78,9 @@ describe('Swagger document (e2e)', () => {
       'POST /api/v1/stores/{storeId}/articles',
       'POST /api/v1/stores/{storeId}/articles/{articleId}/prices',
       'GET /api/v1/me/accounts/{accountId}/articles',
+      'GET /api/v1/me/qr-code',
+      'POST /api/v1/me/accounts/scan',
+      'POST /api/v1/stores/{storeId}/accounts/scan',
     ]) {
       expect(security(route)).toEqual([{ bearer: [] }]);
     }
@@ -100,6 +103,21 @@ describe('Swagger document (e2e)', () => {
         'GET /api/v1/stores/{storeId}/articles/{articleId}/prices',
         'GET /api/v1/me/accounts/{accountId}/article-categories',
         'GET /api/v1/me/accounts/{accountId}/articles',
+      ]),
+    );
+  });
+
+  it('documents the QR code routes', () => {
+    const routes = operations.map(([route]) => route);
+
+    expect(routes).toEqual(
+      expect.arrayContaining([
+        'GET /api/v1/me/qr-code',
+        'POST /api/v1/me/qr-code/regenerate',
+        'GET /api/v1/stores/{storeId}/qr-code',
+        'POST /api/v1/stores/{storeId}/qr-code/regenerate',
+        'POST /api/v1/stores/{storeId}/accounts/scan',
+        'POST /api/v1/me/accounts/scan',
       ]),
     );
   });

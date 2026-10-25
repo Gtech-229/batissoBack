@@ -40,6 +40,14 @@ import type { OpenAccountDto } from './dto/open-account.dto.js';
 /** The label of every account's system goal (Unassigned). */
 export const UNASSIGNED_GOAL_LABEL = 'Non affecté';
 
+/** What `toMyAccount` needs: the customer's own view of an account. */
+const MY_ACCOUNT_INCLUDE = {
+  customer: true,
+  store: { select: { id: true, name: true } },
+  goals: ACCOUNT_DETAIL_INCLUDE.goals,
+  projects: ACCOUNT_DETAIL_INCLUDE.projects,
+} satisfies Prisma.AccountInclude;
+
 /**
  * Customers' savings accounts. The store always comes from the guard's context
  * (the URL's store, checked against the caller's membership), never from a
@@ -210,15 +218,42 @@ export class AccountsService {
   async mine(userId: string): Promise<MyAccount[]> {
     const accounts = await this.prisma.account.findMany({
       where: { customerId: userId },
-      include: {
-        customer: true,
-        store: { select: { id: true, name: true } },
-        goals: ACCOUNT_DETAIL_INCLUDE.goals,
-        projects: ACCOUNT_DETAIL_INCLUDE.projects,
-      },
+      include: MY_ACCOUNT_INCLUDE,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
     return accounts.map(toMyAccount);
+  }
+
+  /**
+   * Staff scanned a customer's QR code (feature 23): that customer's account
+   * in this store. One query on the code and the guard's store, so an unknown
+   * or replaced code and a person with no account here give the same 404: a
+   * store learns nothing about people who are not its customers.
+   */
+  async scan(storeId: string, code: string): Promise<AccountDetail> {
+    const account = await this.prisma.account.findFirst({
+      where: { storeId, customer: { qrCode: code } },
+      include: ACCOUNT_DETAIL_INCLUDE,
+    });
+    if (!account) {
+      throw accountNotFound();
+    }
+    return toAccountDetail(account);
+  }
+
+  /**
+   * A customer scanned a store's QR code: their own account there, or the
+   * same 404 whatever the reason (joining a store is feature 21).
+   */
+  async scanMine(userId: string, code: string): Promise<MyAccount> {
+    const account = await this.prisma.account.findFirst({
+      where: { customerId: userId, store: { qrCode: code } },
+      include: MY_ACCOUNT_INCLUDE,
+    });
+    if (!account) {
+      throw accountNotFound();
+    }
+    return toMyAccount(account);
   }
 
   private async searchConditions(

@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
@@ -25,6 +27,7 @@ import { ApiPaginatedResponse, type Paginated } from '../common/pagination.js';
 import type { AuthenticatedUser } from '../mobile-auth/authenticated-user.js';
 import { CurrentUser } from '../mobile-auth/decorators/current-user.decorator.js';
 import { MobileRoute } from '../mobile-auth/decorators/mobile-route.decorator.js';
+import { ScanQrCodeDto } from '../qr-codes/dto/qr-code.dto.js';
 import type { CurrentStoreContext } from '../store-access/current-store.js';
 import { CurrentStore } from '../store-access/decorators/current-store.decorator.js';
 import { StoreRoles } from '../store-access/decorators/store-roles.decorator.js';
@@ -126,6 +129,34 @@ export class AccountsController {
     @Query() query: ListAccountsQueryDto,
   ): Promise<Paginated<AccountSummary>> {
     return this.accounts.list(store.storeId, query);
+  }
+
+  /**
+   * @description Reach a customer's account in this store by scanning their QR code
+   * @route POST /api/v1/stores/:storeId/accounts/scan
+   * @access Store seller or manager (mobile session)
+   * @param storeId the store
+   * @body ScanQrCodeDto (code)
+   * @returns 200 AccountDetail; 404 Compte introuvable (unknown code, or no account in this store)
+   */
+  @Post('scan')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Scanner le QR code d’un client',
+    description:
+      'Retrouve le compte du client dans cette quincaillerie à partir du code de son QR code. Un code inconnu ou remplacé et une personne sans compte ici répondent le même 404 « Compte introuvable ».',
+  })
+  @ApiOkResponse({ description: 'Compte du client', type: AccountDetail })
+  @ApiBadRequestResponse({
+    description:
+      'Identifiant de quincaillerie invalide ; code QR invalide (`details`)',
+    type: ErrorResponse,
+  })
+  scan(
+    @CurrentStore() store: CurrentStoreContext,
+    @Body() body: ScanQrCodeDto,
+  ): Promise<AccountDetail> {
+    return this.accounts.scan(store.storeId, body.code);
   }
 
   /**

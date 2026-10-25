@@ -243,6 +243,25 @@ As the customer, savings show as material:
   the units the account balance buys (`?goalId=` for one goal's balance);
   `GET .../article-categories` lists the categories.
 
+## QR codes
+
+Customers and stores reach an account by scanning each other's QR code. A code
+is random and opaque (32 characters, no data inside), created on first read,
+and valid until it is regenerated. The app draws the QR from `code`.
+
+- The customer's code: `GET /api/v1/me/qr-code`; replace it with
+  `POST /api/v1/me/qr-code/regenerate`.
+- The store's code (managers and sellers, to show or print at the counter):
+  `GET /api/v1/stores/:storeId/qr-code`; a manager replaces it with
+  `POST .../qr-code/regenerate` (not in a closed store).
+- Staff scan a customer: `POST /api/v1/stores/:storeId/accounts/scan`
+  `{ "code": "..." }` gives that customer's account in this store.
+- A customer scans a store: `POST /api/v1/me/accounts/scan` `{ "code": "..." }`
+  gives their account there.
+
+An unknown or replaced code and a person with no account in that store give the
+same 404 `Compte introuvable`; a scan never opens or joins an account.
+
 ## Common commands
 
 | Command | What it does |

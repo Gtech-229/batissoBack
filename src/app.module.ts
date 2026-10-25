@@ -16,6 +16,7 @@ import { LedgerModule } from './ledger/ledger.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { MobileAuthModule } from './mobile-auth/mobile-auth.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { QrCodesModule } from './qr-codes/qr-codes.module.js';
 import { StaffModule } from './staff/staff.module.js';
 import { StoresModule } from './stores/stores.module.js';
 import { SystemSettingsModule } from './system-settings/system-settings.module.js';
@@ -40,6 +41,7 @@ import { CountriesModule } from './countries/countries.module.js';
     NotificationsModule,
     GoalsModule,
     CatalogueModule,
+    QrCodesModule,
   ],
   providers: [
     // Registered as providers (not in main.ts) so e2e tests get them too.

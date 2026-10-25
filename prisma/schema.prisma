@@ -103,6 +103,7 @@ enum ActivityAction {
   ARTICLE_CREATED
   ARTICLE_UPDATED
   ARTICLE_PRICE_CHANGED
+  STORE_QR_CODE_REGENERATED
 }
 
 enum AccountStatus {
@@ -148,6 +149,9 @@ model HardwareStore {
   statusChangedAt   DateTime?
   statusChangedById String?     @db.Uuid
   statusReason      String?
+  /// The store's QR code (feature 23): a random opaque code customers scan to
+  /// reach their account here. Created on first read; regenerating replaces it.
+  qrCode            String?     @unique @db.VarChar(32)
   /// Null for a store that registered itself (feature 21).
   createdById       String?     @db.Uuid
   createdAt         DateTime    @default(now())
@@ -199,6 +203,9 @@ model User {
   pinHash           String?
   failedPinAttempts Int       @default(0)
   pinLockedUntil    DateTime?
+  /// The user's QR code (feature 23): a random opaque code a store scans to
+  /// reach their account there. Created on first read; regenerating replaces it.
+  qrCode            String?   @unique @db.VarChar(32)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
