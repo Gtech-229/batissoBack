@@ -168,6 +168,7 @@ model HardwareStore {
   notifications   Notification[]
   categories      ArticleCategory[]
   articles        Article[]
+  materialOrders  MaterialOrder[]
 
   @@index([status, createdAt])
   // Stores of a country (country store counts, filters by country).
@@ -209,20 +210,25 @@ model User {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  memberships    StoreMember[]
-  activityLogs   ActivityLog[]
-  devices        UserDevice[]
-  sessions       UserSession[]
+  memberships     StoreMember[]
+  activityLogs    ActivityLog[]
+  devices         UserDevice[]
+  sessions        UserSession[]
   // Feature 5a: savings accounts held, and accounts opened as staff.
-  accounts       Account[]      @relation("AccountCustomer")
-  openedAccounts Account[]      @relation("AccountOpenedBy")
+  accounts        Account[]       @relation("AccountCustomer")
+  openedAccounts  Account[]       @relation("AccountOpenedBy")
   // Feature 6: operations recorded, and validated (orders, feature 10).
-  operations     Operation[]    @relation("OperationAuthor")
-  validations    Operation[]    @relation("OperationValidatedBy")
+  operations      Operation[]     @relation("OperationAuthor")
+  validations     Operation[]     @relation("OperationValidatedBy")
   // Feature 7: notifications sent to this user.
-  notifications  Notification[]
+  notifications   Notification[]
   // Feature 8: money moved between goals.
-  goalMovements  GoalMovement[]
+  goalMovements   GoalMovement[]
+  // Feature 10a: material orders prepared, validated, refused, cancelled.
+  ordersCreated   MaterialOrder[] @relation("OrderCreatedBy")
+  ordersValidated MaterialOrder[] @relation("OrderValidatedBy")
+  ordersRefused   MaterialOrder[] @relation("OrderRefusedBy")
+  ordersCancelled MaterialOrder[] @relation("OrderCancelledBy")
 
   @@map("users")
 }
@@ -371,13 +377,14 @@ model Account {
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
-  customer      User           @relation("AccountCustomer", fields: [customerId], references: [id], onDelete: Restrict)
-  store         HardwareStore  @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  openedBy      User           @relation("AccountOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
-  goals         Goal[]
-  operations    Operation[]
-  projects      Project[]
-  goalMovements GoalMovement[]
+  customer       User            @relation("AccountCustomer", fields: [customerId], references: [id], onDelete: Restrict)
+  store          HardwareStore   @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  openedBy       User            @relation("AccountOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
+  goals          Goal[]
+  operations     Operation[]
+  projects       Project[]
+  goalMovements  GoalMovement[]
+  materialOrders MaterialOrder[]
 
   @@unique([customerId, storeId])
   // The store's accounts, newest first (staff list and search).
@@ -409,12 +416,13 @@ model Goal {
   articleId    String?    @db.Uuid
   createdAt    DateTime   @default(now())
 
-  account      Account        @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  project      Project?       @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  article      Article?       @relation(fields: [articleId], references: [id], onDelete: Restrict)
-  operations   Operation[]
-  movementsOut GoalMovement[] @relation("GoalMovementSource")
-  movementsIn  GoalMovement[] @relation("GoalMovementTarget")
+  account        Account         @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  project        Project?        @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  article        Article?        @relation(fields: [articleId], references: [id], onDelete: Restrict)
+  operations     Operation[]
+  movementsOut   GoalMovement[]  @relation("GoalMovementSource")
+  movementsIn    GoalMovement[]  @relation("GoalMovementTarget")
+  materialOrders MaterialOrder[]
 
   @@index([accountId])
   @@map("goals")
@@ -469,10 +477,11 @@ model Article {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  store    HardwareStore   @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  category ArticleCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  prices   PriceHistory[]
-  goals    Goal[]
+  store      HardwareStore       @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  category   ArticleCategory     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  prices     PriceHistory[]
+  goals      Goal[]
+  orderLines MaterialOrderLine[]
 
   @@index([storeId, categoryId])
   @@map("articles")
@@ -491,6 +500,82 @@ model PriceHistory {
 
   @@index([articleId, startsAt])
   @@map("price_history")
+}
+
+/// Where a material order stands (feature 10a). Later sub-features add the
+/// customer's answer, the debit, and delivery.
+enum MaterialOrderStatus {
+  /// A seller's order above the store's validation threshold.
+  AWAITING_VALIDATION
+  /// Validated (or not needing it): the customer must confirm (10b).
+  AWAITING_CUSTOMER
+  REFUSED_BY_MANAGER
+  /// Cancelled by its preparer or the manager before confirmation.
+  CANCELLED
+}
+
+/// A material order ("bon de sortie"): articles a customer takes from the
+/// store, paid from one goal of their account (then Unassigned). Unit prices,
+/// names, and units are frozen on its lines at preparation. No money moves
+/// until the customer confirms (10b). The row records who did each step.
+model MaterialOrder {
+  id                 String              @id @default(uuid(7)) @db.Uuid
+  /// Human reference: "B-" and at least 5 digits (B-00042), one platform-wide
+  /// sequence (material_order_reference_seq).
+  reference          String              @unique @db.VarChar(20)
+  storeId            String              @db.Uuid
+  accountId          String              @db.Uuid
+  /// The goal paid from first; the Unassigned goal pays the rest (10b).
+  goalId             String              @db.Uuid
+  status             MaterialOrderStatus
+  /// Sum of the lines, in the currency's smallest unit (> 0, a CHECK).
+  total              BigInt
+  createdById        String              @db.Uuid
+  validatedById      String?             @db.Uuid
+  validatedAt        DateTime?
+  refusedById        String?             @db.Uuid
+  refusedAt          DateTime?
+  refusalReason      String?             @db.VarChar(500)
+  cancelledById      String?             @db.Uuid
+  cancelledAt        DateTime?
+  cancellationReason String?             @db.VarChar(500)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  store       HardwareStore       @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  account     Account             @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  goal        Goal                @relation(fields: [goalId], references: [id], onDelete: Restrict)
+  createdBy   User                @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  validatedBy User?               @relation("OrderValidatedBy", fields: [validatedById], references: [id], onDelete: Restrict)
+  refusedBy   User?               @relation("OrderRefusedBy", fields: [refusedById], references: [id], onDelete: Restrict)
+  cancelledBy User?               @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
+  lines       MaterialOrderLine[]
+
+  // The store's orders and an account's orders, newest first.
+  @@index([storeId, createdAt])
+  @@index([accountId, createdAt])
+  @@map("material_orders")
+}
+
+/// One article of a material order, frozen at preparation: a later price
+/// change, rename, or new unit never changes it.
+model MaterialOrderLine {
+  id          String @id @default(uuid(7)) @db.Uuid
+  orderId     String @db.Uuid
+  articleId   String @db.Uuid
+  articleName String @db.VarChar(100)
+  unit        String @db.VarChar(50)
+  /// Whole units (> 0, a CHECK).
+  quantity    Int
+  /// The price of the day at preparation (> 0, a CHECK).
+  unitPrice   BigInt
+
+  order   MaterialOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  article Article       @relation(fields: [articleId], references: [id], onDelete: Restrict)
+
+  // An article appears at most once per order.
+  @@unique([orderId, articleId])
+  @@map("material_order_lines")
 }
 
 /// Why money moved between two goals of an account.

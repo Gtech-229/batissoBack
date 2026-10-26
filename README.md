@@ -262,6 +262,27 @@ and valid until it is regenerated. The app draws the QR from `code`.
 An unknown or replaced code and a person with no account in that store give the
 same 404 `Compte introuvable`; a scan never opens or joins an account.
 
+## Material orders
+
+A material order ("bon de sortie", `B-00001`) lists the articles a customer takes
+from the store, paid from one goal of their account, then from Non affecté. No
+money moves until the customer confirms (coming in 10b). As a seller or the
+manager (Bearer session):
+
+1. Prepare: `POST /api/v1/stores/:storeId/accounts/:accountId/orders`
+   `{ "goalId": "<optional, default Non affecté>", "lines": [{ "articleId": "...",
+   "quantity": 10 }] }`. Each line freezes the price of the day, the name, and
+   the unit. The total must fit in the goal plus Non affecté.
+2. Above the store's validation threshold, a seller's order waits
+   (`AWAITING_VALIDATION`): the manager validates it with
+   `POST .../orders/:orderId/validate` or refuses it with `.../refuse`
+   `{ "reason": "..." }`. The manager's own order is validated by preparing it.
+3. Before the customer confirms, `POST .../orders/:orderId/cancel`
+   `{ "reason": "<optional>" }` cancels it (a seller only their own orders).
+4. Lists: `GET /api/v1/stores/:storeId/orders?status=&accountId=` for staff,
+   `GET /api/v1/me/accounts/:accountId/orders` and `.../orders/:orderId` for
+   the customer (no staff identity in their view).
+
 ## Common commands
 
 | Command | What it does |

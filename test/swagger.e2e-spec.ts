@@ -81,6 +81,8 @@ describe('Swagger document (e2e)', () => {
       'GET /api/v1/me/qr-code',
       'POST /api/v1/me/accounts/scan',
       'POST /api/v1/stores/{storeId}/accounts/scan',
+      'POST /api/v1/stores/{storeId}/accounts/{accountId}/orders',
+      'GET /api/v1/me/accounts/{accountId}/orders',
     ]) {
       expect(security(route)).toEqual([{ bearer: [] }]);
     }
@@ -118,6 +120,23 @@ describe('Swagger document (e2e)', () => {
         'POST /api/v1/stores/{storeId}/qr-code/regenerate',
         'POST /api/v1/stores/{storeId}/accounts/scan',
         'POST /api/v1/me/accounts/scan',
+      ]),
+    );
+  });
+
+  it('documents the material order routes', () => {
+    const routes = operations.map(([route]) => route);
+
+    expect(routes).toEqual(
+      expect.arrayContaining([
+        'POST /api/v1/stores/{storeId}/accounts/{accountId}/orders',
+        'GET /api/v1/stores/{storeId}/orders',
+        'GET /api/v1/stores/{storeId}/orders/{orderId}',
+        'POST /api/v1/stores/{storeId}/orders/{orderId}/validate',
+        'POST /api/v1/stores/{storeId}/orders/{orderId}/refuse',
+        'POST /api/v1/stores/{storeId}/orders/{orderId}/cancel',
+        'GET /api/v1/me/accounts/{accountId}/orders',
+        'GET /api/v1/me/accounts/{accountId}/orders/{orderId}',
       ]),
     );
   });
