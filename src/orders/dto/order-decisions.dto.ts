@@ -19,6 +19,20 @@ export class RefuseOrderDto {
   reason: string;
 }
 
+/** The customer refuses an order awaiting them (10b), with an optional reason. */
+export class CustomerRefusalDto {
+  @ApiPropertyOptional({
+    description:
+      'Pourquoi vous refusez ce bon (facultatif, transmis au gérant)',
+    example: 'Je n’ai pas demandé ces articles',
+  })
+  @ValidateIf((_object, value) => value !== undefined)
+  @Trim()
+  @IsString({ message: REFUSAL_MESSAGE })
+  @Length(1, 500, { message: REFUSAL_MESSAGE })
+  reason?: string;
+}
+
 export class CancelOrderDto {
   @ApiPropertyOptional({
     description: 'Pourquoi le bon est annulé (facultatif)',

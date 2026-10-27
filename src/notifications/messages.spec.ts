@@ -2,6 +2,9 @@ import {
   depositMessage,
   goalReachedMessage,
   groupThousands,
+  orderAwaitingCustomerMessage,
+  orderRefusedByCustomerMessage,
+  purchaseMessage,
 } from './messages.js';
 
 describe('groupThousands', () => {
@@ -68,5 +71,66 @@ describe('goalReachedMessage', () => {
       /sécuris|garanti/,
     );
     expect(message.body.length).toBeLessThanOrEqual(500);
+  });
+});
+
+describe('orderRefusedByCustomerMessage', () => {
+  const order = {
+    reference: 'B-00042',
+    total: 250000n,
+    currencyCode: 'XOF',
+    accountNumber: 'C-000123',
+  };
+
+  it('tells the manager which order the customer refused, with the reason', () => {
+    expect(
+      orderRefusedByCustomerMessage({ ...order, reason: 'Pas commandé' }),
+    ).toEqual({
+      title: 'Bon refusé par le client',
+      body: 'Le client du compte C-000123 a refusé le bon B-00042 de 250 000 XOF. Motif : « Pas commandé ».',
+    });
+  });
+
+  it('leaves the reason out when there is none', () => {
+    expect(orderRefusedByCustomerMessage({ ...order, reason: null }).body).toBe(
+      'Le client du compte C-000123 a refusé le bon B-00042 de 250 000 XOF.',
+    );
+  });
+});
+
+describe('orderAwaitingCustomerMessage', () => {
+  it('names the order, the amount, and the store, and says nothing is debited yet', () => {
+    expect(
+      orderAwaitingCustomerMessage({
+        reference: 'B-00042',
+        total: 20000n,
+        currencyCode: 'XOF',
+        storeName: 'Quincaillerie du Carrefour',
+      }),
+    ).toEqual({
+      title: 'Bon à confirmer',
+      body: 'Le bon B-00042 de 20 000 XOF chez Quincaillerie du Carrefour attend votre confirmation. Rien n’est débité avant.',
+    });
+  });
+});
+
+describe('purchaseMessage', () => {
+  it('gives the amount, the order, the new balance, and the reference', () => {
+    const message = purchaseMessage({
+      total: 20000n,
+      currencyCode: 'XOF',
+      orderReference: 'B-00042',
+      storeName: 'Quincaillerie du Carrefour',
+      accountNumber: 'C-000123',
+      balanceAfter: 80000n,
+      reference: 'A-00007',
+    });
+
+    expect(message).toEqual({
+      title: 'Achat enregistré',
+      body: 'Achat de 20 000 XOF (bon B-00042) chez Quincaillerie du Carrefour sur votre compte C-000123. Nouveau solde : 80 000 XOF. Réf. A-00007.',
+    });
+    // Project rule: money is never said to be "sécurisé" or "garanti".
+    expect(message.body).not.toMatch(/sécuris|garanti/);
   });
 });

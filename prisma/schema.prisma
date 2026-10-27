@@ -210,25 +210,26 @@ model User {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  memberships     StoreMember[]
-  activityLogs    ActivityLog[]
-  devices         UserDevice[]
-  sessions        UserSession[]
+  memberships         StoreMember[]
+  activityLogs        ActivityLog[]
+  devices             UserDevice[]
+  sessions            UserSession[]
   // Feature 5a: savings accounts held, and accounts opened as staff.
-  accounts        Account[]       @relation("AccountCustomer")
-  openedAccounts  Account[]       @relation("AccountOpenedBy")
+  accounts            Account[]               @relation("AccountCustomer")
+  openedAccounts      Account[]               @relation("AccountOpenedBy")
   // Feature 6: operations recorded, and validated (orders, feature 10).
-  operations      Operation[]     @relation("OperationAuthor")
-  validations     Operation[]     @relation("OperationValidatedBy")
+  operations          Operation[]             @relation("OperationAuthor")
+  validations         Operation[]             @relation("OperationValidatedBy")
   // Feature 7: notifications sent to this user.
-  notifications   Notification[]
+  notifications       Notification[]
   // Feature 8: money moved between goals.
-  goalMovements   GoalMovement[]
+  goalMovements       GoalMovement[]
   // Feature 10a: material orders prepared, validated, refused, cancelled.
-  ordersCreated   MaterialOrder[] @relation("OrderCreatedBy")
-  ordersValidated MaterialOrder[] @relation("OrderValidatedBy")
-  ordersRefused   MaterialOrder[] @relation("OrderRefusedBy")
-  ordersCancelled MaterialOrder[] @relation("OrderCancelledBy")
+  ordersCreated       MaterialOrder[]         @relation("OrderCreatedBy")
+  ordersValidated     MaterialOrder[]         @relation("OrderValidatedBy")
+  ordersRefused       MaterialOrder[]         @relation("OrderRefusedBy")
+  ordersCancelled     MaterialOrder[]         @relation("OrderCancelledBy")
+  orderCodesRequested OrderConfirmationCode[]
 
   @@map("users")
 }
@@ -502,8 +503,8 @@ model PriceHistory {
   @@map("price_history")
 }
 
-/// Where a material order stands (feature 10a). Later sub-features add the
-/// customer's answer, the debit, and delivery.
+/// Where a material order stands (features 10a and 10b). Delivery (10c) adds
+/// its own.
 enum MaterialOrderStatus {
   /// A seller's order above the store's validation threshold.
   AWAITING_VALIDATION
@@ -512,6 +513,18 @@ enum MaterialOrderStatus {
   REFUSED_BY_MANAGER
   /// Cancelled by its preparer or the manager before confirmation.
   CANCELLED
+  /// The customer confirmed: the MATERIAL_DEBIT operation is written.
+  CONFIRMED
+  /// The customer refused it; the manager is alerted.
+  REFUSED_BY_CUSTOMER
+}
+
+/// How the customer confirmed an order (10b).
+enum OrderConfirmationChannel {
+  /// Their PIN, in the app.
+  PIN
+  /// A one-time code texted to them, read out to the seller at the counter.
+  SMS_CODE
 }
 
 /// A material order ("bon de sortie"): articles a customer takes from the
@@ -519,42 +532,74 @@ enum MaterialOrderStatus {
 /// names, and units are frozen on its lines at preparation. No money moves
 /// until the customer confirms (10b). The row records who did each step.
 model MaterialOrder {
-  id                 String              @id @default(uuid(7)) @db.Uuid
+  id                    String                    @id @default(uuid(7)) @db.Uuid
   /// Human reference: "B-" and at least 5 digits (B-00042), one platform-wide
   /// sequence (material_order_reference_seq).
-  reference          String              @unique @db.VarChar(20)
-  storeId            String              @db.Uuid
-  accountId          String              @db.Uuid
+  reference             String                    @unique @db.VarChar(20)
+  storeId               String                    @db.Uuid
+  accountId             String                    @db.Uuid
   /// The goal paid from first; the Unassigned goal pays the rest (10b).
-  goalId             String              @db.Uuid
-  status             MaterialOrderStatus
+  goalId                String                    @db.Uuid
+  status                MaterialOrderStatus
   /// Sum of the lines, in the currency's smallest unit (> 0, a CHECK).
-  total              BigInt
-  createdById        String              @db.Uuid
-  validatedById      String?             @db.Uuid
-  validatedAt        DateTime?
-  refusedById        String?             @db.Uuid
-  refusedAt          DateTime?
-  refusalReason      String?             @db.VarChar(500)
-  cancelledById      String?             @db.Uuid
-  cancelledAt        DateTime?
-  cancellationReason String?             @db.VarChar(500)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  total                 BigInt
+  createdById           String                    @db.Uuid
+  validatedById         String?                   @db.Uuid
+  validatedAt           DateTime?
+  refusedById           String?                   @db.Uuid
+  refusedAt             DateTime?
+  refusalReason         String?                   @db.VarChar(500)
+  cancelledById         String?                   @db.Uuid
+  cancelledAt           DateTime?
+  cancellationReason    String?                   @db.VarChar(500)
+  /// The MATERIAL_DEBIT operation written at confirmation (10b).
+  operationId           String?                   @unique @db.Uuid
+  confirmedAt           DateTime?
+  confirmedVia          OrderConfirmationChannel?
+  customerRefusedAt     DateTime?
+  customerRefusalReason String?                   @db.VarChar(500)
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
 
-  store       HardwareStore       @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  account     Account             @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  goal        Goal                @relation(fields: [goalId], references: [id], onDelete: Restrict)
-  createdBy   User                @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  validatedBy User?               @relation("OrderValidatedBy", fields: [validatedById], references: [id], onDelete: Restrict)
-  refusedBy   User?               @relation("OrderRefusedBy", fields: [refusedById], references: [id], onDelete: Restrict)
-  cancelledBy User?               @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
-  lines       MaterialOrderLine[]
+  store             HardwareStore           @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  account           Account                 @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  goal              Goal                    @relation(fields: [goalId], references: [id], onDelete: Restrict)
+  createdBy         User                    @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  validatedBy       User?                   @relation("OrderValidatedBy", fields: [validatedById], references: [id], onDelete: Restrict)
+  refusedBy         User?                   @relation("OrderRefusedBy", fields: [refusedById], references: [id], onDelete: Restrict)
+  cancelledBy       User?                   @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
+  operation         Operation?              @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  lines             MaterialOrderLine[]
+  confirmationCodes OrderConfirmationCode[]
+  goalMovements     GoalMovement[]
 
   // The store's orders and an account's orders, newest first.
   @@index([storeId, createdAt])
   @@index([accountId, createdAt])
   @@map("material_orders")
+}
+
+/// A one-time code texted to the customer to confirm one order at the counter
+/// (10b): stored hashed, valid 10 minutes, used up by 5 wrong attempts; only
+/// the newest unconsumed code of an order is checked. Never logged.
+model OrderConfirmationCode {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  orderId       String    @db.Uuid
+  /// scrypt hash of the 6-digit code.
+  codeHash      String
+  expiresAt     DateTime
+  attempts      Int       @default(0)
+  /// Set when used, replaced by a newer code, or used up by wrong attempts.
+  consumedAt    DateTime?
+  /// The staff member who asked for it.
+  requestedById String    @db.Uuid
+  createdAt     DateTime  @default(now())
+
+  order       MaterialOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  requestedBy User          @relation(fields: [requestedById], references: [id], onDelete: Restrict)
+
+  @@index([orderId, createdAt])
+  @@map("order_confirmation_codes")
 }
 
 /// One article of a material order, frozen at preparation: a later price
@@ -584,6 +629,8 @@ enum GoalMovementReason {
   MOVE
   /// A goal was closed: its balance went back to Unassigned.
   GOAL_CLOSED
+  /// An order's goal held less than its total: Unassigned paid the rest (10b).
+  ORDER_SHORTFALL
 }
 
 /// Money moved from one goal to another of the same account. Not an operation:
@@ -602,12 +649,15 @@ model GoalMovement {
   /// The client's key for a move; null for a closing (no retry to dedupe).
   idempotencyKey String?            @unique @db.Uuid
   device         String?            @db.VarChar(100)
+  /// The order whose shortfall it paid (ORDER_SHORTFALL only).
+  orderId        String?            @db.Uuid
   createdAt      DateTime           @default(now())
 
-  account    Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  sourceGoal Goal    @relation("GoalMovementSource", fields: [sourceGoalId], references: [id], onDelete: Restrict)
-  targetGoal Goal    @relation("GoalMovementTarget", fields: [targetGoalId], references: [id], onDelete: Restrict)
-  author     User    @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  account    Account        @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  order      MaterialOrder? @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  sourceGoal Goal           @relation("GoalMovementSource", fields: [sourceGoalId], references: [id], onDelete: Restrict)
+  targetGoal Goal           @relation("GoalMovementTarget", fields: [targetGoalId], references: [id], onDelete: Restrict)
+  author     User           @relation(fields: [authorId], references: [id], onDelete: Restrict)
 
   // An account's movements, newest first.
   @@index([accountId, createdAt])
@@ -684,6 +734,7 @@ model Operation {
   correctedOperation Operation?     @relation("OperationCorrection", fields: [correctedOperationId], references: [id], onDelete: Restrict)
   correctedBy        Operation[]    @relation("OperationCorrection")
   notifications      Notification[]
+  materialOrder      MaterialOrder?
 
   // An account's history, newest first.
   @@index([accountId, createdAt])
@@ -696,6 +747,12 @@ model Operation {
 enum NotificationType {
   DEPOSIT_RECORDED
   GOAL_REACHED
+  /// An order awaits the customer's confirmation (10b).
+  ORDER_AWAITING_CUSTOMER
+  /// The debit of a confirmed order (10b).
+  PURCHASE_RECORDED
+  /// The customer refused an order: sent to the store's managers (10b).
+  ORDER_REFUSED_BY_CUSTOMER
 }
 
 enum NotificationChannel {

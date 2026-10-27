@@ -266,8 +266,8 @@ same 404 `Compte introuvable`; a scan never opens or joins an account.
 
 A material order ("bon de sortie", `B-00001`) lists the articles a customer takes
 from the store, paid from one goal of their account, then from Non affecté. No
-money moves until the customer confirms (coming in 10b). As a seller or the
-manager (Bearer session):
+money moves until the customer confirms. As a seller or the manager (Bearer
+session):
 
 1. Prepare: `POST /api/v1/stores/:storeId/accounts/:accountId/orders`
    `{ "goalId": "<optional, default Non affecté>", "lines": [{ "articleId": "...",
@@ -282,6 +282,24 @@ manager (Bearer session):
 4. Lists: `GET /api/v1/stores/:storeId/orders?status=&accountId=` for staff,
    `GET /api/v1/me/accounts/:accountId/orders` and `.../orders/:orderId` for
    the customer (no staff identity in their view).
+
+The customer is told in the app and by push when an order awaits them. They
+then confirm it (the account is debited once, `A-00001`) or refuse it:
+
+- **With the app:** `POST /api/v1/me/accounts/:accountId/orders/:orderId/confirm`
+  `{ "pin": "..." }` with an `Idempotency-Key` header; a wrong PIN counts
+  toward the sign-in lockout. `.../refuse` `{ "reason": "<optional>" }`
+  refuses it and alerts the manager.
+- **Without the app (at the counter):** staff call
+  `POST /api/v1/stores/:storeId/orders/:orderId/confirmation-code`; the customer
+  receives a 6-digit code by SMS (the console sender prints it in the API log),
+  reads it out, and staff enter it with `POST .../orders/:orderId/confirm`
+  `{ "code": "..." }` and an `Idempotency-Key` header. A code is valid 10
+  minutes for this order only.
+
+The debit re-checks the balance; when the order's goal holds less than the
+total, Non affecté tops it up first. The customer is told of the debit in the
+app, by push, and by SMS.
 
 ## Common commands
 

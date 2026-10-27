@@ -6,6 +6,7 @@ import { SystemSettingsModule } from '../system-settings/system-settings.module.
 import { MeController } from './me.controller.js';
 import { MobileAuthController } from './mobile-auth.controller.js';
 import { MobileAuthService } from './mobile-auth.service.js';
+import { PinCheck } from './pin-check.service.js';
 import { PinHasher } from './pin-hasher.js';
 import { UserAuthGuard } from './user-auth.guard.js';
 
@@ -16,8 +17,11 @@ import { UserAuthGuard } from './user-auth.guard.js';
   providers: [
     MobileAuthService,
     PinHasher,
+    PinCheck,
     // Global, next to the admin guard: each one protects its own population.
     { provide: APP_GUARD, useClass: UserAuthGuard },
   ],
+  // Approving an action with the PIN (order confirmation, 10b).
+  exports: [PinCheck],
 })
 export class MobileAuthModule {}

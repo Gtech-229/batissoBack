@@ -21,7 +21,13 @@ import {
   type NotificationList,
   type NotificationView,
 } from './dto/notification-view.js';
-import { depositMessage, goalReachedMessage } from './messages.js';
+import {
+  depositMessage,
+  goalReachedMessage,
+  orderAwaitingCustomerMessage,
+  orderRefusedByCustomerMessage,
+  purchaseMessage,
+} from './messages.js';
 import { notificationNotFound } from './notifications.errors.js';
 
 /** A goal that just reached its target, through a deposit or a move. */
@@ -34,6 +40,40 @@ export interface GoalReachedEvent {
   /** The deposit that made it reach the target; null for a move. */
   operationId: string | null;
   goal: { label: string; balance: bigint; targetAmount: bigint | null };
+}
+
+/** An order the customer refused, for the store's managers (10b). */
+export interface OrderRefusedEvent {
+  storeId: string;
+  reference: string;
+  total: bigint;
+  currencyCode: string;
+  accountNumber: string;
+  reason: string | null;
+}
+
+/** An order that now awaits its customer's confirmation (10b). */
+export interface OrderAwaitingCustomerEvent {
+  customerId: string;
+  storeId: string;
+  storeName: string;
+  reference: string;
+  total: bigint;
+  currencyCode: string;
+}
+
+/** The debit of a confirmed order (10b). */
+export interface PurchaseEvent {
+  customerId: string;
+  storeId: string;
+  storeName: string;
+  accountNumber: string;
+  operationId: string;
+  reference: string;
+  orderReference: string;
+  total: bigint;
+  currencyCode: string;
+  balanceAfter: bigint;
 }
 
 /** The kind of a failure, short enough for `lastError`: never its text. */
@@ -119,6 +159,86 @@ export class NotificationsService {
       },
       { sms: false },
     );
+  }
+
+  /**
+   * The rows telling the customer an order awaits their confirmation (10b):
+   * in-app and push, no SMS (nothing is debited yet; a customer without the
+   * app confirms at the counter with a code).
+   */
+  async recordOrderAwaitingCustomer(
+    tx: Prisma.TransactionClient,
+    event: OrderAwaitingCustomerEvent,
+  ): Promise<string[]> {
+    const { title, body } = orderAwaitingCustomerMessage(event);
+    return this.writeRows(
+      tx,
+      {
+        userId: event.customerId,
+        storeId: event.storeId,
+        operationId: null,
+        type: NotificationType.ORDER_AWAITING_CUSTOMER,
+        title,
+        body,
+      },
+      { sms: false },
+    );
+  }
+
+  /**
+   * The rows announcing a purchase debit to the customer (10b): in-app, SMS,
+   * and push, as for every money movement. Linked to the operation.
+   */
+  async recordPurchase(
+    tx: Prisma.TransactionClient,
+    event: PurchaseEvent,
+  ): Promise<string[]> {
+    const { title, body } = purchaseMessage(event);
+    return this.writeRows(
+      tx,
+      {
+        userId: event.customerId,
+        storeId: event.storeId,
+        operationId: event.operationId,
+        type: NotificationType.PURCHASE_RECORDED,
+        title,
+        body,
+      },
+      { sms: true },
+    );
+  }
+
+  /**
+   * The rows alerting each active manager of the store that the customer
+   * refused an order (10b): in-app and push, no SMS (no money moved).
+   */
+  async recordOrderRefusedByCustomer(
+    tx: Prisma.TransactionClient,
+    event: OrderRefusedEvent,
+  ): Promise<string[]> {
+    const managers = await tx.storeMember.findMany({
+      where: { storeId: event.storeId, role: 'MANAGER', active: true },
+      select: { userId: true },
+    });
+    const { title, body } = orderRefusedByCustomerMessage(event);
+    const ids: string[] = [];
+    for (const manager of managers) {
+      ids.push(
+        ...(await this.writeRows(
+          tx,
+          {
+            userId: manager.userId,
+            storeId: event.storeId,
+            operationId: null,
+            type: NotificationType.ORDER_REFUSED_BY_CUSTOMER,
+            title,
+            body,
+          },
+          { sms: false },
+        )),
+      );
+    }
+    return ids;
   }
 
   /**

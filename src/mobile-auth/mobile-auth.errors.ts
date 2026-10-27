@@ -66,6 +66,14 @@ export function deviceVerificationRequired(): ForbiddenException {
   });
 }
 
+/** A wrong PIN to approve an action (not a sign-in): the session stays open. */
+export function invalidPin(): BadRequestException {
+  return new BadRequestException({
+    message: 'Code PIN incorrect',
+    error: 'INVALID_PIN',
+  });
+}
+
 export function pinLocked(minutesLeft: number): ForbiddenException {
   const minutes = minutesLeft > 1 ? `${minutesLeft} minutes` : '1 minute';
   return new ForbiddenException({

@@ -32,6 +32,7 @@ export const MY_ORDER_INCLUDE = {
   account: { select: { number: true, currencyCode: true } },
   goal: { select: { id: true, label: true } },
   lines: ORDER_LINES_ORDER,
+  operation: { select: { reference: true } },
   store: { select: { id: true, name: true } },
 } satisfies Prisma.MaterialOrderInclude;
 

@@ -14,11 +14,14 @@ import {
 import {
   GoalStatus,
   MaterialOrderStatus,
+  OrderConfirmationChannel,
   StoreMemberRole,
   type Prisma,
 } from '../generated/prisma/client.js';
 import { goalClosed, goalNotFound } from '../goals/goals.errors.js';
 import type { AuthenticatedUser } from '../mobile-auth/authenticated-user.js';
+import { PinCheck } from '../mobile-auth/pin-check.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CurrentStoreContext } from '../store-access/current-store.js';
 import { lockStoreNotClosed } from '../store-access/verified-store.js';
@@ -30,6 +33,7 @@ import {
 } from './dto/order-view.js';
 import type {
   CancelOrderDto,
+  CustomerRefusalDto,
   RefuseOrderDto,
 } from './dto/order-decisions.dto.js';
 import type {
@@ -42,6 +46,7 @@ import {
   type MyOrderView,
 } from './dto/my-order-view.js';
 import type { PrepareOrderDto } from './dto/prepare-order.dto.js';
+import { OrderConfirmationService } from './order-confirmation.service.js';
 import { formatOrderReference } from './order-reference.js';
 import { preparedOrderState } from './order-status.js';
 import {
@@ -67,7 +72,102 @@ const ORDERS_ORDER = [
  */
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pinCheck: PinCheck,
+    private readonly confirmation: OrderConfirmationService,
+    private readonly notifications: NotificationsService,
+  ) {}
+
+  /**
+   * The customer refuses an order awaiting them (10b): one conditional write,
+   * and an alert to the store's active managers recorded in the same
+   * transaction (sent after the commit). A CLOSED store accepts no change.
+   */
+  async refuseMine(
+    userId: string,
+    accountId: string,
+    orderId: string,
+    dto: CustomerRefusalDto,
+  ): Promise<MyOrderView> {
+    const account = await this.prisma.account.findFirst({
+      where: { id: accountId, customerId: userId },
+      select: { id: true, storeId: true, number: true, currencyCode: true },
+    });
+    if (!account) {
+      throw accountNotFound();
+    }
+    const toNotify = await this.prisma.$transaction(async (tx) => {
+      await lockStoreNotClosed(tx, account.storeId);
+      const { count } = await tx.materialOrder.updateMany({
+        where: {
+          id: orderId,
+          accountId: account.id,
+          status: MaterialOrderStatus.AWAITING_CUSTOMER,
+        },
+        data: {
+          status: MaterialOrderStatus.REFUSED_BY_CUSTOMER,
+          customerRefusedAt: new Date(),
+          customerRefusalReason: dto.reason ?? null,
+        },
+      });
+      const order = await tx.materialOrder.findFirst({
+        where: { id: orderId, accountId: account.id },
+        select: { status: true, reference: true, total: true },
+      });
+      if (!order) {
+        throw orderNotFound();
+      }
+      if (count === 0) {
+        throw orderStatusConflict(order.status);
+      }
+      return this.notifications.recordOrderRefusedByCustomer(tx, {
+        storeId: account.storeId,
+        reference: order.reference,
+        total: order.total,
+        currencyCode: account.currencyCode,
+        accountNumber: account.number,
+        reason: dto.reason ?? null,
+      });
+    });
+    void this.notifications.dispatch(toNotify);
+    return this.detailMine(userId, account.id, orderId);
+  }
+
+  /**
+   * The customer confirms an order of one of their accounts with their PIN
+   * (10b): the PIN first (a wrong one counts toward the sign-in lockout), then
+   * the debit, once. `replayed`: this key already confirmed this order.
+   */
+  async confirmMine(
+    user: AuthenticatedUser,
+    accountId: string,
+    orderId: string,
+    pin: string,
+    idempotencyKey: string,
+  ): Promise<{ order: MyOrderView; replayed: boolean }> {
+    const account = await this.prisma.account.findFirst({
+      where: { id: accountId, customerId: user.userId },
+      select: { id: true, storeId: true },
+    });
+    if (!account) {
+      throw accountNotFound();
+    }
+    await this.pinCheck.verify(user.userId, pin);
+    const { replayed } = await this.confirmation.debit({
+      storeId: account.storeId,
+      accountId: account.id,
+      orderId: orderId.toLowerCase(),
+      channel: OrderConfirmationChannel.PIN,
+      actorId: user.userId,
+      device: user.deviceId,
+      idempotencyKey,
+    });
+    return {
+      order: await this.detailMine(user.userId, account.id, orderId),
+      replayed,
+    };
+  }
 
   /**
    * Prepares an order: lines frozen at today's prices, names, and units; the
@@ -94,7 +194,7 @@ export class OrdersService {
       );
     }
 
-    const orderId = await this.prisma.$transaction(async (tx) => {
+    const { orderId, toNotify } = await this.prisma.$transaction(async (tx) => {
       // FOR SHARE: a closing waits for this order (a suspended store still
       // serves purchases; a closed one accepts no change).
       await lockStoreNotClosed(tx, store.storeId);
@@ -152,10 +252,16 @@ export class OrdersService {
           validatedAt: validatedByPreparer ? new Date() : null,
           lines: { createMany: { data: lines } },
         },
-        select: { id: true },
+        select: { id: true, reference: true },
       });
-      return order.id;
+      // Straight to the customer: tell them it awaits their confirmation.
+      const toNotify =
+        status === MaterialOrderStatus.AWAITING_CUSTOMER
+          ? await this.notifyAwaitingCustomer(tx, order.id)
+          : [];
+      return { orderId: order.id, toNotify };
     });
+    void this.notifications.dispatch(toNotify);
     return this.detail(store.storeId, orderId);
   }
 
@@ -165,7 +271,7 @@ export class OrdersService {
     actor: AuthenticatedUser,
     orderId: string,
   ): Promise<OrderView> {
-    await this.transition(
+    const toNotify = await this.transition(
       store,
       orderId,
       [MaterialOrderStatus.AWAITING_VALIDATION],
@@ -174,7 +280,11 @@ export class OrdersService {
         validatedById: actor.userId,
         validatedAt: new Date(),
       },
+      undefined,
+      // Validated: it now awaits the customer, who is told so.
+      (tx) => this.notifyAwaitingCustomer(tx, orderId),
     );
+    void this.notifications.dispatch(toNotify);
     return this.detail(store.storeId, orderId);
   }
 
@@ -337,8 +447,9 @@ export class OrdersService {
     from: MaterialOrderStatus[],
     data: Prisma.MaterialOrderUncheckedUpdateManyInput,
     preparerId?: string,
-  ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+    onChanged?: (tx: Tx) => Promise<string[]>,
+  ): Promise<string[]> {
+    return this.prisma.$transaction(async (tx) => {
       await lockStoreNotClosed(tx, store.storeId);
       const { count } = await tx.materialOrder.updateMany({
         where: {
@@ -350,7 +461,8 @@ export class OrdersService {
         data,
       });
       if (count > 0) {
-        return;
+        // Notification rows of the change, in its transaction (the outbox).
+        return onChanged ? onChanged(tx) : [];
       }
       const order = await tx.materialOrder.findFirst({
         where: { id: orderId, storeId: store.storeId },
@@ -363,6 +475,31 @@ export class OrdersService {
         throw notOrderPreparer();
       }
       throw orderStatusConflict(order.status);
+    });
+  }
+
+  /** The rows telling an order's customer that it awaits their confirmation. */
+  private async notifyAwaitingCustomer(
+    tx: Tx,
+    orderId: string,
+  ): Promise<string[]> {
+    const order = await tx.materialOrder.findUniqueOrThrow({
+      where: { id: orderId },
+      select: {
+        storeId: true,
+        reference: true,
+        total: true,
+        account: { select: { customerId: true, currencyCode: true } },
+        store: { select: { name: true } },
+      },
+    });
+    return this.notifications.recordOrderAwaitingCustomer(tx, {
+      customerId: order.account.customerId,
+      storeId: order.storeId,
+      storeName: order.store.name,
+      reference: order.reference,
+      total: order.total,
+      currencyCode: order.account.currencyCode,
     });
   }
 

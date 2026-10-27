@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { formatAmount } from '../../common/money.js';
 import {
   MaterialOrderStatus,
+  OrderConfirmationChannel,
   type Account,
   type Goal,
   type MaterialOrder,
@@ -130,6 +131,48 @@ export class OrderFields {
   })
   cancelledAt: Date | null;
 
+  @ApiProperty({
+    description: 'Date de la confirmation du client, ou `null`',
+    example: null,
+    nullable: true,
+    type: Date,
+  })
+  confirmedAt: Date | null;
+
+  @ApiProperty({
+    description:
+      'Comment le client a confirmé : code PIN dans l’application ou code reçu par SMS ; `null` avant la confirmation',
+    enum: OrderConfirmationChannel,
+    example: null,
+    nullable: true,
+  })
+  confirmedVia: OrderConfirmationChannel | null;
+
+  @ApiProperty({
+    description:
+      'Référence du débit écrit à la confirmation (A-00001), ou `null`',
+    example: null,
+    nullable: true,
+    type: String,
+  })
+  debitReference: string | null;
+
+  @ApiProperty({
+    description: 'Date du refus du client, ou `null`',
+    example: null,
+    nullable: true,
+    type: Date,
+  })
+  customerRefusedAt: Date | null;
+
+  @ApiProperty({
+    description: 'Motif du refus du client, ou `null`',
+    example: null,
+    nullable: true,
+    type: String,
+  })
+  customerRefusalReason: string | null;
+
   @ApiProperty({ description: 'Date de préparation', example: DATE_EXAMPLE })
   createdAt: Date;
 }
@@ -189,6 +232,7 @@ export const ORDER_INCLUDE = {
   account: { select: { number: true, currencyCode: true } },
   goal: { select: { id: true, label: true } },
   lines: ORDER_LINES_ORDER,
+  operation: { select: { reference: true } },
   createdBy: true,
   validatedBy: true,
   refusedBy: true,
@@ -199,6 +243,7 @@ export type OrderWithFields = MaterialOrder & {
   account: Pick<Account, 'number' | 'currencyCode'>;
   goal: Pick<Goal, 'id' | 'label'>;
   lines: MaterialOrderLine[];
+  operation: { reference: string } | null;
 };
 
 export type OrderWithStaff = OrderWithFields & {
@@ -238,6 +283,11 @@ export function toOrderFields(
     refusedAt: order.refusedAt,
     cancellationReason: order.cancellationReason,
     cancelledAt: order.cancelledAt,
+    confirmedAt: order.confirmedAt,
+    confirmedVia: order.confirmedVia,
+    debitReference: order.operation?.reference ?? null,
+    customerRefusedAt: order.customerRefusedAt,
+    customerRefusalReason: order.customerRefusalReason,
     createdAt: order.createdAt,
   };
 }

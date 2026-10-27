@@ -28,7 +28,6 @@ import {
   CODE_TTL_MS,
   CODES_PER_DAY,
   CODES_PER_HOUR,
-  PIN_LOCK_DURATION_MS,
   REFRESH_TOKEN_TTL_MS,
   VERIFICATION_TTL_MS,
 } from './mobile-auth.constants.js';
@@ -42,6 +41,7 @@ import {
   pinLocked,
 } from './mobile-auth.errors.js';
 import { isValidDeviceSignature } from './device-key.js';
+import { decidePinAttempt } from './pin-attempts.js';
 import { PinHasher } from './pin-hasher.js';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -68,9 +68,6 @@ export function codeMessage(code: string): string {
 type CodeOutcome = { kind: 'invalid' } | { kind: 'verified'; token: string };
 
 /** The PIN decision, taken under the user row lock. */
-type PinDecision =
-  { kind: 'ok' } | { kind: 'invalid' } | { kind: 'locked'; lockedUntil: Date };
-
 type Tx = Prisma.TransactionClient;
 
 @Injectable()
@@ -292,7 +289,7 @@ export class MobileAuthService {
           },
         });
       } else {
-        const decision = await this.decidePin(
+        const decision = await decidePinAttempt(
           tx,
           user.id,
           step.pinOk,
@@ -413,7 +410,7 @@ export class MobileAuthService {
 
     const outcome = await this.prisma.$transaction(async (tx) => {
       const at = new Date();
-      const decision = await this.decidePin(
+      const decision = await decidePinAttempt(
         tx,
         user.id,
         pinOk,
@@ -536,55 +533,6 @@ export class MobileAuthService {
       expiresIn: ACCESS_TOKEN_TTL_SECONDS,
       user: toMobileUserProfile(user),
     };
-  }
-
-  /**
-   * Counts a PIN attempt under a row lock on the user, so parallel attempts are
-   * judged one after another against the real lock state (the admin F-01
-   * lesson). Reaching `maxPinAttempts` locks the user for 15 minutes, even with
-   * the right PIN; `maxPinAttempts = 0` counts but never locks.
-   */
-  private async decidePin(
-    tx: Tx,
-    userId: string,
-    pinOk: boolean,
-    maxPinAttempts: number,
-    now: Date,
-  ): Promise<PinDecision> {
-    // Raw SQL because Prisma has no row lock.
-    const [row] = await tx.$queryRaw<
-      { pinLockedUntil: Date | null; failedPinAttempts: number }[]
-    >`
-      SELECT "pinLockedUntil", "failedPinAttempts" FROM "users"
-      WHERE "id" = ${userId}::uuid FOR UPDATE`;
-    if (!row) {
-      return { kind: 'invalid' };
-    }
-    if (row.pinLockedUntil && row.pinLockedUntil > now) {
-      // Locked by a concurrent request: refused, and not counted again.
-      return { kind: 'locked', lockedUntil: row.pinLockedUntil };
-    }
-
-    if (!pinOk) {
-      const attempts = row.failedPinAttempts + 1;
-      const reachesLimit = maxPinAttempts > 0 && attempts >= maxPinAttempts;
-      await tx.user.update({
-        where: { id: userId },
-        data: reachesLimit
-          ? {
-              failedPinAttempts: 0,
-              pinLockedUntil: new Date(now.getTime() + PIN_LOCK_DURATION_MS),
-            }
-          : { failedPinAttempts: attempts },
-      });
-      return { kind: 'invalid' };
-    }
-
-    await tx.user.update({
-      where: { id: userId },
-      data: { failedPinAttempts: 0, pinLockedUntil: null },
-    });
-    return { kind: 'ok' };
   }
 
   /**

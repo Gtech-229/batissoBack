@@ -48,3 +48,49 @@ export function goalReachedMessage(goal: {
     body: `Votre objectif « ${goal.label} » atteint ${money(goal.balance)} (objectif : ${money(goal.targetAmount)}) sur votre compte ${goal.accountNumber} chez ${goal.storeName}.`,
   };
 }
+
+/** To the store's managers: the customer refused an order (10b). */
+export function orderRefusedByCustomerMessage(order: {
+  reference: string;
+  total: bigint;
+  currencyCode: string;
+  accountNumber: string;
+  reason: string | null;
+}): NotificationMessage {
+  const reason = order.reason === null ? '' : ` Motif : « ${order.reason} ».`;
+  return {
+    title: 'Bon refusé par le client',
+    body: `Le client du compte ${order.accountNumber} a refusé le bon ${order.reference} de ${groupThousands(order.total)} ${order.currencyCode}.${reason}`,
+  };
+}
+
+/** To the customer: an order awaits their confirmation (10b). */
+export function orderAwaitingCustomerMessage(order: {
+  reference: string;
+  total: bigint;
+  currencyCode: string;
+  storeName: string;
+}): NotificationMessage {
+  return {
+    title: 'Bon à confirmer',
+    body: `Le bon ${order.reference} de ${groupThousands(order.total)} ${order.currencyCode} chez ${order.storeName} attend votre confirmation. Rien n’est débité avant.`,
+  };
+}
+
+/** To the customer: the debit of a confirmed order (10b). */
+export function purchaseMessage(purchase: {
+  total: bigint;
+  currencyCode: string;
+  orderReference: string;
+  storeName: string;
+  accountNumber: string;
+  balanceAfter: bigint;
+  reference: string;
+}): NotificationMessage {
+  const money = (value: bigint) =>
+    `${groupThousands(value)} ${purchase.currencyCode}`;
+  return {
+    title: 'Achat enregistré',
+    body: `Achat de ${money(purchase.total)} (bon ${purchase.orderReference}) chez ${purchase.storeName} sur votre compte ${purchase.accountNumber}. Nouveau solde : ${money(purchase.balanceAfter)}. Réf. ${purchase.reference}.`,
+  };
+}
