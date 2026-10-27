@@ -173,6 +173,14 @@ export class OrderFields {
   })
   customerRefusalReason: string | null;
 
+  @ApiProperty({
+    description: 'Date de la livraison (toujours complète), ou `null`',
+    example: null,
+    nullable: true,
+    type: Date,
+  })
+  deliveredAt: Date | null;
+
   @ApiProperty({ description: 'Date de préparation', example: DATE_EXAMPLE })
   createdAt: Date;
 }
@@ -192,10 +200,13 @@ export class OrderStaffView {
 /** The staff-only fields of the order view. */
 type OrderStaffSteps = Pick<
   OrderView,
-  'createdBy' | 'validatedBy' | 'refusedBy' | 'cancelledBy'
+  'createdBy' | 'validatedBy' | 'refusedBy' | 'cancelledBy' | 'deliveredBy'
 >;
 
-/** The staff view: who prepared, validated, refused, or cancelled the order. */
+/**
+ * The staff view: who prepared, validated, refused, cancelled, or delivered
+ * the order.
+ */
 export class OrderView extends OrderFields {
   @ApiProperty({ description: 'Préparé par', type: OrderStaffView })
   createdBy: OrderStaffView;
@@ -220,6 +231,13 @@ export class OrderView extends OrderFields {
     type: OrderStaffView,
   })
   cancelledBy: OrderStaffView | null;
+
+  @ApiProperty({
+    description: 'Livré par, ou `null`',
+    nullable: true,
+    type: OrderStaffView,
+  })
+  deliveredBy: OrderStaffView | null;
 }
 
 /** Lines in the order they were sent (uuid v7 ids are time-ordered). */
@@ -237,6 +255,7 @@ export const ORDER_INCLUDE = {
   validatedBy: true,
   refusedBy: true,
   cancelledBy: true,
+  deliveredBy: true,
 } satisfies Prisma.MaterialOrderInclude;
 
 export type OrderWithFields = MaterialOrder & {
@@ -251,6 +270,7 @@ export type OrderWithStaff = OrderWithFields & {
   validatedBy: User | null;
   refusedBy: User | null;
   cancelledBy: User | null;
+  deliveredBy: User | null;
 };
 
 function toLineView(line: MaterialOrderLine): OrderLineView {
@@ -288,6 +308,7 @@ export function toOrderFields(
     debitReference: order.operation?.reference ?? null,
     customerRefusedAt: order.customerRefusedAt,
     customerRefusalReason: order.customerRefusalReason,
+    deliveredAt: order.deliveredAt,
     createdAt: order.createdAt,
   };
 }
@@ -308,5 +329,6 @@ export function toOrderView(order: OrderWithStaff): OrderView {
     validatedBy: toStaffView(order.validatedBy),
     refusedBy: toStaffView(order.refusedBy),
     cancelledBy: toStaffView(order.cancelledBy),
+    deliveredBy: toStaffView(order.deliveredBy),
   };
 }

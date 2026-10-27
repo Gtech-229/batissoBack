@@ -25,6 +25,7 @@ import {
   depositMessage,
   goalReachedMessage,
   orderAwaitingCustomerMessage,
+  orderDeliveredMessage,
   orderRefusedByCustomerMessage,
   purchaseMessage,
 } from './messages.js';
@@ -52,8 +53,11 @@ export interface OrderRefusedEvent {
   reason: string | null;
 }
 
-/** An order that now awaits its customer's confirmation (10b). */
-export interface OrderAwaitingCustomerEvent {
+/**
+ * A step of an order told to its customer: it awaits their confirmation
+ * (10b), or it was delivered (10c).
+ */
+export interface CustomerOrderEvent {
   customerId: string;
   storeId: string;
   storeName: string;
@@ -168,7 +172,7 @@ export class NotificationsService {
    */
   async recordOrderAwaitingCustomer(
     tx: Prisma.TransactionClient,
-    event: OrderAwaitingCustomerEvent,
+    event: CustomerOrderEvent,
   ): Promise<string[]> {
     const { title, body } = orderAwaitingCustomerMessage(event);
     return this.writeRows(
@@ -178,6 +182,29 @@ export class NotificationsService {
         storeId: event.storeId,
         operationId: null,
         type: NotificationType.ORDER_AWAITING_CUSTOMER,
+        title,
+        body,
+      },
+      { sms: false },
+    );
+  }
+
+  /**
+   * The rows telling the customer their order was delivered (10c): in-app and
+   * push, no SMS (no money moves; user decision, 2026-10-27).
+   */
+  async recordOrderDelivered(
+    tx: Prisma.TransactionClient,
+    event: CustomerOrderEvent,
+  ): Promise<string[]> {
+    const { title, body } = orderDeliveredMessage(event);
+    return this.writeRows(
+      tx,
+      {
+        userId: event.customerId,
+        storeId: event.storeId,
+        operationId: null,
+        type: NotificationType.ORDER_DELIVERED,
         title,
         body,
       },

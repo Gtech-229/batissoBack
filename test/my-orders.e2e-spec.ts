@@ -208,7 +208,12 @@ describe('Order lists and the customer’s orders (e2e)', () => {
         total: '50000',
       });
       const json = JSON.stringify(response.body);
-      for (const key of ['createdBy', 'validatedBy', 'cancelledBy']) {
+      for (const key of [
+        'createdBy',
+        'validatedBy',
+        'cancelledBy',
+        'deliveredBy',
+      ]) {
         expect(json).not.toContain(`"${key}"`);
       }
       expect(json).not.toContain(seller.userId);

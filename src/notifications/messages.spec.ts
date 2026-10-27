@@ -3,6 +3,7 @@ import {
   goalReachedMessage,
   groupThousands,
   orderAwaitingCustomerMessage,
+  orderDeliveredMessage,
   orderRefusedByCustomerMessage,
   purchaseMessage,
 } from './messages.js';
@@ -129,6 +130,24 @@ describe('purchaseMessage', () => {
     expect(message).toEqual({
       title: 'Achat enregistré',
       body: 'Achat de 20 000 XOF (bon B-00042) chez Quincaillerie du Carrefour sur votre compte C-000123. Nouveau solde : 80 000 XOF. Réf. A-00007.',
+    });
+    // Project rule: money is never said to be "sécurisé" or "garanti".
+    expect(message.body).not.toMatch(/sécuris|garanti/);
+  });
+});
+
+describe('orderDeliveredMessage', () => {
+  it('names the order, the amount, and the store', () => {
+    const message = orderDeliveredMessage({
+      reference: 'B-00042',
+      total: 20000n,
+      currencyCode: 'XOF',
+      storeName: 'Quincaillerie du Carrefour',
+    });
+
+    expect(message).toEqual({
+      title: 'Bon livré',
+      body: 'Le bon B-00042 de 20 000 XOF chez Quincaillerie du Carrefour vous a été livré.',
     });
     // Project rule: money is never said to be "sécurisé" or "garanti".
     expect(message.body).not.toMatch(/sécuris|garanti/);

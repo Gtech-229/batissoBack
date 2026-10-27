@@ -94,3 +94,16 @@ export function purchaseMessage(purchase: {
     body: `Achat de ${money(purchase.total)} (bon ${purchase.orderReference}) chez ${purchase.storeName} sur votre compte ${purchase.accountNumber}. Nouveau solde : ${money(purchase.balanceAfter)}. Réf. ${purchase.reference}.`,
   };
 }
+
+/** To the customer: their confirmed order was handed over in full (10c). */
+export function orderDeliveredMessage(order: {
+  reference: string;
+  total: bigint;
+  currencyCode: string;
+  storeName: string;
+}): NotificationMessage {
+  return {
+    title: 'Bon livré',
+    body: `Le bon ${order.reference} de ${groupThousands(order.total)} ${order.currencyCode} chez ${order.storeName} vous a été livré.`,
+  };
+}

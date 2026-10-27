@@ -230,6 +230,8 @@ model User {
   ordersRefused       MaterialOrder[]         @relation("OrderRefusedBy")
   ordersCancelled     MaterialOrder[]         @relation("OrderCancelledBy")
   orderCodesRequested OrderConfirmationCode[]
+  // Feature 10c: material orders handed over.
+  ordersDelivered     MaterialOrder[]         @relation("OrderDeliveredBy")
 
   @@map("users")
 }
@@ -517,6 +519,8 @@ enum MaterialOrderStatus {
   CONFIRMED
   /// The customer refused it; the manager is alerted.
   REFUSED_BY_CUSTOMER
+  /// Handed over in full to the customer (10c), from CONFIRMED only.
+  DELIVERED
 }
 
 /// How the customer confirmed an order (10b).
@@ -558,6 +562,9 @@ model MaterialOrder {
   confirmedVia          OrderConfirmationChannel?
   customerRefusedAt     DateTime?
   customerRefusalReason String?                   @db.VarChar(500)
+  /// Handed over in full (10c): set together, once, by the staff member.
+  deliveredById         String?                   @db.Uuid
+  deliveredAt           DateTime?
   createdAt             DateTime                  @default(now())
   updatedAt             DateTime                  @updatedAt
 
@@ -568,6 +575,7 @@ model MaterialOrder {
   validatedBy       User?                   @relation("OrderValidatedBy", fields: [validatedById], references: [id], onDelete: Restrict)
   refusedBy         User?                   @relation("OrderRefusedBy", fields: [refusedById], references: [id], onDelete: Restrict)
   cancelledBy       User?                   @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
+  deliveredBy       User?                   @relation("OrderDeliveredBy", fields: [deliveredById], references: [id], onDelete: Restrict)
   operation         Operation?              @relation(fields: [operationId], references: [id], onDelete: Restrict)
   lines             MaterialOrderLine[]
   confirmationCodes OrderConfirmationCode[]
@@ -753,6 +761,8 @@ enum NotificationType {
   PURCHASE_RECORDED
   /// The customer refused an order: sent to the store's managers (10b).
   ORDER_REFUSED_BY_CUSTOMER
+  /// A confirmed order was handed over: sent to the customer (10c).
+  ORDER_DELIVERED
 }
 
 enum NotificationChannel {

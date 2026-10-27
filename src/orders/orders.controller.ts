@@ -285,6 +285,40 @@ export class OrdersController {
   }
 
   /**
+   * @description Mark a confirmed (debited) order as handed over to the customer, always in full
+   * @route POST /api/v1/stores/:storeId/orders/:orderId/deliver
+   * @access Store seller or manager (mobile session)
+   * @param storeId the store
+   * @param orderId the order, confirmed by the customer
+   * @returns 200 OrderView; 409 ORDER_STATUS
+   */
+  @Post('orders/:orderId/deliver')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Marquer un bon comme livré',
+    description:
+      'Seulement pour un bon confirmé par le client (`CONFIRMED`, déjà débité) : il passe à `DELIVERED`, avec la date de livraison et le membre de l’équipe qui l’a livré. Un bon est toujours livré en entier. Tout vendeur ou le gérant peut le livrer, même dans une quincaillerie fermée : le client a déjà payé.',
+  })
+  @ApiParam({ name: 'orderId', description: 'Identifiant du bon' })
+  @ApiOkResponse({ description: 'Bon livré', type: OrderView })
+  @ApiBadRequestResponse({
+    description: 'Identifiant de quincaillerie ou de bon invalide',
+    type: ErrorResponse,
+  })
+  @ApiConflictResponse({
+    description:
+      'Le bon n’est pas confirmé par le client, ou il est déjà livré (`ORDER_STATUS`)',
+    type: ErrorResponse,
+  })
+  deliver(
+    @CurrentStore() store: CurrentStoreContext,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('orderId', OrderIdPipe) orderId: string,
+  ): Promise<OrderView> {
+    return this.orders.deliver(store, actor, orderId);
+  }
+
+  /**
    * @description Text the customer a one-time code to confirm this order at the counter (customers without the app)
    * @route POST /api/v1/stores/:storeId/orders/:orderId/confirmation-code
    * @access Store seller or manager (mobile session)

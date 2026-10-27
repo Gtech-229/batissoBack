@@ -301,6 +301,12 @@ The debit re-checks the balance; when the order's goal holds less than the
 total, Non affecté tops it up first. The customer is told of the debit in the
 app, by push, and by SMS.
 
+When the store hands the material over (always the whole order), any seller or
+the manager calls `POST /api/v1/stores/:storeId/orders/:orderId/deliver`: the
+order goes from `CONFIRMED` to `DELIVERED`, with the date and who delivered
+it, and the customer is told in the app and by push. A closed store can still
+deliver, since the customer has already paid.
+
 ## Common commands
 
 | Command | What it does |

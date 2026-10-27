@@ -85,6 +85,7 @@ describe('Swagger document (e2e)', () => {
       'GET /api/v1/me/accounts/{accountId}/orders',
       'POST /api/v1/me/accounts/{accountId}/orders/{orderId}/confirm',
       'POST /api/v1/stores/{storeId}/orders/{orderId}/confirm',
+      'POST /api/v1/stores/{storeId}/orders/{orderId}/deliver',
     ]) {
       expect(security(route)).toEqual([{ bearer: [] }]);
     }
@@ -143,6 +144,7 @@ describe('Swagger document (e2e)', () => {
         'POST /api/v1/me/accounts/{accountId}/orders/{orderId}/refuse',
         'POST /api/v1/stores/{storeId}/orders/{orderId}/confirmation-code',
         'POST /api/v1/stores/{storeId}/orders/{orderId}/confirm',
+        'POST /api/v1/stores/{storeId}/orders/{orderId}/deliver',
       ]),
     );
   });

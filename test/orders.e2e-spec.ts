@@ -198,6 +198,8 @@ describe('Preparing material orders (e2e)', () => {
         debitReference: null,
         customerRefusedAt: null,
         customerRefusalReason: null,
+        deliveredBy: null,
+        deliveredAt: null,
         createdAt: expect.any(String),
       });
       // No money moves before the customer confirms (10b).

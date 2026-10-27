@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, type HttpException } from '@nestjs/common';
 import { accountNotFound } from '../accounts/accounts.errors.js';
 import {
   articleNotFound,
@@ -21,7 +21,10 @@ import {
 import { goalClosed, goalNotFound } from '../goals/goals.errors.js';
 import type { AuthenticatedUser } from '../mobile-auth/authenticated-user.js';
 import { PinCheck } from '../mobile-auth/pin-check.service.js';
-import { NotificationsService } from '../notifications/notifications.service.js';
+import {
+  NotificationsService,
+  type CustomerOrderEvent,
+} from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CurrentStoreContext } from '../store-access/current-store.js';
 import { lockStoreNotClosed } from '../store-access/verified-store.js';
@@ -338,6 +341,42 @@ export class OrdersService {
     return this.detail(store.storeId, orderId);
   }
 
+  /**
+   * Staff hand over a confirmed (debited) order, always in full (10c): any
+   * seller or the manager. Unlike `transition`, a CLOSED store still delivers
+   * (user decision, 2026-10-27): the customer has paid and no money moves.
+   */
+  async deliver(
+    store: CurrentStoreContext,
+    actor: AuthenticatedUser,
+    orderId: string,
+  ): Promise<OrderView> {
+    const toNotify = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.materialOrder.updateMany({
+        where: {
+          id: orderId,
+          storeId: store.storeId,
+          status: MaterialOrderStatus.CONFIRMED,
+        },
+        data: {
+          status: MaterialOrderStatus.DELIVERED,
+          deliveredById: actor.userId,
+          deliveredAt: new Date(),
+        },
+      });
+      if (count === 0) {
+        throw await this.unchangedReason(tx, store.storeId, orderId);
+      }
+      // The customer is told, in the delivery's transaction (the outbox).
+      return this.notifications.recordOrderDelivered(
+        tx,
+        await this.customerOrderEvent(tx, orderId),
+      );
+    });
+    void this.notifications.dispatch(toNotify);
+    return this.detail(store.storeId, orderId);
+  }
+
   /** The store's orders, newest first, filtered by status and account. */
   async list(
     storeId: string,
@@ -464,18 +503,32 @@ export class OrdersService {
         // Notification rows of the change, in its transaction (the outbox).
         return onChanged ? onChanged(tx) : [];
       }
-      const order = await tx.materialOrder.findFirst({
-        where: { id: orderId, storeId: store.storeId },
-        select: { status: true, createdById: true },
-      });
-      if (!order) {
-        throw orderNotFound();
-      }
-      if (preparerId !== undefined && order.createdById !== preparerId) {
-        throw notOrderPreparer();
-      }
-      throw orderStatusConflict(order.status);
+      throw await this.unchangedReason(tx, store.storeId, orderId, preparerId);
     });
+  }
+
+  /**
+   * Why a conditional write on an order of this store changed nothing: no
+   * such order (404), not its preparer (403, only with `preparerId`), or its
+   * status (409).
+   */
+  private async unchangedReason(
+    tx: Tx,
+    storeId: string,
+    orderId: string,
+    preparerId?: string,
+  ): Promise<HttpException> {
+    const order = await tx.materialOrder.findFirst({
+      where: { id: orderId, storeId },
+      select: { status: true, createdById: true },
+    });
+    if (!order) {
+      return orderNotFound();
+    }
+    if (preparerId !== undefined && order.createdById !== preparerId) {
+      return notOrderPreparer();
+    }
+    return orderStatusConflict(order.status);
   }
 
   /** The rows telling an order's customer that it awaits their confirmation. */
@@ -483,6 +536,17 @@ export class OrdersService {
     tx: Tx,
     orderId: string,
   ): Promise<string[]> {
+    return this.notifications.recordOrderAwaitingCustomer(
+      tx,
+      await this.customerOrderEvent(tx, orderId),
+    );
+  }
+
+  /** What the order's customer is told about one of its steps. */
+  private async customerOrderEvent(
+    tx: Tx,
+    orderId: string,
+  ): Promise<CustomerOrderEvent> {
     const order = await tx.materialOrder.findUniqueOrThrow({
       where: { id: orderId },
       select: {
@@ -493,14 +557,14 @@ export class OrdersService {
         store: { select: { name: true } },
       },
     });
-    return this.notifications.recordOrderAwaitingCustomer(tx, {
+    return {
       customerId: order.account.customerId,
       storeId: order.storeId,
       storeName: order.store.name,
       reference: order.reference,
       total: order.total,
       currencyCode: order.account.currencyCode,
-    });
+    };
   }
 
   /**

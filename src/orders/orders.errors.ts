@@ -14,6 +14,7 @@ export const ORDER_STATUS_LABELS: Record<MaterialOrderStatus, string> = {
   [MaterialOrderStatus.CANCELLED]: 'annulé',
   [MaterialOrderStatus.CONFIRMED]: 'confirmé par le client',
   [MaterialOrderStatus.REFUSED_BY_CUSTOMER]: 'refusé par le client',
+  [MaterialOrderStatus.DELIVERED]: 'livré',
 };
 
 // `error` is the stable code the mobile app relies on; `message` is shown to users.
