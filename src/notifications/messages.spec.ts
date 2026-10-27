@@ -1,4 +1,5 @@
 import {
+  correctionMessage,
   depositMessage,
   goalReachedMessage,
   groupThousands,
@@ -148,6 +149,28 @@ describe('orderDeliveredMessage', () => {
     expect(message).toEqual({
       title: 'Bon livré',
       body: 'Le bon B-00042 de 20 000 XOF chez Quincaillerie du Carrefour vous a été livré.',
+    });
+    // Project rule: money is never said to be "sécurisé" or "garanti".
+    expect(message.body).not.toMatch(/sécuris|garanti/);
+  });
+});
+
+describe('correctionMessage', () => {
+  it('gives the amount, the deposit, the reason, the new balance, and the reference', () => {
+    const message = correctionMessage({
+      amount: 4500n,
+      currencyCode: 'XOF',
+      storeName: 'Quincaillerie du Carrefour',
+      accountNumber: 'C-000123',
+      depositReference: 'D-00482',
+      reason: 'Erreur de saisie',
+      balanceAfter: 15000n,
+      reference: 'R-00001',
+    });
+
+    expect(message).toEqual({
+      title: 'Correction de votre compte',
+      body: 'Correction de 4 500 XOF retirée de votre compte C-000123 chez Quincaillerie du Carrefour (dépôt D-00482) : « Erreur de saisie ». Nouveau solde : 15 000 XOF. Réf. R-00001.',
     });
     // Project rule: money is never said to be "sécurisé" or "garanti".
     expect(message.body).not.toMatch(/sécuris|garanti/);

@@ -639,6 +639,8 @@ enum GoalMovementReason {
   GOAL_CLOSED
   /// An order's goal held less than its total: Unassigned paid the rest (10b).
   ORDER_SHORTFALL
+  /// A correction's goal held less than its amount: Unassigned paid the rest (11a).
+  CORRECTION_SHORTFALL
 }
 
 /// Money moved from one goal to another of the same account. Not an operation:
@@ -723,7 +725,8 @@ model Operation {
   /// The manager who validated it (orders above the threshold, feature 10).
   validatedById        String?            @db.Uuid
   customerConfirmedAt  DateTime?
-  /// The operation a CORRECTION fixes (feature 11).
+  /// The operation a CORRECTION fixes (feature 11). A CHECK makes a
+  /// CORRECTION always carry it and a reason, and no other type carry it.
   correctedOperationId String?            @db.Uuid
   reason               String?            @db.VarChar(500)
   channel              OperationChannel
@@ -763,6 +766,8 @@ enum NotificationType {
   ORDER_REFUSED_BY_CUSTOMER
   /// A confirmed order was handed over: sent to the customer (10c).
   ORDER_DELIVERED
+  /// A manager's correction of a deposit (11a).
+  CORRECTION_RECORDED
 }
 
 enum NotificationChannel {

@@ -107,3 +107,22 @@ export function orderDeliveredMessage(order: {
     body: `Le bon ${order.reference} de ${groupThousands(order.total)} ${order.currencyCode} chez ${order.storeName} vous a été livré.`,
   };
 }
+
+/** To the customer: a manager took back part of a deposit (11a). */
+export function correctionMessage(correction: {
+  amount: bigint;
+  currencyCode: string;
+  storeName: string;
+  accountNumber: string;
+  depositReference: string;
+  reason: string;
+  balanceAfter: bigint;
+  reference: string;
+}): NotificationMessage {
+  const money = (value: bigint) =>
+    `${groupThousands(value)} ${correction.currencyCode}`;
+  return {
+    title: 'Correction de votre compte',
+    body: `Correction de ${money(correction.amount)} retirée de votre compte ${correction.accountNumber} chez ${correction.storeName} (dépôt ${correction.depositReference}) : « ${correction.reason} ». Nouveau solde : ${money(correction.balanceAfter)}. Réf. ${correction.reference}.`,
+  };
+}

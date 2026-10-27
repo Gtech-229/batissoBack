@@ -67,3 +67,46 @@ export function maxBalanceExceeded(
     error: 'MAX_BALANCE_EXCEEDED',
   });
 }
+
+/** A manager never corrects their own account's deposits (as for deposits). */
+export function ownAccountCorrection(): ConflictException {
+  return new ConflictException({
+    message: 'Vous ne pouvez pas corriger une opération de votre propre compte',
+    error: 'OWN_ACCOUNT',
+  });
+}
+
+/** Only a deposit is corrected (11a, user decision 2026-10-27). */
+export function notCorrectable(): ConflictException {
+  return new ConflictException({
+    message:
+      'Seul un dépôt peut être corrigé : un achat se corrige en annulant son bon',
+    error: 'NOT_CORRECTABLE',
+  });
+}
+
+/** The corrections of a deposit never add up to more than its amount. */
+export function correctionExceedsDeposit(
+  remaining: string,
+  currencyCode: string,
+  depositReference: string,
+): ConflictException {
+  return new ConflictException({
+    message: `Il reste au plus ${remaining} ${currencyCode} à corriger sur le dépôt ${depositReference}`,
+    error: 'CORRECTION_EXCEEDS_DEPOSIT',
+  });
+}
+
+/**
+ * The deposit's goal and Unassigned together hold less than the correction
+ * (user decision 2026-10-27): the message gives what can be taken back.
+ */
+export function insufficientBalanceForCorrection(
+  available: string,
+  currencyCode: string,
+): ConflictException {
+  return new ConflictException({
+    message: `Le compte ne contient que ${available} ${currencyCode} dans l’objectif du dépôt et « Non affecté » : le client peut y remettre de l’argent depuis ses autres objectifs`,
+    error: 'INSUFFICIENT_BALANCE',
+  });
+}

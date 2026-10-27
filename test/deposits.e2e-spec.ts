@@ -134,6 +134,8 @@ describe('Cash deposits (e2e)', () => {
             phone: '+22320220000',
           },
           recordedBy: { firstName, lastName: 'Diallo' },
+          reason: null,
+          correctedReference: null,
           createdAt: expect.any(String),
         });
         // Never the key or the device in a receipt.

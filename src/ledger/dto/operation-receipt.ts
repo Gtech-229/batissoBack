@@ -117,6 +117,23 @@ export class OperationReceipt {
   recordedBy: ReceiptPersonView;
 
   @ApiProperty({
+    description: 'Motif d’une correction, ou `null`',
+    example: null,
+    nullable: true,
+    type: String,
+  })
+  reason: string | null;
+
+  @ApiProperty({
+    description:
+      'Référence de l’opération corrigée (le dépôt D-…), pour une correction ; sinon `null`',
+    example: null,
+    nullable: true,
+    type: String,
+  })
+  correctedReference: string | null;
+
+  @ApiProperty({
     description: 'Date et heure du serveur',
     example: '2026-10-20T10:00:00.000Z',
   })
@@ -129,6 +146,7 @@ export const RECEIPT_INCLUDE = {
   account: { include: { customer: true } },
   store: true,
   author: true,
+  correctedOperation: { select: { reference: true } },
 } satisfies Prisma.OperationInclude;
 
 export type OperationWithReceipt = Operation & {
@@ -136,6 +154,7 @@ export type OperationWithReceipt = Operation & {
   account: Account & { customer: User };
   store: HardwareStore;
   author: User;
+  correctedOperation: { reference: string } | null;
 };
 
 /**
@@ -173,6 +192,8 @@ export function toOperationReceipt(
       firstName: operation.author.firstName,
       lastName: operation.author.lastName,
     },
+    reason: operation.reason,
+    correctedReference: operation.correctedOperation?.reference ?? null,
     createdAt: operation.createdAt,
   };
 }

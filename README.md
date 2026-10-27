@@ -179,6 +179,19 @@ A seller or a manager records the cash a customer hands over (Bearer session,
 
 Operations can never be changed or deleted: the database refuses it.
 
+### Correcting a deposit
+
+A deposit recorded too high (a typing error, cash not handed over) is fixed by
+the store's **manager** with a correction, never by changing the deposit:
+`POST /api/v1/stores/:storeId/accounts/:accountId/operations/:operationId/corrections`
+with `{ "amount": "4500", "reason": "Erreur de saisie" }` and an
+`Idempotency-Key` header. The answer (201) is the correction's receipt
+(`R-00001`, type `CORRECTION`, the reason, and `correctedReference`: the
+deposit's `D-…`). The amount is taken from the deposit's goal, then from Non
+affecté; the corrections of a deposit never add up to more than it. The
+customer is told in the app, by push, and by SMS, with the reason. Not in a
+closed store; never on the manager's own account.
+
 ## Notifications
 
 Every deposit notifies the customer three ways: an item in the app's list, a

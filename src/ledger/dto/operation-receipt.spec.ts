@@ -90,6 +90,7 @@ const operation: OperationWithReceipt = {
     updatedAt: DATE,
   },
   author: person('2', 'Moussa'),
+  correctedOperation: null,
 };
 
 describe('toOperationReceipt', () => {
@@ -119,5 +120,34 @@ describe('toOperationReceipt', () => {
     ]) {
       expect(json).not.toContain(secret);
     }
+  });
+
+  it('gives no reason or corrected reference for a deposit', () => {
+    expect(toOperationReceipt(operation)).toMatchObject({
+      reason: null,
+      correctedReference: null,
+    });
+  });
+
+  it('gives a correction its reason and the reference of the deposit it fixes', () => {
+    const receipt = toOperationReceipt({
+      ...operation,
+      type: 'CORRECTION',
+      direction: 'DEBIT',
+      reference: 'R-00001',
+      correctedOperationId: '0192f0a4-0000-7000-8000-00000000000d',
+      reason: 'Erreur de saisie',
+      correctedOperation: { reference: 'D-00482' },
+    });
+
+    expect(receipt).toMatchObject({
+      type: 'CORRECTION',
+      reason: 'Erreur de saisie',
+      correctedReference: 'D-00482',
+    });
+    // The link is shown by its reference, never by the operation's id.
+    expect(JSON.stringify(receipt)).not.toContain(
+      '0192f0a4-0000-7000-8000-00000000000d',
+    );
   });
 });

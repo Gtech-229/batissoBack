@@ -16,3 +16,12 @@ export function formatDepositReference(sequenceValue: bigint): string {
 export function formatPurchaseReference(sequenceValue: bigint): string {
   return formatSequenceNumber('A', 5, sequenceValue);
 }
+
+/**
+ * The reference of a manager's correction (11a) for a value of
+ * `operation_reference_correction_seq`: "R-" (rectification) + at least five
+ * digits (R-00001).
+ */
+export function formatCorrectionReference(sequenceValue: bigint): string {
+  return formatSequenceNumber('R', 5, sequenceValue);
+}

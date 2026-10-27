@@ -22,6 +22,7 @@ import {
   type NotificationView,
 } from './dto/notification-view.js';
 import {
+  correctionMessage,
   depositMessage,
   goalReachedMessage,
   orderAwaitingCustomerMessage,
@@ -126,6 +127,40 @@ export class NotificationsService {
         storeId: operation.storeId,
         operationId: operation.id,
         type: NotificationType.DEPOSIT_RECORDED,
+        title,
+        body,
+      },
+      { sms: true },
+    );
+  }
+
+  /**
+   * The rows announcing a manager's correction of a deposit (11a): in-app,
+   * SMS, and push, as for every money movement, with the reason. Linked to
+   * the correction.
+   */
+  async recordCorrection(
+    tx: Prisma.TransactionClient,
+    operation: OperationWithReceipt,
+  ): Promise<string[]> {
+    const { title, body } = correctionMessage({
+      amount: operation.amount,
+      currencyCode: operation.currencyCode,
+      storeName: operation.store.name,
+      accountNumber: operation.account.number,
+      // A correction always has both (the operations_correction_link_check CHECK).
+      depositReference: operation.correctedOperation?.reference ?? '',
+      reason: operation.reason ?? '',
+      balanceAfter: operation.balanceAfter,
+      reference: operation.reference,
+    });
+    return this.writeRows(
+      tx,
+      {
+        userId: operation.account.customerId,
+        storeId: operation.storeId,
+        operationId: operation.id,
+        type: NotificationType.CORRECTION_RECORDED,
         title,
         body,
       },
