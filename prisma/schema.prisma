@@ -505,8 +505,7 @@ model PriceHistory {
   @@map("price_history")
 }
 
-/// Where a material order stands (features 10a and 10b). Delivery (10c) adds
-/// its own.
+/// Where a material order stands (features 10a, 10b, 10c, and 11b).
 enum MaterialOrderStatus {
   /// A seller's order above the store's validation threshold.
   AWAITING_VALIDATION
@@ -521,6 +520,8 @@ enum MaterialOrderStatus {
   REFUSED_BY_CUSTOMER
   /// Handed over in full to the customer (10c), from CONFIRMED only.
   DELIVERED
+  /// Cancelled by the manager after the debit; the total was re-credited (11b).
+  CANCELLED_AFTER_DEBIT
 }
 
 /// How the customer confirmed an order (10b).
@@ -565,6 +566,9 @@ model MaterialOrder {
   /// Handed over in full (10c): set together, once, by the staff member.
   deliveredById         String?                   @db.Uuid
   deliveredAt           DateTime?
+  /// The CORRECTION that re-credited the total when the manager cancelled the
+  /// order after its debit (11b).
+  recreditOperationId   String?                   @unique @db.Uuid
   createdAt             DateTime                  @default(now())
   updatedAt             DateTime                  @updatedAt
 
@@ -576,7 +580,8 @@ model MaterialOrder {
   refusedBy         User?                   @relation("OrderRefusedBy", fields: [refusedById], references: [id], onDelete: Restrict)
   cancelledBy       User?                   @relation("OrderCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
   deliveredBy       User?                   @relation("OrderDeliveredBy", fields: [deliveredById], references: [id], onDelete: Restrict)
-  operation         Operation?              @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  operation         Operation?              @relation("OrderDebit", fields: [operationId], references: [id], onDelete: Restrict)
+  recreditOperation Operation?              @relation("OrderRecredit", fields: [recreditOperationId], references: [id], onDelete: Restrict)
   lines             MaterialOrderLine[]
   confirmationCodes OrderConfirmationCode[]
   goalMovements     GoalMovement[]
@@ -641,6 +646,9 @@ enum GoalMovementReason {
   ORDER_SHORTFALL
   /// A correction's goal held less than its amount: Unassigned paid the rest (11a).
   CORRECTION_SHORTFALL
+  /// A paid order was cancelled: the goal gives back to Unassigned the
+  /// shortfall it had covered (11b).
+  ORDER_CANCELLATION
 }
 
 /// Money moved from one goal to another of the same account. Not an operation:
@@ -745,7 +753,8 @@ model Operation {
   correctedOperation Operation?     @relation("OperationCorrection", fields: [correctedOperationId], references: [id], onDelete: Restrict)
   correctedBy        Operation[]    @relation("OperationCorrection")
   notifications      Notification[]
-  materialOrder      MaterialOrder?
+  materialOrder      MaterialOrder? @relation("OrderDebit")
+  recreditedOrder    MaterialOrder? @relation("OrderRecredit")
 
   // An account's history, newest first.
   @@index([accountId, createdAt])
@@ -768,6 +777,8 @@ enum NotificationType {
   ORDER_DELIVERED
   /// A manager's correction of a deposit (11a).
   CORRECTION_RECORDED
+  /// A paid order was cancelled and its total re-credited (11b).
+  ORDER_CANCELLED_AFTER_DEBIT
 }
 
 enum NotificationChannel {

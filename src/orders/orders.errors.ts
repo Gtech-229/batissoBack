@@ -15,6 +15,7 @@ export const ORDER_STATUS_LABELS: Record<MaterialOrderStatus, string> = {
   [MaterialOrderStatus.CONFIRMED]: 'confirmé par le client',
   [MaterialOrderStatus.REFUSED_BY_CUSTOMER]: 'refusé par le client',
   [MaterialOrderStatus.DELIVERED]: 'livré',
+  [MaterialOrderStatus.CANCELLED_AFTER_DEBIT]: 'annulé après débit',
 };
 
 // `error` is the stable code the mobile app relies on; `message` is shown to users.
@@ -101,5 +102,14 @@ export function notOrderPreparer(): ForbiddenException {
     message:
       'Vous ne pouvez annuler que les bons que vous avez préparés : demandez au gérant',
     error: 'NOT_ORDER_PREPARER',
+  });
+}
+
+/** The key already recorded another operation: a new cancellation needs a new key. */
+export function cancellationKeyReused(): ConflictException {
+  return new ConflictException({
+    message:
+      'Cette clé d’idempotence a déjà servi pour une autre opération : générez une nouvelle clé pour une nouvelle annulation',
+    error: 'IDEMPOTENCY_KEY_REUSED',
   });
 }

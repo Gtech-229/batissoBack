@@ -126,3 +126,22 @@ export function correctionMessage(correction: {
     body: `Correction de ${money(correction.amount)} retirée de votre compte ${correction.accountNumber} chez ${correction.storeName} (dépôt ${correction.depositReference}) : « ${correction.reason} ». Nouveau solde : ${money(correction.balanceAfter)}. Réf. ${correction.reference}.`,
   };
 }
+
+/** To the customer: the manager cancelled a paid order and re-credited it (11b). */
+export function paidOrderCancelledMessage(cancellation: {
+  orderReference: string;
+  total: bigint;
+  currencyCode: string;
+  storeName: string;
+  accountNumber: string;
+  reason: string;
+  balanceAfter: bigint;
+  reference: string;
+}): NotificationMessage {
+  const money = (value: bigint) =>
+    `${groupThousands(value)} ${cancellation.currencyCode}`;
+  return {
+    title: 'Bon annulé et remboursé',
+    body: `Le bon ${cancellation.orderReference} chez ${cancellation.storeName} est annulé : « ${cancellation.reason} ». ${money(cancellation.total)} remis sur votre compte ${cancellation.accountNumber}. Nouveau solde : ${money(cancellation.balanceAfter)}. Réf. ${cancellation.reference}.`,
+  };
+}

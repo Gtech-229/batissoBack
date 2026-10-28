@@ -1,4 +1,4 @@
-import { Injectable, type HttpException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { accountNotFound } from '../accounts/accounts.errors.js';
 import {
   articleNotFound,
@@ -52,9 +52,9 @@ import type { PrepareOrderDto } from './dto/prepare-order.dto.js';
 import { OrderConfirmationService } from './order-confirmation.service.js';
 import { formatOrderReference } from './order-reference.js';
 import { preparedOrderState } from './order-status.js';
+import { unchangedReason } from './order-unchanged.js';
 import {
   insufficientBalance,
-  notOrderPreparer,
   orderNotFound,
   orderStatusConflict,
   ownAccountOrder,
@@ -365,7 +365,7 @@ export class OrdersService {
         },
       });
       if (count === 0) {
-        throw await this.unchangedReason(tx, store.storeId, orderId);
+        throw await unchangedReason(tx, store.storeId, orderId);
       }
       // The customer is told, in the delivery's transaction (the outbox).
       return this.notifications.recordOrderDelivered(
@@ -503,32 +503,8 @@ export class OrdersService {
         // Notification rows of the change, in its transaction (the outbox).
         return onChanged ? onChanged(tx) : [];
       }
-      throw await this.unchangedReason(tx, store.storeId, orderId, preparerId);
+      throw await unchangedReason(tx, store.storeId, orderId, preparerId);
     });
-  }
-
-  /**
-   * Why a conditional write on an order of this store changed nothing: no
-   * such order (404), not its preparer (403, only with `preparerId`), or its
-   * status (409).
-   */
-  private async unchangedReason(
-    tx: Tx,
-    storeId: string,
-    orderId: string,
-    preparerId?: string,
-  ): Promise<HttpException> {
-    const order = await tx.materialOrder.findFirst({
-      where: { id: orderId, storeId },
-      select: { status: true, createdById: true },
-    });
-    if (!order) {
-      return orderNotFound();
-    }
-    if (preparerId !== undefined && order.createdById !== preparerId) {
-      return notOrderPreparer();
-    }
-    return orderStatusConflict(order.status);
   }
 
   /** The rows telling an order's customer that it awaits their confirmation. */

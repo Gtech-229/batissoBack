@@ -291,6 +291,9 @@ export class CorrectionsService {
     }
     const sameCorrection =
       operation.type === OperationType.CORRECTION &&
+      // A deposit correction is always a DEBIT: a CREDIT is a paid order's
+      // re-credit (11b), never a replay of this route (F-13).
+      operation.direction === OperationDirection.DEBIT &&
       operation.storeId === request.storeId &&
       operation.accountId === request.accountId &&
       operation.correctedOperationId === request.operationId &&

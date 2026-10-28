@@ -28,6 +28,7 @@ import {
   orderAwaitingCustomerMessage,
   orderDeliveredMessage,
   orderRefusedByCustomerMessage,
+  paidOrderCancelledMessage,
   purchaseMessage,
 } from './messages.js';
 import { notificationNotFound } from './notifications.errors.js';
@@ -65,6 +66,22 @@ export interface CustomerOrderEvent {
   reference: string;
   total: bigint;
   currencyCode: string;
+}
+
+/** A paid order the manager cancelled, and its re-credit (11b). */
+export interface PaidOrderCancelledEvent {
+  customerId: string;
+  storeId: string;
+  storeName: string;
+  accountNumber: string;
+  /** The re-credit (CORRECTION) operation. */
+  operationId: string;
+  reference: string;
+  orderReference: string;
+  total: bigint;
+  currencyCode: string;
+  reason: string;
+  balanceAfter: bigint;
 }
 
 /** The debit of a confirmed order (10b). */
@@ -244,6 +261,30 @@ export class NotificationsService {
         body,
       },
       { sms: false },
+    );
+  }
+
+  /**
+   * The rows telling the customer a paid order was cancelled and its total
+   * re-credited (11b): in-app, SMS, and push, as for every money movement,
+   * with the reason. Linked to the re-credit.
+   */
+  async recordPaidOrderCancelled(
+    tx: Prisma.TransactionClient,
+    event: PaidOrderCancelledEvent,
+  ): Promise<string[]> {
+    const { title, body } = paidOrderCancelledMessage(event);
+    return this.writeRows(
+      tx,
+      {
+        userId: event.customerId,
+        storeId: event.storeId,
+        operationId: event.operationId,
+        type: NotificationType.ORDER_CANCELLED_AFTER_DEBIT,
+        title,
+        body,
+      },
+      { sms: true },
     );
   }
 

@@ -6,6 +6,7 @@ import {
   orderAwaitingCustomerMessage,
   orderDeliveredMessage,
   orderRefusedByCustomerMessage,
+  paidOrderCancelledMessage,
   purchaseMessage,
 } from './messages.js';
 
@@ -171,6 +172,28 @@ describe('correctionMessage', () => {
     expect(message).toEqual({
       title: 'Correction de votre compte',
       body: 'Correction de 4 500 XOF retirée de votre compte C-000123 chez Quincaillerie du Carrefour (dépôt D-00482) : « Erreur de saisie ». Nouveau solde : 15 000 XOF. Réf. R-00001.',
+    });
+    // Project rule: money is never said to be "sécurisé" or "garanti".
+    expect(message.body).not.toMatch(/sécuris|garanti/);
+  });
+});
+
+describe('paidOrderCancelledMessage', () => {
+  it('gives the order, the reason, the amount back, the new balance, and the reference', () => {
+    const message = paidOrderCancelledMessage({
+      orderReference: 'B-00042',
+      total: 20000n,
+      currencyCode: 'XOF',
+      storeName: 'Quincaillerie du Carrefour',
+      accountNumber: 'C-000123',
+      reason: 'Rupture de stock',
+      balanceAfter: 300000n,
+      reference: 'R-00002',
+    });
+
+    expect(message).toEqual({
+      title: 'Bon annulé et remboursé',
+      body: 'Le bon B-00042 chez Quincaillerie du Carrefour est annulé : « Rupture de stock ». 20 000 XOF remis sur votre compte C-000123. Nouveau solde : 300 000 XOF. Réf. R-00002.',
     });
     // Project rule: money is never said to be "sécurisé" or "garanti".
     expect(message.body).not.toMatch(/sécuris|garanti/);

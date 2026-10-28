@@ -45,3 +45,22 @@ export class CancelOrderDto {
   @Length(1, 500, { message: CANCELLATION_MESSAGE })
   reason?: string;
 }
+
+const PAID_CANCELLATION_MESSAGE =
+  'Le motif de l’annulation doit contenir 1 à 500 caractères';
+
+/**
+ * The manager cancels a paid order (11b): the reason is required (user
+ * decision, 2026-10-28), shown to the customer and sent in the SMS.
+ */
+export class CancelPaidOrderDto {
+  @ApiProperty({
+    description:
+      'Pourquoi le bon payé est annulé : visible par le client, dans ses bons, son historique et le SMS',
+    example: 'Rupture de stock : livraison impossible',
+  })
+  @Trim()
+  @IsString({ message: PAID_CANCELLATION_MESSAGE })
+  @Length(1, 500, { message: PAID_CANCELLATION_MESSAGE })
+  reason: string;
+}

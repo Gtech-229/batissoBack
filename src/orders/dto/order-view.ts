@@ -181,6 +181,15 @@ export class OrderFields {
   })
   deliveredAt: Date | null;
 
+  @ApiProperty({
+    description:
+      'Référence de la correction qui a recrédité le montant quand le gérant a annulé le bon après débit (R-00001), ou `null`',
+    example: null,
+    nullable: true,
+    type: String,
+  })
+  recreditReference: string | null;
+
   @ApiProperty({ description: 'Date de préparation', example: DATE_EXAMPLE })
   createdAt: Date;
 }
@@ -251,6 +260,7 @@ export const ORDER_INCLUDE = {
   goal: { select: { id: true, label: true } },
   lines: ORDER_LINES_ORDER,
   operation: { select: { reference: true } },
+  recreditOperation: { select: { reference: true } },
   createdBy: true,
   validatedBy: true,
   refusedBy: true,
@@ -263,6 +273,7 @@ export type OrderWithFields = MaterialOrder & {
   goal: Pick<Goal, 'id' | 'label'>;
   lines: MaterialOrderLine[];
   operation: { reference: string } | null;
+  recreditOperation: { reference: string } | null;
 };
 
 export type OrderWithStaff = OrderWithFields & {
@@ -309,6 +320,7 @@ export function toOrderFields(
     customerRefusedAt: order.customerRefusedAt,
     customerRefusalReason: order.customerRefusalReason,
     deliveredAt: order.deliveredAt,
+    recreditReference: order.recreditOperation?.reference ?? null,
     createdAt: order.createdAt,
   };
 }

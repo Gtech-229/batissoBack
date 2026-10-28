@@ -320,6 +320,15 @@ order goes from `CONFIRMED` to `DELIVERED`, with the date and who delivered
 it, and the customer is told in the app and by push. A closed store can still
 deliver, since the customer has already paid.
 
+When a paid order will not be delivered, the **manager** cancels it with
+`POST /api/v1/stores/:storeId/orders/:orderId/cancel-after-debit`
+`{ "reason": "Rupture de stock" }` and an `Idempotency-Key` header: the order
+goes from `CONFIRMED` to `CANCELLED_AFTER_DEBIT` and its total is re-credited
+once by a correction (`R-00002`) linked to the purchase debit. The money goes
+back where it came from: the order's goal regains what it paid, Non affecté
+what it covered (all to Non affecté if the goal was closed since). Possible
+even in a closed store; the customer is told in the app, by push, and by SMS.
+
 ## Common commands
 
 | Command | What it does |
