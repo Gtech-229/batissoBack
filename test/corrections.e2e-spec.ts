@@ -135,9 +135,11 @@ describe('Manager corrections of deposits (e2e)', () => {
     const sum = (await goalsOf(id)).reduce((s, g) => s + g.balance, 0n);
     expect(sum).toBe(await balanceOf(id));
   };
+  /** What a refused correction must leave unchanged (F-14). */
   const counts = async () => ({
     operations: await prisma.operation.count(),
     movements: await prisma.goalMovement.count(),
+    notifications: await prisma.notification.count(),
   });
   const settled = async () => {
     for (let i = 0; i < 100; i++) {
@@ -359,26 +361,31 @@ describe('Manager corrections of deposits (e2e)', () => {
         where: { reference: confirmed.body.debitReference as string },
       });
       const correction = await correct(recorded.id).expect(201);
+      const before = await counts();
 
       for (const operationId of [debit.id, correction.body.id as string]) {
         await correct(operationId)
           .expect(409)
           .expect((r) => expect(r.body.error).toBe('NOT_CORRECTABLE'));
       }
+      expect(await counts()).toEqual(before);
     });
 
     it('is for the manager only: a seller gets 403 STORE_ROLE_REQUIRED', async () => {
       const recorded = await deposit('5000');
+      const before = await counts();
 
       await correct(recorded.id, undefined, { as: seller })
         .expect(403)
         .expect((r) => expect(r.body.error).toBe('STORE_ROLE_REQUIRED'));
       expect(await balanceOf()).toBe(5000n);
+      expect(await counts()).toEqual(before);
     });
 
     it('answers 404 for another store, another account, or an unknown operation', async () => {
       const recorded = await deposit('5000');
       const otherDeposit = await deposit('5000', { account: otherAccountId });
+      const before = await counts();
 
       await correct(recorded.id, undefined, { as: outsider })
         .expect(404)
@@ -398,25 +405,27 @@ describe('Manager corrections of deposits (e2e)', () => {
       await correct(randomUUID())
         .expect(404)
         .expect((r) => expect(r.body.message).toBe('Opération introuvable'));
-      expect(
-        await prisma.operation.count({ where: { type: 'CORRECTION' } }),
-      ).toBe(0);
+      expect(await counts()).toEqual(before);
     });
 
     it('answers 400 for malformed ids', async () => {
       const recorded = await deposit('5000');
+      const before = await counts();
 
       await correct('d-1').expect(400);
       await correct(recorded.id, undefined, { account: 'c-1' }).expect(400);
+      expect(await counts()).toEqual(before);
     });
 
     it('refuses the manager’s own account with 409 OWN_ACCOUNT', async () => {
       const own = await openAccount(manager.phone);
       const recorded = await deposit('5000', { account: own.id });
+      const before = await counts();
 
       await correct(recorded.id, undefined, { account: own.id })
         .expect(409)
         .expect((r) => expect(r.body.error).toBe('OWN_ACCOUNT'));
+      expect(await counts()).toEqual(before);
     });
 
     it('refuses a closed store with 409 STORE_CLOSED, and corrects in a suspended one', async () => {
@@ -431,10 +440,12 @@ describe('Manager corrections of deposits (e2e)', () => {
         where: { id: storeId },
         data: { status: 'CLOSED' },
       });
+      const before = await counts();
       await correct(recorded.id)
         .expect(409)
         .expect((r) => expect(r.body.error).toBe('STORE_CLOSED'));
       expect(await balanceOf()).toBe(4000n);
+      expect(await counts()).toEqual(before);
     });
 
     it.each([
@@ -451,6 +462,7 @@ describe('Manager corrections of deposits (e2e)', () => {
       ],
     ])('refuses %s with a French 400', async (_, body, field) => {
       const recorded = await deposit('5000');
+      const before = await counts();
 
       await correct(recorded.id, body)
         .expect(400)
@@ -459,10 +471,12 @@ describe('Manager corrections of deposits (e2e)', () => {
             expect.objectContaining({ field }),
           ),
         );
+      expect(await counts()).toEqual(before);
     });
 
     it('refuses a missing or invalid Idempotency-Key with 400', async () => {
       const recorded = await deposit('5000');
+      const before = await counts();
 
       for (const key of ['', 'not-a-uuid']) {
         await correct(recorded.id, undefined, { key })
@@ -473,6 +487,7 @@ describe('Manager corrections of deposits (e2e)', () => {
             ),
           );
       }
+      expect(await counts()).toEqual(before);
     });
 
     describe('idempotency', () => {
@@ -495,6 +510,7 @@ describe('Manager corrections of deposits (e2e)', () => {
         const recorded = await deposit('5000');
         const key = randomUUID();
         await correct(recorded.id, undefined, { key }).expect(201);
+        const before = await counts();
 
         await correct(
           recorded.id,
@@ -504,6 +520,7 @@ describe('Manager corrections of deposits (e2e)', () => {
           .expect(409)
           .expect((r) => expect(r.body.error).toBe('IDEMPOTENCY_KEY_REUSED'));
         expect(await balanceOf()).toBe(4000n);
+        expect(await counts()).toEqual(before);
       });
 
       it('records once when the same key is sent in parallel', async () => {

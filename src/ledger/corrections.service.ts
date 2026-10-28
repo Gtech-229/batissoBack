@@ -145,7 +145,12 @@ export class CorrectionsService {
           const {
             _sum: { amount: corrected },
           } = await tx.operation.aggregate({
-            where: { correctedOperationId: deposit.id },
+            // accountId: every correction of this deposit is on its account,
+            // and the account index keeps this read short under the lock (F-13).
+            where: {
+              accountId: request.accountId,
+              correctedOperationId: deposit.id,
+            },
             _sum: { amount: true },
           });
           const remaining = deposit.amount - (corrected ?? 0n);
