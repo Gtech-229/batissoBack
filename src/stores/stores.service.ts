@@ -107,6 +107,7 @@ export class StoresService {
             create: {
               ...amounts,
               terms: dto.settings.terms,
+              deliveryDelayDays: dto.settings.deliveryDelayDays,
               updatedById: adminId,
             },
           },
@@ -231,6 +232,7 @@ export class StoresService {
         data: {
           ...definedOnly(amounts),
           ...(changes.terms !== undefined && { terms: changes.terms }),
+          deliveryDelayDays: changes.deliveryDelayDays,
           updatedById: adminId,
         },
       });

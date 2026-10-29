@@ -249,6 +249,7 @@ describe('Stores: list and updates (e2e)', () => {
         refundAllowed: false,
         reservationEnabled: false,
         terms: 'Pas de remboursement en espèces.',
+        deliveryDelayDays: 30,
       });
       const settings = await prisma.storeSettings.findUniqueOrThrow({
         where: { storeId: store.id },
@@ -265,6 +266,46 @@ describe('Stores: list and updates (e2e)', () => {
       );
       expect(response.body.settings.terms).toBeNull();
     });
+
+    it('changes the delivery delay and keeps it', async () => {
+      const store = await createStoreRecord(prisma);
+
+      const response = await updateSettings(store.id, {
+        deliveryDelayDays: 45,
+      }).expect(200);
+
+      expect(response.body.settings).toMatchObject({
+        deliveryDelayDays: 45,
+        maxBalance: '2000000',
+      });
+      expect(
+        (
+          await prisma.storeSettings.findUniqueOrThrow({
+            where: { storeId: store.id },
+          })
+        ).deliveryDelayDays,
+      ).toBe(45);
+    });
+
+    it.each([0, 366, 2.5, '30', null])(
+      'refuses a delivery delay of %s with a French 400',
+      async (deliveryDelayDays) => {
+        const store = await createStoreRecord(prisma);
+
+        const response = await updateSettings(store.id, {
+          deliveryDelayDays,
+        }).expect(400);
+
+        expect(response.body.details).toEqual([
+          {
+            field: 'deliveryDelayDays',
+            errors: [
+              'Le délai de livraison doit être un nombre entier de jours, de 1 à 365',
+            ],
+          },
+        ]);
+      },
+    );
 
     it.each(['maxBalance', 'validationThreshold', 'minDeposit'])(
       'refuses null for %s with a 400',

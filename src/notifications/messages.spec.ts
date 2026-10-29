@@ -1,4 +1,5 @@
 import {
+  cancellationRequestedMessage,
   correctionMessage,
   depositMessage,
   goalReachedMessage,
@@ -197,5 +198,34 @@ describe('paidOrderCancelledMessage', () => {
     });
     // Project rule: money is never said to be "sécurisé" or "garanti".
     expect(message.body).not.toMatch(/sécuris|garanti/);
+  });
+});
+
+describe('cancellationRequestedMessage', () => {
+  const order = {
+    accountNumber: 'C-000123',
+    orderReference: 'B-00042',
+    total: 20000n,
+    currencyCode: 'XOF',
+  };
+
+  it('names the account, the order, the amount, and what the manager must do, with the reason', () => {
+    const message = cancellationRequestedMessage({
+      ...order,
+      reason: 'Toujours pas livré',
+    });
+
+    expect(message).toEqual({
+      title: 'Demande d’annulation d’un bon',
+      body: 'Le client du compte C-000123 demande l’annulation du bon B-00042 de 20 000 XOF, toujours pas livré. Livrez-le ou annulez-le avec remboursement. Motif : « Toujours pas livré ».',
+    });
+    // Project rule: money is never said to be "sécurisé" or "garanti".
+    expect(message.body).not.toMatch(/sécuris|garanti/);
+  });
+
+  it('leaves the reason out when there is none', () => {
+    expect(cancellationRequestedMessage({ ...order, reason: null }).body).toBe(
+      'Le client du compte C-000123 demande l’annulation du bon B-00042 de 20 000 XOF, toujours pas livré. Livrez-le ou annulez-le avec remboursement.',
+    );
   });
 });

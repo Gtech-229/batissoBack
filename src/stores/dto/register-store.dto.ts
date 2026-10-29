@@ -2,11 +2,15 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsISO31661Alpha2,
+  IsInt,
   IsObject,
   IsOptional,
   IsString,
   Length,
+  Max,
   MaxLength,
+  Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { AMOUNT_RULE_MESSAGE, IsAmount } from '../../common/money.js';
@@ -22,6 +26,8 @@ const PHONE_DESCRIPTION =
 const SETTINGS_MESSAGE =
   'Les paramètres de la quincaillerie sont requis, sous forme d’objet';
 const MANAGER_MESSAGE = 'Le gérant est requis, sous forme d’objet';
+const DELIVERY_DELAY_MESSAGE =
+  'Le délai de livraison doit être un nombre entier de jours, de 1 à 365';
 
 export class StoreSettingsInput {
   @ApiProperty({
@@ -56,6 +62,18 @@ export class StoreSettingsInput {
     message: 'Les conditions générales dépassent 10 000 caractères',
   })
   terms?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Jours après la confirmation du client au-delà desquels il peut demander l’annulation d’un bon non livré (1 à 365 ; 30 par défaut)',
+    example: 30,
+  })
+  // Omitted keeps the default (or the current value); null is refused.
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsInt({ message: DELIVERY_DELAY_MESSAGE })
+  @Min(1, { message: DELIVERY_DELAY_MESSAGE })
+  @Max(365, { message: DELIVERY_DELAY_MESSAGE })
+  deliveryDelayDays?: number;
 }
 
 export class StoreManagerInput {

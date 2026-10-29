@@ -137,18 +137,18 @@ export class StoresController {
   }
 
   /**
-   * @description Change a store's money settings (partial)
+   * @description Change a store's settings (partial): amounts, terms, delivery delay
    * @route PATCH /api/v1/admin/stores/:id/settings
    * @access Admin
    * @param id (UUID) store id
-   * @body UpdateStoreSettingsDto (maxBalance?, validationThreshold?, minDeposit?, terms?)
+   * @body UpdateStoreSettingsDto (maxBalance?, validationThreshold?, minDeposit?, terms?, deliveryDelayDays?)
    * @returns 200 StoreDetail; 400 if minDeposit would exceed maxBalance; 409 STORE_CLOSED
    */
   @Patch(':id/settings')
   @ApiOperation({
     summary: 'Modifier les paramètres d’une quincaillerie',
     description:
-      'Mise à jour partielle des montants (chaînes en plus petite unité de la devise) et des conditions générales (`null` les efface). Le dépôt minimum ne peut pas dépasser le solde maximal, en tenant compte des valeurs actuelles.',
+      'Mise à jour partielle des montants (chaînes en plus petite unité de la devise) et des conditions générales (`null` les efface), et du délai de livraison (`deliveryDelayDays`, 1 à 365 jours : au-delà, un client peut demander l’annulation d’un bon payé non livré). Le dépôt minimum ne peut pas dépasser le solde maximal, en tenant compte des valeurs actuelles.',
   })
   @ApiParam({ name: 'id', description: 'Identifiant de la quincaillerie' })
   @ApiOkResponse({ description: 'Paramètres modifiés', type: StoreDetail })

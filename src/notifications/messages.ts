@@ -145,3 +145,18 @@ export function paidOrderCancelledMessage(cancellation: {
     body: `Le bon ${cancellation.orderReference} chez ${cancellation.storeName} est annulé : « ${cancellation.reason} ». ${money(cancellation.total)} remis sur votre compte ${cancellation.accountNumber}. Nouveau solde : ${money(cancellation.balanceAfter)}. Réf. ${cancellation.reference}.`,
   };
 }
+
+/** To the store's managers: a customer asks to cancel an undelivered order (11c). */
+export function cancellationRequestedMessage(order: {
+  accountNumber: string;
+  orderReference: string;
+  total: bigint;
+  currencyCode: string;
+  reason: string | null;
+}): NotificationMessage {
+  const reason = order.reason === null ? '' : ` Motif : « ${order.reason} ».`;
+  return {
+    title: 'Demande d’annulation d’un bon',
+    body: `Le client du compte ${order.accountNumber} demande l’annulation du bon ${order.orderReference} de ${groupThousands(order.total)} ${order.currencyCode}, toujours pas livré. Livrez-le ou annulez-le avec remboursement.${reason}`,
+  };
+}

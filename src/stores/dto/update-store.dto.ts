@@ -20,9 +20,10 @@ export class UpdateStoreDto extends PartialType(
 ) {}
 
 /**
- * Partial settings update. `null` is refused on the amounts (see above), but
- * `"terms": null` clears the terms: `terms` keeps its own `@IsOptional()` from
- * `StoreSettingsInput`, and `definedOnly` keeps the null.
+ * Partial settings update. `null` is refused on the amounts and the delivery
+ * delay (see above), but `"terms": null` clears the terms: `terms` keeps its
+ * own `@IsOptional()` from `StoreSettingsInput`, and `definedOnly` keeps the
+ * null.
  */
 export class UpdateStoreSettingsDto extends PartialType(StoreSettingsInput, {
   skipNullProperties: false,

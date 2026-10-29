@@ -55,6 +55,9 @@ There is no seed data, so a fresh database has no country. As an admin:
 3. Register a store with its money settings and first manager:
    `POST /api/v1/admin/stores`. Amounts are strings in the currency's smallest unit
    (`"200000"` = 200 000 F); phone numbers must belong to the store's country.
+   `deliveryDelayDays` (optional, 1 to 365, default 30) is how many days after
+   confirming a paid order a customer may ask to cancel it while it is still
+   undelivered; `PATCH /api/v1/admin/stores/:id/settings` changes it.
 4. After checking its papers, verify it: `PATCH /api/v1/admin/stores/:id/verify`.
    A store can then be suspended, reactivated, or closed (final).
 
@@ -328,6 +331,14 @@ once by a correction (`R-00002`) linked to the purchase debit. The money goes
 back where it came from: the order's goal regains what it paid, Non affecté
 what it covered (all to Non affecté if the goal was closed since). Possible
 even in a closed store; the customer is told in the app, by push, and by SMS.
+
+Once the store's delivery delay has passed since they confirmed (30 days by
+default), a customer whose paid order is still not delivered can ask to cancel
+it: `POST /api/v1/me/accounts/:accountId/orders/:orderId/cancellation-request`
+`{ "reason": "<optional>" }`. The order records the request and stays
+`CONFIRMED`; the store's managers are told in the app and by push, and the
+manager then delivers it or cancels it with re-credit. Too early, the answer is
+409 with the date from which the customer can ask; one request per order.
 
 ## Common commands
 

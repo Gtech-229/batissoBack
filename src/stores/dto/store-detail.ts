@@ -48,6 +48,13 @@ export class StoreSettingsView {
 
   @ApiProperty({ type: String, nullable: true, example: null })
   terms: string | null;
+
+  @ApiProperty({
+    description:
+      'Jours après la confirmation du client au-delà desquels il peut demander l’annulation d’un bon non livré',
+    example: 30,
+  })
+  deliveryDelayDays: number;
 }
 
 export class StoreManager {
@@ -158,6 +165,7 @@ export function toStoreDetail(store: StoreWithDetail): StoreDetail {
       refundAllowed: store.settings.refundAllowed,
       reservationEnabled: store.settings.reservationEnabled,
       terms: store.settings.terms,
+      deliveryDelayDays: store.settings.deliveryDelayDays,
     },
     managers: store.members.map((member) => ({
       userId: member.user.id,

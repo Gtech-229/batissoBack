@@ -64,3 +64,23 @@ export class CancelPaidOrderDto {
   @Length(1, 500, { message: PAID_CANCELLATION_MESSAGE })
   reason: string;
 }
+
+const REQUEST_MESSAGE =
+  'Le motif de la demande doit contenir 1 à 500 caractères';
+
+/**
+ * The customer asks to cancel an undelivered order (11c), with an optional
+ * reason sent to the manager.
+ */
+export class CancellationRequestDto {
+  @ApiPropertyOptional({
+    description:
+      'Pourquoi vous demandez l’annulation (facultatif, transmis au gérant)',
+    example: 'Toujours pas livré après un mois',
+  })
+  @ValidateIf((_object, value) => value !== undefined)
+  @Trim()
+  @IsString({ message: REQUEST_MESSAGE })
+  @Length(1, 500, { message: REQUEST_MESSAGE })
+  reason?: string;
+}

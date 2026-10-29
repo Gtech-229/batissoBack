@@ -35,7 +35,10 @@ import { CurrentUser } from '../mobile-auth/decorators/current-user.decorator.js
 import { MobileRoute } from '../mobile-auth/decorators/mobile-route.decorator.js';
 import { ListMyOrdersQueryDto } from './dto/list-orders.dto.js';
 import { ConfirmByPinDto } from './dto/order-confirmation.dto.js';
-import { CustomerRefusalDto } from './dto/order-decisions.dto.js';
+import {
+  CancellationRequestDto,
+  CustomerRefusalDto,
+} from './dto/order-decisions.dto.js';
 import { MyOrderView } from './dto/my-order-view.js';
 import { invalidOrderId } from './orders.errors.js';
 import { OrdersService } from './orders.service.js';
@@ -211,5 +214,47 @@ export class MyOrdersController {
     @Body() body: CustomerRefusalDto,
   ): Promise<MyOrderView> {
     return this.orders.refuseMine(user.userId, accountId, orderId, body);
+  }
+
+  /**
+   * @description Ask to cancel a paid order still undelivered after the store's delivery delay: the manager is alerted
+   * @route POST /api/v1/me/accounts/:accountId/orders/:orderId/cancellation-request
+   * @access Mobile session (Bearer), the account's customer only
+   * @param accountId one of the user's accounts
+   * @param orderId the order, confirmed (paid) and not delivered
+   * @body CancellationRequestDto (reason?)
+   * @returns 200 MyOrderView; 409 ORDER_STATUS, CANCELLATION_ALREADY_REQUESTED or DELIVERY_DELAY_NOT_REACHED
+   */
+  @Post(':orderId/cancellation-request')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Demander l’annulation d’un bon payé non livré',
+    description:
+      'Pour un bon confirmé (déjà débité) qui n’est toujours pas livré après le délai de livraison de la quincaillerie (30 jours par défaut, comptés depuis votre confirmation) : la demande est enregistrée (date et motif facultatif) et le gérant est prévenu. Le bon reste `CONFIRMED` : le gérant le livre, ou l’annule et vous rembourse sur votre compte. Une seule demande par bon.',
+  })
+  @ApiParam({ name: 'orderId', description: 'Identifiant du bon' })
+  @ApiOkResponse({ description: 'Demande enregistrée', type: MyOrderView })
+  @ApiBadRequestResponse({
+    description:
+      'Identifiant de compte ou de bon invalide ; motif invalide (`details`)',
+    type: ErrorResponse,
+  })
+  @ApiConflictResponse({
+    description:
+      'Le bon n’est pas confirmé ou il est déjà livré ou annulé (`ORDER_STATUS`) ; demande déjà faite (`CANCELLATION_ALREADY_REQUESTED`) ; délai de livraison pas encore écoulé, le message donne la date (`DELIVERY_DELAY_NOT_REACHED`)',
+    type: ErrorResponse,
+  })
+  requestCancellation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('accountId', AccountIdPipe) accountId: string,
+    @Param('orderId', OrderIdPipe) orderId: string,
+    @Body() body: CancellationRequestDto,
+  ): Promise<MyOrderView> {
+    return this.orders.requestCancellation(
+      user.userId,
+      accountId,
+      orderId,
+      body,
+    );
   }
 }

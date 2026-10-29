@@ -87,6 +87,7 @@ describe('Swagger document (e2e)', () => {
       'POST /api/v1/stores/{storeId}/orders/{orderId}/confirm',
       'POST /api/v1/stores/{storeId}/orders/{orderId}/deliver',
       'POST /api/v1/stores/{storeId}/orders/{orderId}/cancel-after-debit',
+      'POST /api/v1/me/accounts/{accountId}/orders/{orderId}/cancellation-request',
       'POST /api/v1/stores/{storeId}/accounts/{accountId}/operations/{operationId}/corrections',
     ]) {
       expect(security(route)).toEqual([{ bearer: [] }]);
@@ -148,6 +149,7 @@ describe('Swagger document (e2e)', () => {
         'POST /api/v1/stores/{storeId}/orders/{orderId}/confirm',
         'POST /api/v1/stores/{storeId}/orders/{orderId}/deliver',
         'POST /api/v1/stores/{storeId}/orders/{orderId}/cancel-after-debit',
+        'POST /api/v1/me/accounts/{accountId}/orders/{orderId}/cancellation-request',
         'POST /api/v1/stores/{storeId}/accounts/{accountId}/operations/{operationId}/corrections',
       ]),
     );

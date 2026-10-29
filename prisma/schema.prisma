@@ -185,6 +185,9 @@ model StoreSettings {
   refundAllowed       Boolean  @default(false) /// Off for every store in V1
   reservationEnabled  Boolean  @default(false) /// Off for every store in V1
   terms               String?
+  /// Days after the customer's confirmation before they may ask to cancel an
+  /// undelivered order (11c). 1 to 365 (a CHECK).
+  deliveryDelayDays   Int      @default(30)
   updatedAt           DateTime @updatedAt
   updatedById         String?  @db.Uuid
 
@@ -537,40 +540,44 @@ enum OrderConfirmationChannel {
 /// names, and units are frozen on its lines at preparation. No money moves
 /// until the customer confirms (10b). The row records who did each step.
 model MaterialOrder {
-  id                    String                    @id @default(uuid(7)) @db.Uuid
+  id                        String                    @id @default(uuid(7)) @db.Uuid
   /// Human reference: "B-" and at least 5 digits (B-00042), one platform-wide
   /// sequence (material_order_reference_seq).
-  reference             String                    @unique @db.VarChar(20)
-  storeId               String                    @db.Uuid
-  accountId             String                    @db.Uuid
+  reference                 String                    @unique @db.VarChar(20)
+  storeId                   String                    @db.Uuid
+  accountId                 String                    @db.Uuid
   /// The goal paid from first; the Unassigned goal pays the rest (10b).
-  goalId                String                    @db.Uuid
-  status                MaterialOrderStatus
+  goalId                    String                    @db.Uuid
+  status                    MaterialOrderStatus
   /// Sum of the lines, in the currency's smallest unit (> 0, a CHECK).
-  total                 BigInt
-  createdById           String                    @db.Uuid
-  validatedById         String?                   @db.Uuid
-  validatedAt           DateTime?
-  refusedById           String?                   @db.Uuid
-  refusedAt             DateTime?
-  refusalReason         String?                   @db.VarChar(500)
-  cancelledById         String?                   @db.Uuid
-  cancelledAt           DateTime?
-  cancellationReason    String?                   @db.VarChar(500)
+  total                     BigInt
+  createdById               String                    @db.Uuid
+  validatedById             String?                   @db.Uuid
+  validatedAt               DateTime?
+  refusedById               String?                   @db.Uuid
+  refusedAt                 DateTime?
+  refusalReason             String?                   @db.VarChar(500)
+  cancelledById             String?                   @db.Uuid
+  cancelledAt               DateTime?
+  cancellationReason        String?                   @db.VarChar(500)
   /// The MATERIAL_DEBIT operation written at confirmation (10b).
-  operationId           String?                   @unique @db.Uuid
-  confirmedAt           DateTime?
-  confirmedVia          OrderConfirmationChannel?
-  customerRefusedAt     DateTime?
-  customerRefusalReason String?                   @db.VarChar(500)
+  operationId               String?                   @unique @db.Uuid
+  confirmedAt               DateTime?
+  confirmedVia              OrderConfirmationChannel?
+  customerRefusedAt         DateTime?
+  customerRefusalReason     String?                   @db.VarChar(500)
   /// Handed over in full (10c): set together, once, by the staff member.
-  deliveredById         String?                   @db.Uuid
-  deliveredAt           DateTime?
+  deliveredById             String?                   @db.Uuid
+  deliveredAt               DateTime?
   /// The CORRECTION that re-credited the total when the manager cancelled the
   /// order after its debit (11b).
-  recreditOperationId   String?                   @unique @db.Uuid
-  createdAt             DateTime                  @default(now())
-  updatedAt             DateTime                  @updatedAt
+  recreditOperationId       String?                   @unique @db.Uuid
+  /// The customer asked to cancel it, undelivered after the store's delivery
+  /// delay (11c): set once, never cleared; the order stays CONFIRMED.
+  cancellationRequestedAt   DateTime?
+  cancellationRequestReason String?                   @db.VarChar(500)
+  createdAt                 DateTime                  @default(now())
+  updatedAt                 DateTime                  @updatedAt
 
   store             HardwareStore           @relation(fields: [storeId], references: [id], onDelete: Restrict)
   account           Account                 @relation(fields: [accountId], references: [id], onDelete: Restrict)
@@ -779,6 +786,8 @@ enum NotificationType {
   CORRECTION_RECORDED
   /// A paid order was cancelled and its total re-credited (11b).
   ORDER_CANCELLED_AFTER_DEBIT
+  /// The customer asked to cancel an undelivered order: sent to the managers (11c).
+  ORDER_CANCELLATION_REQUESTED
 }
 
 enum NotificationChannel {

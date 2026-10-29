@@ -22,6 +22,7 @@ import {
   type NotificationView,
 } from './dto/notification-view.js';
 import {
+  cancellationRequestedMessage,
   correctionMessage,
   depositMessage,
   goalReachedMessage,
@@ -30,6 +31,7 @@ import {
   orderRefusedByCustomerMessage,
   paidOrderCancelledMessage,
   purchaseMessage,
+  type NotificationMessage,
 } from './messages.js';
 import { notificationNotFound } from './notifications.errors.js';
 
@@ -66,6 +68,16 @@ export interface CustomerOrderEvent {
   reference: string;
   total: bigint;
   currencyCode: string;
+}
+
+/** A customer asks to cancel a paid, undelivered order, for the managers (11c). */
+export interface CancellationRequestedEvent {
+  storeId: string;
+  accountNumber: string;
+  orderReference: string;
+  total: bigint;
+  currencyCode: string;
+  reason: string | null;
 }
 
 /** A paid order the manager cancelled, and its re-credit (11b). */
@@ -319,11 +331,42 @@ export class NotificationsService {
     tx: Prisma.TransactionClient,
     event: OrderRefusedEvent,
   ): Promise<string[]> {
+    return this.writeToManagers(
+      tx,
+      event.storeId,
+      NotificationType.ORDER_REFUSED_BY_CUSTOMER,
+      orderRefusedByCustomerMessage(event),
+    );
+  }
+
+  /**
+   * The rows alerting each active manager of the store that the customer asks
+   * to cancel a paid, undelivered order (11c): in-app and push, no SMS (user
+   * decision, 2026-10-28; no money moves until the manager acts).
+   */
+  async recordCancellationRequested(
+    tx: Prisma.TransactionClient,
+    event: CancellationRequestedEvent,
+  ): Promise<string[]> {
+    return this.writeToManagers(
+      tx,
+      event.storeId,
+      NotificationType.ORDER_CANCELLATION_REQUESTED,
+      cancellationRequestedMessage(event),
+    );
+  }
+
+  /** One message to each active manager of the store: in-app and push, no SMS. */
+  private async writeToManagers(
+    tx: Prisma.TransactionClient,
+    storeId: string,
+    type: NotificationType,
+    { title, body }: NotificationMessage,
+  ): Promise<string[]> {
     const managers = await tx.storeMember.findMany({
-      where: { storeId: event.storeId, role: 'MANAGER', active: true },
+      where: { storeId, role: 'MANAGER', active: true },
       select: { userId: true },
     });
-    const { title, body } = orderRefusedByCustomerMessage(event);
     const ids: string[] = [];
     for (const manager of managers) {
       ids.push(
@@ -331,9 +374,9 @@ export class NotificationsService {
           tx,
           {
             userId: manager.userId,
-            storeId: event.storeId,
+            storeId,
             operationId: null,
-            type: NotificationType.ORDER_REFUSED_BY_CUSTOMER,
+            type,
             title,
             body,
           },

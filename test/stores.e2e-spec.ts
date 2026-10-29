@@ -57,6 +57,7 @@ describe('Stores (e2e)', () => {
           refundAllowed: false,
           reservationEnabled: false,
           terms: null,
+          deliveryDelayDays: 30,
         },
         managers: [
           { firstName: 'Awa', lastName: 'Diallo', phone: '+22376000000' },
@@ -206,6 +207,34 @@ describe('Stores (e2e)', () => {
       expect(JSON.stringify(response.body.details)).toMatch(
         /entier positif écrit en chiffres/,
       );
+    });
+
+    it('keeps a delivery delay given at registration, and refuses one out of range', async () => {
+      await createMali(prisma);
+      const settings = {
+        maxBalance: '2000000',
+        validationThreshold: '200000',
+        minDeposit: '500',
+      };
+
+      const response = await register(
+        storeBody({ settings: { ...settings, deliveryDelayDays: 60 } }),
+      ).expect(201);
+      expect(response.body.settings.deliveryDelayDays).toBe(60);
+
+      await register(
+        storeBody({
+          name: 'Autre',
+          settings: { ...settings, deliveryDelayDays: 0 },
+          manager: { firstName: 'B', lastName: 'C', phone: '76 00 00 09' },
+        }),
+      )
+        .expect(400)
+        .expect((r) =>
+          expect(r.body.details).toContainEqual(
+            expect.objectContaining({ field: 'settings.deliveryDelayDays' }),
+          ),
+        );
     });
 
     it('requires the settings and the manager', async () => {

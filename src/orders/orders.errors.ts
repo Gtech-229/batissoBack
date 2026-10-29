@@ -113,3 +113,20 @@ export function cancellationKeyReused(): ConflictException {
     error: 'IDEMPOTENCY_KEY_REUSED',
   });
 }
+
+/** The customer already asked to cancel this order (11c): one request per order. */
+export function cancellationAlreadyRequested(): ConflictException {
+  return new ConflictException({
+    message:
+      'Vous avez déjà demandé l’annulation de ce bon : le gérant doit le livrer ou l’annuler',
+    error: 'CANCELLATION_ALREADY_REQUESTED',
+  });
+}
+
+/** The store's delivery delay has not passed since the confirmation (11c). */
+export function deliveryDelayNotReached(opensOn: string): ConflictException {
+  return new ConflictException({
+    message: `Vous pourrez demander l’annulation de ce bon à partir du ${opensOn}`,
+    error: 'DELIVERY_DELAY_NOT_REACHED',
+  });
+}

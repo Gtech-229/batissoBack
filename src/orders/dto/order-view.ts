@@ -190,6 +190,23 @@ export class OrderFields {
   })
   recreditReference: string | null;
 
+  @ApiProperty({
+    description:
+      'Date à laquelle le client a demandé l’annulation du bon payé non livré, ou `null`',
+    example: null,
+    nullable: true,
+    type: Date,
+  })
+  cancellationRequestedAt: Date | null;
+
+  @ApiProperty({
+    description: 'Motif de la demande d’annulation du client, ou `null`',
+    example: null,
+    nullable: true,
+    type: String,
+  })
+  cancellationRequestReason: string | null;
+
   @ApiProperty({ description: 'Date de préparation', example: DATE_EXAMPLE })
   createdAt: Date;
 }
@@ -321,6 +338,8 @@ export function toOrderFields(
     customerRefusalReason: order.customerRefusalReason,
     deliveredAt: order.deliveredAt,
     recreditReference: order.recreditOperation?.reference ?? null,
+    cancellationRequestedAt: order.cancellationRequestedAt,
+    cancellationRequestReason: order.cancellationRequestReason,
     createdAt: order.createdAt,
   };
 }

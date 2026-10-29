@@ -36,6 +36,7 @@ import {
 } from './dto/order-view.js';
 import type {
   CancelOrderDto,
+  CancellationRequestDto,
   CustomerRefusalDto,
   RefuseOrderDto,
 } from './dto/order-decisions.dto.js';
@@ -49,11 +50,13 @@ import {
   type MyOrderView,
 } from './dto/my-order-view.js';
 import type { PrepareOrderDto } from './dto/prepare-order.dto.js';
+import { cancellationRequestRefusal } from './cancellation-request.js';
 import { OrderConfirmationService } from './order-confirmation.service.js';
 import { formatOrderReference } from './order-reference.js';
 import { preparedOrderState } from './order-status.js';
 import { unchangedReason } from './order-unchanged.js';
 import {
+  cancellationAlreadyRequested,
   insufficientBalance,
   orderNotFound,
   orderStatusConflict,
@@ -130,6 +133,85 @@ export class OrdersService {
         total: order.total,
         currencyCode: account.currencyCode,
         accountNumber: account.number,
+        reason: dto.reason ?? null,
+      });
+    });
+    void this.notifications.dispatch(toNotify);
+    return this.detailMine(userId, account.id, orderId);
+  }
+
+  /**
+   * The customer asks to cancel a confirmed order still undelivered after the
+   * store's delivery delay (11c). The order only records the request and stays
+   * CONFIRMED (user decision, 2026-10-28): the manager then delivers it or
+   * cancels it with a re-credit. One conditional write, once per order. No
+   * store lock and no closed check: a closed store's customer must still be
+   * able to ask for their money back, as for the re-credit (11b).
+   */
+  async requestCancellation(
+    userId: string,
+    accountId: string,
+    orderId: string,
+    dto: CancellationRequestDto,
+  ): Promise<MyOrderView> {
+    const account = await this.prisma.account.findFirst({
+      where: { id: accountId, customerId: userId },
+      select: { id: true, storeId: true, number: true, currencyCode: true },
+    });
+    if (!account) {
+      throw accountNotFound();
+    }
+    const toNotify = await this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const read = () =>
+        tx.materialOrder.findFirst({
+          where: { id: orderId, accountId: account.id },
+          select: {
+            status: true,
+            confirmedAt: true,
+            cancellationRequestedAt: true,
+            reference: true,
+            total: true,
+            store: {
+              select: { settings: { select: { deliveryDelayDays: true } } },
+            },
+          },
+        });
+      const order = await read();
+      if (!order) {
+        throw orderNotFound();
+      }
+      const refusal = cancellationRequestRefusal(order, now);
+      if (refusal) {
+        throw refusal;
+      }
+      const { count } = await tx.materialOrder.updateMany({
+        where: {
+          id: orderId,
+          accountId: account.id,
+          status: MaterialOrderStatus.CONFIRMED,
+          cancellationRequestedAt: null,
+        },
+        data: {
+          cancellationRequestedAt: now,
+          cancellationRequestReason: dto.reason ?? null,
+        },
+      });
+      if (count === 0) {
+        // A parallel change won (a delivery, a cancellation, another request).
+        const current = await read();
+        throw (
+          (current && cancellationRequestRefusal(current, now)) ??
+          cancellationAlreadyRequested()
+        );
+      }
+      // The managers are told in this transaction (sent after the commit).
+      return this.notifications.recordCancellationRequested(tx, {
+        storeId: account.storeId,
+        accountNumber: account.number,
+        orderReference: order.reference,
+        total: order.total,
+        currencyCode: account.currencyCode,
         reason: dto.reason ?? null,
       });
     });
