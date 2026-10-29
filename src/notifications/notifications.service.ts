@@ -24,6 +24,10 @@ import {
 import {
   cancellationRequestedMessage,
   correctionMessage,
+  disputeClosedMessage,
+  disputeCustomerMessage,
+  disputeOpenedMessage,
+  disputeStoreReplyMessage,
   depositMessage,
   goalReachedMessage,
   orderAwaitingCustomerMessage,
@@ -68,6 +72,16 @@ export interface CustomerOrderEvent {
   reference: string;
   total: bigint;
   currencyCode: string;
+}
+
+/** A step of a dispute (12), as its notifications name it. */
+export interface DisputeEvent {
+  storeId: string;
+  accountNumber: string;
+  /** The disputed operation: the notification links it. */
+  operationId: string;
+  operationReference: string;
+  message: string;
 }
 
 /** A customer asks to cancel a paid, undelivered order, for the managers (11c). */
@@ -336,6 +350,7 @@ export class NotificationsService {
       event.storeId,
       NotificationType.ORDER_REFUSED_BY_CUSTOMER,
       orderRefusedByCustomerMessage(event),
+      null,
     );
   }
 
@@ -353,15 +368,85 @@ export class NotificationsService {
       event.storeId,
       NotificationType.ORDER_CANCELLATION_REQUESTED,
       cancellationRequestedMessage(event),
+      null,
     );
   }
 
-  /** One message to each active manager of the store: in-app and push, no SMS. */
+  /** To the store's active managers: a customer opened a dispute (12). */
+  async recordDisputeOpened(
+    tx: Prisma.TransactionClient,
+    event: DisputeEvent,
+  ): Promise<string[]> {
+    return this.writeToManagers(
+      tx,
+      event.storeId,
+      NotificationType.DISPUTE_OPENED,
+      disputeOpenedMessage(event),
+      event.operationId,
+    );
+  }
+
+  /** To the store's active managers: the customer wrote again in a dispute (12). */
+  async recordDisputeCustomerMessage(
+    tx: Prisma.TransactionClient,
+    event: DisputeEvent,
+  ): Promise<string[]> {
+    return this.writeToManagers(
+      tx,
+      event.storeId,
+      NotificationType.DISPUTE_CUSTOMER_MESSAGE,
+      disputeCustomerMessage(event),
+      event.operationId,
+    );
+  }
+
+  /** To the store's active managers: the customer closed a dispute (12). */
+  async recordDisputeClosed(
+    tx: Prisma.TransactionClient,
+    event: Omit<DisputeEvent, 'message'>,
+  ): Promise<string[]> {
+    return this.writeToManagers(
+      tx,
+      event.storeId,
+      NotificationType.DISPUTE_CLOSED,
+      disputeClosedMessage(event),
+      event.operationId,
+    );
+  }
+
+  /**
+   * To the customer: the store replied in their dispute (12). In-app and push,
+   * no SMS (user decision, 2026-10-29); the store's name, never who replied.
+   */
+  async recordDisputeStoreReply(
+    tx: Prisma.TransactionClient,
+    event: DisputeEvent & { customerId: string; storeName: string },
+  ): Promise<string[]> {
+    const { title, body } = disputeStoreReplyMessage(event);
+    return this.writeRows(
+      tx,
+      {
+        userId: event.customerId,
+        storeId: event.storeId,
+        operationId: event.operationId,
+        type: NotificationType.DISPUTE_STORE_REPLY,
+        title,
+        body,
+      },
+      { sms: false },
+    );
+  }
+
+  /**
+   * One message to each active manager of the store: in-app and push, no SMS,
+   * linked to `operationId` when there is one.
+   */
   private async writeToManagers(
     tx: Prisma.TransactionClient,
     storeId: string,
     type: NotificationType,
     { title, body }: NotificationMessage,
+    operationId: string | null,
   ): Promise<string[]> {
     const managers = await tx.storeMember.findMany({
       where: { storeId, role: 'MANAGER', active: true },
@@ -375,7 +460,7 @@ export class NotificationsService {
           {
             userId: manager.userId,
             storeId,
-            operationId: null,
+            operationId,
             type,
             title,
             body,

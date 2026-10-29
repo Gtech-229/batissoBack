@@ -2,6 +2,11 @@ import {
   cancellationRequestedMessage,
   correctionMessage,
   depositMessage,
+  disputeClosedMessage,
+  disputeCustomerMessage,
+  disputeExcerpt,
+  disputeOpenedMessage,
+  disputeStoreReplyMessage,
   goalReachedMessage,
   groupThousands,
   orderAwaitingCustomerMessage,
@@ -226,6 +231,52 @@ describe('cancellationRequestedMessage', () => {
   it('leaves the reason out when there is none', () => {
     expect(cancellationRequestedMessage({ ...order, reason: null }).body).toBe(
       'Le client du compte C-000123 demande l’annulation du bon B-00042 de 20 000 XOF, toujours pas livré. Livrez-le ou annulez-le avec remboursement.',
+    );
+  });
+});
+
+describe('dispute messages', () => {
+  const dispute = {
+    operationReference: 'D-00482',
+    accountNumber: 'C-000123',
+    storeName: 'Quincaillerie du Carrefour',
+    message: 'Je n’ai versé que 5 000 F.',
+  };
+
+  it('tells the managers of a new dispute, a customer message, and a close', () => {
+    expect(disputeOpenedMessage(dispute)).toEqual({
+      title: 'Nouvelle contestation',
+      body: 'Contestation ouverte sur l’opération D-00482 du compte C-000123 : « Je n’ai versé que 5 000 F. ».',
+    });
+    expect(disputeCustomerMessage(dispute)).toEqual({
+      title: 'Contestation : nouveau message du client',
+      body: 'Le client du compte C-000123 a écrit dans sa contestation sur l’opération D-00482 : « Je n’ai versé que 5 000 F. ».',
+    });
+    expect(disputeClosedMessage(dispute)).toEqual({
+      title: 'Contestation close',
+      body: 'Le client du compte C-000123 a clos sa contestation sur l’opération D-00482.',
+    });
+  });
+
+  it('tells the customer of the store’s reply, by the store’s name only', () => {
+    const message = disputeStoreReplyMessage({
+      ...dispute,
+      message: 'Le cahier montre 50 000 F.',
+    });
+
+    expect(message).toEqual({
+      title: 'Réponse à votre contestation',
+      body: 'Réponse de Quincaillerie du Carrefour à votre contestation sur l’opération D-00482 : « Le cahier montre 50 000 F. ».',
+    });
+    // Project rule: money is never said to be "sécurisé" or "garanti".
+    expect(message.body).not.toMatch(/sécuris|garanti/);
+  });
+
+  it('cuts a message over 200 characters in the notification', () => {
+    expect(disputeExcerpt('x'.repeat(200))).toBe('x'.repeat(200));
+    expect(disputeExcerpt('x'.repeat(201))).toBe(`${'x'.repeat(200)}…`);
+    expect(disputeExcerpt(`${'a'.repeat(199)} ${'b'.repeat(50)}`)).toBe(
+      `${'a'.repeat(199)}…`,
     );
   });
 });

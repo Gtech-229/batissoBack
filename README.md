@@ -340,6 +340,28 @@ it: `POST /api/v1/me/accounts/:accountId/orders/:orderId/cancellation-request`
 manager then delivers it or cancels it with re-credit. Too early, the answer is
 409 with the date from which the customer can ask; one request per order.
 
+## Disputes
+
+A customer who disagrees with an operation of their account (a deposit, a
+purchase, or a correction) disputes it from the app, and talks it through with
+the store's manager in one thread (Bearer sessions):
+
+1. The customer opens it with a first message:
+   `POST /api/v1/me/accounts/:accountId/operations/:operationId/disputes`
+   `{ "message": "..." }`. It is `OPEN` (awaiting the store); the managers are
+   told in the app and by push. One open dispute per operation.
+2. The manager reads them (`GET /api/v1/stores/:storeId/disputes?status=OPEN`)
+   and replies: `POST /api/v1/stores/:storeId/disputes/:disputeId/messages`.
+   It is `ANSWERED` (awaiting the customer), who is told, under the store's
+   name only.
+3. The customer writes again (`POST /api/v1/me/accounts/:accountId/disputes/:disputeId/messages`,
+   back to `OPEN`) or closes it (`.../close`: `CLOSED`, final; a later
+   disagreement is a new dispute). They read theirs at
+   `GET /api/v1/me/accounts/:accountId/disputes`.
+
+A dispute never changes an operation: a fix is a correction or a cancellation
+with re-credit. Messages can never be changed or deleted.
+
 ## Common commands
 
 | Command | What it does |

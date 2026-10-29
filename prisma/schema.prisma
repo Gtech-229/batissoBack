@@ -169,6 +169,7 @@ model HardwareStore {
   categories      ArticleCategory[]
   articles        Article[]
   materialOrders  MaterialOrder[]
+  disputes        Dispute[]
 
   @@index([status, createdAt])
   // Stores of a country (country store counts, filters by country).
@@ -235,6 +236,9 @@ model User {
   orderCodesRequested OrderConfirmationCode[]
   // Feature 10c: material orders handed over.
   ordersDelivered     MaterialOrder[]         @relation("OrderDeliveredBy")
+  // Feature 12: disputes opened, and messages written in their threads.
+  disputesOpened      Dispute[]
+  disputeMessages     DisputeMessage[]
 
   @@map("users")
 }
@@ -391,6 +395,7 @@ model Account {
   projects       Project[]
   goalMovements  GoalMovement[]
   materialOrders MaterialOrder[]
+  disputes       Dispute[]
 
   @@unique([customerId, storeId])
   // The store's accounts, newest first (staff list and search).
@@ -762,6 +767,7 @@ model Operation {
   notifications      Notification[]
   materialOrder      MaterialOrder? @relation("OrderDebit")
   recreditedOrder    MaterialOrder? @relation("OrderRecredit")
+  disputes           Dispute[]
 
   // An account's history, newest first.
   @@index([accountId, createdAt])
@@ -788,6 +794,14 @@ enum NotificationType {
   ORDER_CANCELLED_AFTER_DEBIT
   /// The customer asked to cancel an undelivered order: sent to the managers (11c).
   ORDER_CANCELLATION_REQUESTED
+  /// A customer opened a dispute on an operation: sent to the managers (12).
+  DISPUTE_OPENED
+  /// The customer wrote again in a dispute: sent to the managers (12).
+  DISPUTE_CUSTOMER_MESSAGE
+  /// The store replied in a dispute: sent to the customer (12).
+  DISPUTE_STORE_REPLY
+  /// The customer closed a dispute (accepted or withdrew): sent to the managers (12).
+  DISPUTE_CLOSED
 }
 
 enum NotificationChannel {
@@ -839,4 +853,68 @@ model Notification {
   // The retry job: PENDING and FAILED rows, oldest first.
   @@index([status, createdAt])
   @@map("notifications")
+}
+
+/// Where a dispute stands (feature 12). One that is not CLOSED is unique per
+/// operation (a partial unique index).
+enum DisputeStatus {
+  /// Awaiting the store: just opened, or the customer wrote again.
+  OPEN
+  /// Awaiting the customer: the manager replied.
+  ANSWERED
+  /// The customer closed it (accepted, or withdrew). Final.
+  CLOSED
+}
+
+/// Who wrote a message in a dispute's thread.
+enum DisputeAuthor {
+  CUSTOMER
+  /// The store's manager; the customer sees only the store, never who.
+  STORE
+}
+
+/// A customer's dispute of an operation of their account (feature 12): a
+/// thread of messages with the store's manager. It never changes the
+/// operation; a fix is a correction (11a) or a re-credit (11b).
+model Dispute {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  operationId String        @db.Uuid
+  accountId   String        @db.Uuid
+  storeId     String        @db.Uuid
+  /// The customer who opened it.
+  openedById  String        @db.Uuid
+  status      DisputeStatus
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  closedAt    DateTime?
+
+  operation Operation        @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  account   Account          @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  store     HardwareStore    @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  openedBy  User             @relation(fields: [openedById], references: [id], onDelete: Restrict)
+  messages  DisputeMessage[]
+
+  // The store's disputes and an account's disputes, newest first.
+  @@index([storeId, createdAt])
+  @@index([accountId, createdAt])
+  @@map("disputes")
+}
+
+/// One message of a dispute's thread. Append-only (a trigger refuses UPDATE
+/// and DELETE): the thread is proof.
+model DisputeMessage {
+  id        String        @id @default(uuid(7)) @db.Uuid
+  disputeId String        @db.Uuid
+  author    DisputeAuthor
+  authorId  String        @db.Uuid
+  /// Plain text, never interpreted; not blank (a CHECK).
+  body      String        @db.VarChar(1000)
+  createdAt DateTime      @default(now())
+
+  dispute    Dispute @relation(fields: [disputeId], references: [id], onDelete: Restrict)
+  authorUser User    @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  // A thread, oldest first.
+  @@index([disputeId, createdAt])
+  @@map("dispute_messages")
 }

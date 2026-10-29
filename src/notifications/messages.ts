@@ -160,3 +160,57 @@ export function cancellationRequestedMessage(order: {
     body: `Le client du compte ${order.accountNumber} demande l’annulation du bon ${order.orderReference} de ${groupThousands(order.total)} ${order.currencyCode}, toujours pas livré. Livrez-le ou annulez-le avec remboursement.${reason}`,
   };
 }
+
+/** At most 200 characters of a dispute message in a notification; the thread keeps it all. */
+export function disputeExcerpt(message: string): string {
+  return message.length <= 200
+    ? message
+    : `${message.slice(0, 200).trimEnd()}…`;
+}
+
+/** To the store's managers: a customer opened a dispute (12). */
+export function disputeOpenedMessage(dispute: {
+  operationReference: string;
+  accountNumber: string;
+  message: string;
+}): NotificationMessage {
+  return {
+    title: 'Nouvelle contestation',
+    body: `Contestation ouverte sur l’opération ${dispute.operationReference} du compte ${dispute.accountNumber} : « ${disputeExcerpt(dispute.message)} ».`,
+  };
+}
+
+/** To the store's managers: the customer wrote again in their dispute (12). */
+export function disputeCustomerMessage(dispute: {
+  operationReference: string;
+  accountNumber: string;
+  message: string;
+}): NotificationMessage {
+  return {
+    title: 'Contestation : nouveau message du client',
+    body: `Le client du compte ${dispute.accountNumber} a écrit dans sa contestation sur l’opération ${dispute.operationReference} : « ${disputeExcerpt(dispute.message)} ».`,
+  };
+}
+
+/** To the customer: the store replied in their dispute (12). */
+export function disputeStoreReplyMessage(dispute: {
+  storeName: string;
+  operationReference: string;
+  message: string;
+}): NotificationMessage {
+  return {
+    title: 'Réponse à votre contestation',
+    body: `Réponse de ${dispute.storeName} à votre contestation sur l’opération ${dispute.operationReference} : « ${disputeExcerpt(dispute.message)} ».`,
+  };
+}
+
+/** To the store's managers: the customer closed their dispute (12). */
+export function disputeClosedMessage(dispute: {
+  operationReference: string;
+  accountNumber: string;
+}): NotificationMessage {
+  return {
+    title: 'Contestation close',
+    body: `Le client du compte ${dispute.accountNumber} a clos sa contestation sur l’opération ${dispute.operationReference}.`,
+  };
+}
