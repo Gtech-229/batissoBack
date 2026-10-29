@@ -252,7 +252,62 @@ describe('The customer asks to cancel an undelivered order (e2e)', () => {
             message: `Ce bon est ${label} : cette action n’est pas possible`,
           }),
         );
+      // Nothing written by the refusal (F-16).
+      expect((await storedOrder(orderId)).cancellationRequestedAt).toBeNull();
     }
+    expect(
+      await prisma.notification.count({
+        where: { type: 'ORDER_CANCELLATION_REQUESTED' },
+      }),
+    ).toBe(0);
+  });
+
+  it('answers 404 for another account’s order sent under the customer’s own account (F-16)', async () => {
+    // Another customer's confirmed order, past the delay, in the same store.
+    const othersAccountId = (
+      await api()
+        .post(`/api/v1/stores/${storeId}/accounts`)
+        .set('Authorization', seller.authorization)
+        .send({
+          customer: { phone: other.phone, firstName: 'O', lastName: 'T' },
+          termsAccepted: true,
+        })
+        .expect(201)
+    ).body.id as string;
+    await api()
+      .post(`/api/v1/stores/${storeId}/accounts/${othersAccountId}/deposits`)
+      .set('Authorization', seller.authorization)
+      .set('Idempotency-Key', randomUUID())
+      .send({ amount: '100000' })
+      .expect(201);
+    const othersOrder = (
+      await api()
+        .post(`/api/v1/stores/${storeId}/accounts/${othersAccountId}/orders`)
+        .set('Authorization', seller.authorization)
+        .send({ lines: [{ articleId: cementId, quantity: 4 }] })
+        .expect(201)
+    ).body.id as string;
+    await api()
+      .post(
+        `/api/v1/me/accounts/${othersAccountId}/orders/${othersOrder}/confirm`,
+      )
+      .set('Authorization', other.authorization)
+      .set('Idempotency-Key', randomUUID())
+      .send({ pin: TEST_PIN })
+      .expect(201);
+    await confirmedDaysAgo(30, othersOrder);
+
+    // The customer's own account in the URL, the other customer's order id.
+    await ask(othersOrder)
+      .expect(404)
+      .expect((r) => expect(r.body.message).toBe('Bon introuvable'));
+
+    expect((await storedOrder(othersOrder)).cancellationRequestedAt).toBeNull();
+    expect(
+      await prisma.notification.count({
+        where: { type: 'ORDER_CANCELLATION_REQUESTED' },
+      }),
+    ).toBe(0);
   });
 
   it('answers 404 to another customer, to staff, and for an unknown order', async () => {

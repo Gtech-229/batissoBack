@@ -746,10 +746,18 @@ describe('Disputes (e2e)', () => {
     it('tells nobody when a step is refused', async () => {
       const disputeId = (await open(deposit.id).expect(201)).body.id as string;
       await close(disputeId).expect(200);
+      // An open dispute on another operation, for the duplicate-open refusal.
+      const second = await recordDeposit('3000');
+      await open(second.id).expect(201);
       await settled();
       const before = await prisma.notification.count();
+      const openedBefore = (await rowsOf('DISPUTE_OPENED')).length;
 
       await open(randomUUID()).expect(404);
+      // Refused after its transaction started writing (F-17).
+      await open(second.id, { message: 'Encore une fois' })
+        .expect(409)
+        .expect((r) => expect(r.body.error).toBe('DISPUTE_ALREADY_OPEN'));
       await reply(disputeId).expect(409);
       await write(disputeId, 'Encore').expect(409);
       await close(disputeId).expect(409);
@@ -757,6 +765,36 @@ describe('Disputes (e2e)', () => {
       await settled();
 
       expect(await prisma.notification.count()).toBe(before);
+      expect(await rowsOf('DISPUTE_OPENED')).toHaveLength(openedBefore);
+    });
+
+    it('opens once out of two parallel disputes on one operation (F-17)', async () => {
+      const responses = await Promise.all([
+        open(deposit.id, { message: 'Premier' }),
+        open(deposit.id, { message: 'Second' }),
+      ]);
+      await settled();
+
+      expect(
+        responses
+          .map((r) => [r.status, r.status === 409 ? r.body.error : null])
+          .sort((a, b) => Number(a[0]) - Number(b[0])),
+      ).toEqual([
+        [201, null],
+        [409, 'DISPUTE_ALREADY_OPEN'],
+      ]);
+      expect(await prisma.dispute.count()).toBe(1);
+      expect(await prisma.disputeMessage.count()).toBe(1);
+      // One set of alert rows: the active manager, in the app and by push.
+      expect(
+        (await rowsOf('DISPUTE_OPENED')).map((row) => [
+          row.userId,
+          row.channel,
+        ]),
+      ).toEqual([
+        [manager.userId, 'APP'],
+        [manager.userId, 'PUSH'],
+      ]);
     });
   });
 });

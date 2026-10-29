@@ -163,9 +163,11 @@ export function cancellationRequestedMessage(order: {
 
 /** At most 200 characters of a dispute message in a notification; the thread keeps it all. */
 export function disputeExcerpt(message: string): string {
-  return message.length <= 200
+  // Counted in code points, so an emoji is kept or dropped whole, never split (F-18).
+  const characters = Array.from(message);
+  return characters.length <= 200
     ? message
-    : `${message.slice(0, 200).trimEnd()}…`;
+    : `${characters.slice(0, 200).join('').trimEnd()}…`;
 }
 
 /** To the store's managers: a customer opened a dispute (12). */

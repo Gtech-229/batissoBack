@@ -125,7 +125,12 @@ export class OrderCancellationService {
               goalId: true,
               operationId: true,
               goalMovements: {
-                where: { reason: GoalMovementReason.ORDER_SHORTFALL },
+                // accountId: every movement of the order is on its account, and
+                // the account index keeps this read short under the lock (F-15).
+                where: {
+                  accountId: located.accountId,
+                  reason: GoalMovementReason.ORDER_SHORTFALL,
+                },
                 select: { amount: true },
               },
             },

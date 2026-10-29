@@ -279,4 +279,20 @@ describe('dispute messages', () => {
       `${'a'.repeat(199)}…`,
     );
   });
+
+  it('never splits an emoji at the cut (F-18)', () => {
+    // A surrogate pair left alone, with no partner on either side.
+    const loneSurrogate =
+      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    // 199 letters, then an emoji (2 UTF-16 units) across position 200.
+    const straddling = `${'a'.repeat(199)}🙂🙂 la suite`;
+
+    const cut = disputeExcerpt(straddling);
+
+    expect(cut).toBe(`${'a'.repeat(199)}🙂…`);
+    expect(cut).not.toMatch(loneSurrogate);
+    // Exactly 200 emoji is 200 characters: nothing is cut.
+    expect(disputeExcerpt('🙂'.repeat(200))).toBe('🙂'.repeat(200));
+    expect(disputeExcerpt('🙂'.repeat(201))).toBe(`${'🙂'.repeat(200)}…`);
+  });
 });
