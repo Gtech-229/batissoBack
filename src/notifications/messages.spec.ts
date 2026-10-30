@@ -1,4 +1,5 @@
 import {
+  accessRecoveredMessage,
   accessResetMessage,
   cancellationRequestedMessage,
   correctionMessage,
@@ -26,6 +27,16 @@ describe('accessResetMessage', () => {
     expect(title).toBe('Accès réinitialisé');
     expect(body).toContain('Quincaillerie Sira a réinitialisé votre accès');
     expect(body).toContain('nouveau code PIN');
+  });
+});
+
+describe('accessRecoveredMessage', () => {
+  it('says what changed and what to do if it was not the user', () => {
+    const { title, body } = accessRecoveredMessage();
+
+    expect(title).toBe('Accès récupéré');
+    expect(body).toContain('votre code PIN a changé');
+    expect(body).toContain('Si ce n’est pas vous');
   });
 });
 

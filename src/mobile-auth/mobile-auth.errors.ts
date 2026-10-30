@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -71,6 +72,38 @@ export function invalidPin(): BadRequestException {
   return new BadRequestException({
     message: 'Code PIN incorrect',
     error: 'INVALID_PIN',
+  });
+}
+
+/** The user has security questions: a PIN is chosen through recovery only. */
+export function securityAnswersRequired(): ForbiddenException {
+  return new ForbiddenException({
+    message: 'Répondez à vos questions de sécurité pour choisir un code PIN.',
+    error: 'SECURITY_ANSWERS_REQUIRED',
+  });
+}
+
+/** Never says which answer was wrong. */
+export function invalidRecoveryAnswers(): UnauthorizedException {
+  return new UnauthorizedException({
+    message: 'Réponses incorrectes',
+    error: 'INVALID_RECOVERY_ANSWERS',
+  });
+}
+
+export function recoveryLocked(hoursLeft: number): ForbiddenException {
+  const hours = hoursLeft > 1 ? `${hoursLeft} heures` : '1 heure';
+  return new ForbiddenException({
+    message: `Trop d’essais incorrects. Réessayez dans ${hours}, ou voyez le gérant de votre quincaillerie.`,
+    error: 'RECOVERY_LOCKED',
+  });
+}
+
+export function recoveryNotConfigured(): ConflictException {
+  return new ConflictException({
+    message:
+      'Aucune question de sécurité. Voyez le gérant de votre quincaillerie.',
+    error: 'RECOVERY_NOT_CONFIGURED',
   });
 }
 

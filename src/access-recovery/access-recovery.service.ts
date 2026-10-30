@@ -3,6 +3,7 @@ import { accountNotFound } from '../accounts/accounts.errors.js';
 import { ActivityAction } from '../generated/prisma/client.js';
 import { sellerNotFound } from '../staff/staff.errors.js';
 import type { AuthenticatedUser } from '../mobile-auth/authenticated-user.js';
+import { revokeAccess } from '../mobile-auth/revoke-access.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CurrentStoreContext } from '../store-access/current-store.js';
@@ -26,6 +27,7 @@ export class AccessRecoveryService {
     store: CurrentStoreContext,
     actor: AuthenticatedUser,
     accountId: string,
+    clearSecurityQuestions: boolean,
   ): Promise<AccessResetView> {
     const account = await this.prisma.account.findFirst({
       where: { id: accountId, storeId: store.storeId },
@@ -34,7 +36,7 @@ export class AccessRecoveryService {
     if (!account) {
       throw accountNotFound();
     }
-    return this.reset(store, actor, account.customerId);
+    return this.reset(store, actor, account.customerId, clearSecurityQuestions);
   }
 
   /**
@@ -45,6 +47,7 @@ export class AccessRecoveryService {
     store: CurrentStoreContext,
     actor: AuthenticatedUser,
     userId: string,
+    clearSecurityQuestions: boolean,
   ): Promise<AccessResetView> {
     const member = await this.prisma.storeMember.findUnique({
       where: { userId_storeId: { userId, storeId: store.storeId } },
@@ -53,13 +56,14 @@ export class AccessRecoveryService {
     if (!member) {
       throw sellerNotFound();
     }
-    return this.reset(store, actor, userId);
+    return this.reset(store, actor, userId, clearSecurityQuestions);
   }
 
   private async reset(
     store: CurrentStoreContext,
     actor: AuthenticatedUser,
     userId: string,
+    clearSecurityQuestions: boolean,
   ): Promise<AccessResetView> {
     const { view, notificationIds } = await this.prisma.$transaction(
       async (tx) => {
@@ -79,33 +83,36 @@ export class AccessRecoveryService {
         });
 
         const resetAt = new Date();
-        // Before the user lock, the order of POST /auth/pin (token, then user):
-        // the two cannot deadlock, and a token in flight dies here.
-        await tx.phoneVerification.updateMany({
-          where: { phone: user.phone, consumedAt: null },
-          data: { consumedAt: resetAt },
-        });
-        // Under this lock: a sign-in that passed its PIN check has committed its
-        // session, so it is revoked below; a later one sees the hash is gone.
-        await tx.$queryRaw`
-          SELECT 1 FROM "users" WHERE "id" = ${userId}::uuid FOR UPDATE`;
-        await tx.user.update({
-          where: { id: userId },
-          data: { pinHash: null, failedPinAttempts: 0, pinLockedUntil: null },
-        });
-        const { count: sessionsRevoked } = await tx.userSession.updateMany({
-          where: { userId, revokedAt: null },
-          data: { revokedAt: resetAt },
-        });
-        // Rows are kept: sessions and notifications refer to them, and the next
-        // SMS sign-in sets a new key.
-        const { count: devicesUntrusted } = await tx.userDevice.updateMany({
-          where: {
-            userId,
-            OR: [{ publicKey: { not: null } }, { pushToken: { not: null } }],
-          },
-          data: { publicKey: null, pushToken: null },
-        });
+        const { sessionsRevoked, devicesUntrusted } = await revokeAccess(
+          tx,
+          { id: userId, phone: user.phone },
+          resetAt,
+        );
+
+        // Only on the manager's word: without it the answers stay, so the SIM
+        // alone is not enough to choose a PIN (14b).
+        let securityQuestionsCleared = false;
+        if (clearSecurityQuestions) {
+          const { count } = await tx.userSecurityAnswer.deleteMany({
+            where: { userId },
+          });
+          securityQuestionsCleared = count > 0;
+          await tx.user.update({
+            where: { id: userId },
+            data: { failedRecoveryAttempts: 0, recoveryLockedUntil: null },
+          });
+        }
+        if (securityQuestionsCleared) {
+          await tx.activityLog.create({
+            data: {
+              storeId: store.storeId,
+              userId: actor.userId,
+              action: ActivityAction.SECURITY_QUESTIONS_CLEARED,
+              newValue: { targetUserId: userId },
+              device: actor.deviceId,
+            },
+          });
+        }
 
         await tx.activityLog.create({
           data: {
@@ -116,6 +123,7 @@ export class AccessRecoveryService {
               targetUserId: userId,
               sessionsRevoked,
               devicesUntrusted,
+              securityQuestionsCleared,
             },
             device: actor.deviceId,
           },

@@ -270,6 +270,7 @@ describe('Lost phone reset (e2e)', () => {
         targetUserId: customer.userId,
         sessionsRevoked: 1,
         devicesUntrusted: 1,
+        securityQuestionsCleared: false,
       });
     });
 

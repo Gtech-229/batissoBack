@@ -23,5 +23,9 @@ export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * MINUTE_MS;
 /** How long a user stays locked after `maxPinAttempts` wrong PINs. */
 export const PIN_LOCK_DURATION_MS = 15 * MINUTE_MS;
 
+/** Recovery with security answers: 3 wrong tries lock it for 24 hours. */
+export const RECOVERY_MAX_ATTEMPTS = 3;
+export const RECOVERY_LOCK_DURATION_MS = 24 * 60 * MINUTE_MS;
+
 /** A login challenge: signed by the device, single-use, valid 2 minutes. */
 export const CHALLENGE_TTL_MS = 2 * MINUTE_MS;

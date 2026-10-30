@@ -3,6 +3,7 @@ import {
   ApiAcceptedResponse,
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -26,6 +27,11 @@ import {
   MobileLoginDto,
 } from './dto/login.dto.js';
 import { MobileSession } from './dto/mobile-session.js';
+import {
+  RecoverAccessDto,
+  RecoveryQuestionsDto,
+  RecoveryQuestionsResponse,
+} from './dto/recovery.dto.js';
 import { RefreshDto } from './dto/refresh.dto.js';
 import { RequestCodeDto, VerifyCodeDto } from './dto/request-code.dto.js';
 import { SetPinDto } from './dto/set-pin.dto.js';
@@ -101,7 +107,7 @@ export class MobileAuthController {
    * @route POST /api/v1/auth/pin
    * @access Public (needs a verification token)
    * @body SetPinDto (verificationToken, pin, publicKey, deviceName?)
-   * @returns 200 MobileSession; 401 INVALID_VERIFICATION or INVALID_CREDENTIALS; 403 PIN_LOCKED
+   * @returns 200 MobileSession; 401 INVALID_VERIFICATION or INVALID_CREDENTIALS; 403 PIN_LOCKED or SECURITY_ANSWERS_REQUIRED
    */
   @Post('pin')
   @Public()
@@ -122,13 +128,94 @@ export class MobileAuthController {
     type: ErrorResponse,
   })
   @ApiForbiddenResponse({
-    description: 'Trop de PIN erronés, compte bloqué 15 minutes (`PIN_LOCKED`)',
+    description:
+      'Trop de PIN erronés, compte bloqué 15 minutes (`PIN_LOCKED`) ; après une réinitialisation, le PIN se choisit avec les questions de sécurité (`SECURITY_ANSWERS_REQUIRED`)',
     type: ErrorResponse,
   })
   completeWithPin(@Body() body: SetPinDto): Promise<MobileSession> {
     return this.auth.completeWithPin(
       body.verificationToken,
       body.pin,
+      body.publicKey,
+      body.deviceName,
+    );
+  }
+
+  /**
+   * @description The user's security questions, once their phone is proven by an SMS code
+   * @route POST /api/v1/auth/recovery/questions
+   * @access Public (needs a verification token)
+   * @body RecoveryQuestionsDto (verificationToken)
+   * @returns 200 RecoveryQuestionsResponse; 401 INVALID_VERIFICATION; 409 RECOVERY_NOT_CONFIGURED
+   */
+  @Post('recovery/questions')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Lire mes questions de sécurité',
+    description:
+      'Avec le jeton de `POST /auth/code/verify`. Sans le téléphone, personne ne peut savoir si des questions existent.',
+  })
+  @ApiOkResponse({
+    description: 'Les questions',
+    type: RecoveryQuestionsResponse,
+  })
+  @ApiBadRequestResponse({
+    description: 'Jeton absent (`details`)',
+    type: ErrorResponse,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Jeton faux, expiré ou déjà utilisé (`INVALID_VERIFICATION`)',
+    type: ErrorResponse,
+  })
+  @ApiConflictResponse({
+    description: 'Aucune question définie (`RECOVERY_NOT_CONFIGURED`)',
+    type: ErrorResponse,
+  })
+  recoveryQuestions(
+    @Body() body: RecoveryQuestionsDto,
+  ): Promise<RecoveryQuestionsResponse> {
+    return this.auth.recoveryQuestions(body.verificationToken);
+  }
+
+  /**
+   * @description Recover access with the three security answers: every old session and device loses access, the new PIN is set, a session opens here
+   * @route POST /api/v1/auth/recovery
+   * @access Public (needs a verification token)
+   * @body RecoverAccessDto (verificationToken, answers, newPin, publicKey, deviceName?)
+   * @returns 200 MobileSession; 401 INVALID_VERIFICATION or INVALID_RECOVERY_ANSWERS; 403 RECOVERY_LOCKED; 409 RECOVERY_NOT_CONFIGURED
+   */
+  @Post('recovery')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Récupérer mon accès avec mes questions de sécurité',
+    description:
+      'Avec le jeton de `POST /auth/code/verify` et les réponses aux 3 questions : toutes doivent être justes, et l’erreur ne dit jamais laquelle ne l’est pas. Toutes les sessions sont fermées, aucun ancien appareil n’est plus reconnu, le nouveau code PIN est enregistré et une session s’ouvre sur cet appareil. L’utilisateur est prévenu par SMS. Trois essais incorrects bloquent la récupération pendant 24 heures. Après un essai incorrect, le jeton reste valable jusqu’à son expiration.',
+  })
+  @ApiOkResponse({ description: 'Session ouverte', type: MobileSession })
+  @ApiBadRequestResponse({
+    description: 'Données invalides, dont un PIN trop simple (`details`)',
+    type: ErrorResponse,
+  })
+  @ApiUnauthorizedResponse({
+    description:
+      'Jeton faux, expiré ou déjà utilisé (`INVALID_VERIFICATION`) ; réponses incorrectes (`INVALID_RECOVERY_ANSWERS`)',
+    type: ErrorResponse,
+  })
+  @ApiForbiddenResponse({
+    description: 'Trop d’essais incorrects (`RECOVERY_LOCKED`)',
+    type: ErrorResponse,
+  })
+  @ApiConflictResponse({
+    description: 'Aucune question définie (`RECOVERY_NOT_CONFIGURED`)',
+    type: ErrorResponse,
+  })
+  recover(@Body() body: RecoverAccessDto): Promise<MobileSession> {
+    return this.auth.recover(
+      body.verificationToken,
+      body.answers,
+      body.newPin,
       body.publicKey,
       body.deviceName,
     );

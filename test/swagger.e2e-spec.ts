@@ -104,6 +104,8 @@ describe('Swagger document (e2e)', () => {
       'PUT /api/v1/me/pin',
       'POST /api/v1/stores/{storeId}/accounts/{accountId}/access-reset',
       'POST /api/v1/stores/{storeId}/sellers/{userId}/access-reset',
+      'PUT /api/v1/me/security-questions',
+      'GET /api/v1/me/security-questions',
     ]) {
       expect(security(route)).toEqual([{ bearer: [] }]);
     }
@@ -181,6 +183,13 @@ describe('Swagger document (e2e)', () => {
         'PUT /api/v1/me/pin',
         'POST /api/v1/stores/{storeId}/accounts/{accountId}/access-reset',
         'POST /api/v1/stores/{storeId}/sellers/{userId}/access-reset',
+        'PUT /api/v1/me/security-questions',
+        'GET /api/v1/me/security-questions',
+        'POST /api/v1/admin/security-questions',
+        'GET /api/v1/admin/security-questions',
+        'PATCH /api/v1/admin/security-questions/{questionId}',
+        'POST /api/v1/auth/recovery/questions',
+        'POST /api/v1/auth/recovery',
       ]),
     );
   });

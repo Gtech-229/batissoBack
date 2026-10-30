@@ -250,6 +250,7 @@ describe('Mobile auth (e2e)', () => {
       expect(response.body).toEqual({
         verificationToken: expect.any(String),
         pinSet: false,
+        securityQuestionsRequired: false,
         expiresIn: 600,
       });
       const row = await prisma.phoneVerification.findFirstOrThrow();

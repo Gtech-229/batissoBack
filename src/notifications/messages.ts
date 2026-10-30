@@ -216,6 +216,14 @@ export function accessResetMessage(reset: {
   };
 }
 
+/** To the user: their security answers just reset their access (14b). */
+export function accessRecoveredMessage(): NotificationMessage {
+  return {
+    title: 'Accès récupéré',
+    body: 'Votre accès à Bâtisso a été récupéré avec vos questions de sécurité et votre code PIN a changé. Si ce n’est pas vous, voyez vite votre quincaillerie.',
+  };
+}
+
 /** To the store's managers: the customer closed their dispute (12). */
 export function disputeClosedMessage(dispute: {
   operationReference: string;

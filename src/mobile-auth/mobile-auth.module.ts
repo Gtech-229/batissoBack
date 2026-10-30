@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { AdminAuthModule } from '../admin-auth/admin-auth.module.js';
+import { NotificationsModule } from '../notifications/notifications.module.js';
 import { SmsModule } from '../sms/sms.module.js';
 import { SystemSettingsModule } from '../system-settings/system-settings.module.js';
 import { MeController } from './me.controller.js';
@@ -12,7 +13,12 @@ import { UserAuthGuard } from './user-auth.guard.js';
 
 @Module({
   // AdminAuthModule for TokensService: one token toolkit for both populations.
-  imports: [SmsModule, SystemSettingsModule, AdminAuthModule],
+  imports: [
+    SmsModule,
+    SystemSettingsModule,
+    AdminAuthModule,
+    NotificationsModule,
+  ],
   controllers: [MobileAuthController, MeController],
   providers: [
     MobileAuthService,
@@ -22,6 +28,6 @@ import { UserAuthGuard } from './user-auth.guard.js';
     { provide: APP_GUARD, useClass: UserAuthGuard },
   ],
   // Approving an action with the PIN (order confirmation, 10b).
-  exports: [PinCheck],
+  exports: [PinCheck, PinHasher],
 })
 export class MobileAuthModule {}

@@ -13,6 +13,8 @@ const person = (id: string, firstName: string) => ({
   pinHash: 'scrypt$secret',
   failedPinAttempts: 0,
   pinLockedUntil: null,
+  failedRecoveryAttempts: 0,
+  recoveryLockedUntil: null,
   qrCode: null,
   createdAt: DATE,
   updatedAt: DATE,

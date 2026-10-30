@@ -13,6 +13,8 @@ const user = (id: string, firstName: string): User => ({
   pinHash: 'scrypt$secret',
   failedPinAttempts: 2,
   pinLockedUntil: null,
+  failedRecoveryAttempts: 0,
+  recoveryLockedUntil: null,
   qrCode: null,
   createdAt: new Date('2026-10-01T00:00:00.000Z'),
   updatedAt: new Date('2026-10-01T00:00:00.000Z'),

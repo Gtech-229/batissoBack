@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   HttpCode,
   HttpStatus,
@@ -9,6 +10,7 @@ import {
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiBody,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -28,6 +30,7 @@ import { CurrentStore } from '../store-access/decorators/current-store.decorator
 import { StoreRoles } from '../store-access/decorators/store-roles.decorator.js';
 import { AccessRecoveryService } from './access-recovery.service.js';
 import { AccessResetView } from './dto/access-reset-view.js';
+import { ResetAccessDto } from './dto/reset-access.dto.js';
 
 const AccountIdPipe = new ParseUUIDPipe({ exceptionFactory: invalidAccountId });
 const UserIdPipe = new ParseUUIDPipe({ exceptionFactory: invalidUserId });
@@ -59,6 +62,7 @@ export class AccessRecoveryController {
    * @access Store manager (mobile session)
    * @param storeId the store
    * @param accountId the account
+   * @body ResetAccessDto (clearSecurityQuestions?)
    * @returns 200 AccessResetView; 403 MANAGER_RESET_NOT_ALLOWED
    */
   @Post('accounts/:accountId/access-reset')
@@ -68,6 +72,7 @@ export class AccessRecoveryController {
     description: RESET_DESCRIPTION,
   })
   @ApiParam({ name: 'accountId', description: 'Identifiant du compte' })
+  @ApiBody({ type: ResetAccessDto, required: false })
   @ApiOkResponse({ description: 'Accès réinitialisé', type: AccessResetView })
   @ApiBadRequestResponse({
     description: 'Identifiant de quincaillerie ou de compte invalide',
@@ -82,8 +87,14 @@ export class AccessRecoveryController {
     @CurrentStore() store: CurrentStoreContext,
     @CurrentUser() actor: AuthenticatedUser,
     @Param('accountId', AccountIdPipe) accountId: string,
+    @Body() body: ResetAccessDto,
   ): Promise<AccessResetView> {
-    return this.recovery.resetAccountHolder(store, actor, accountId);
+    return this.recovery.resetAccountHolder(
+      store,
+      actor,
+      accountId,
+      body.clearSecurityQuestions === true,
+    );
   }
 
   /**
@@ -92,6 +103,7 @@ export class AccessRecoveryController {
    * @access Store manager (mobile session)
    * @param storeId the store
    * @param userId the seller, active or not
+   * @body ResetAccessDto (clearSecurityQuestions?)
    * @returns 200 AccessResetView; 403 MANAGER_RESET_NOT_ALLOWED
    */
   @Post('sellers/:userId/access-reset')
@@ -101,6 +113,7 @@ export class AccessRecoveryController {
     description: RESET_DESCRIPTION,
   })
   @ApiParam({ name: 'userId', description: 'Identifiant du vendeur' })
+  @ApiBody({ type: ResetAccessDto, required: false })
   @ApiOkResponse({ description: 'Accès réinitialisé', type: AccessResetView })
   @ApiBadRequestResponse({
     description: 'Identifiant de quincaillerie ou d’utilisateur invalide',
@@ -115,7 +128,13 @@ export class AccessRecoveryController {
     @CurrentStore() store: CurrentStoreContext,
     @CurrentUser() actor: AuthenticatedUser,
     @Param('userId', UserIdPipe) userId: string,
+    @Body() body: ResetAccessDto,
   ): Promise<AccessResetView> {
-    return this.recovery.resetSeller(store, actor, userId);
+    return this.recovery.resetSeller(
+      store,
+      actor,
+      userId,
+      body.clearSecurityQuestions === true,
+    );
   }
 }

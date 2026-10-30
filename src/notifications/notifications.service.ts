@@ -22,6 +22,7 @@ import {
   type NotificationView,
 } from './dto/notification-view.js';
 import {
+  accessRecoveredMessage,
   accessResetMessage,
   cancellationRequestedMessage,
   correctionMessage,
@@ -339,6 +340,29 @@ export class NotificationsService {
   }
 
   /**
+   * The rows telling a user their security answers reset their access (14b):
+   * in-app and SMS. Written after the tokens were cleared, so no push.
+   */
+  async recordAccessRecovered(
+    tx: Prisma.TransactionClient,
+    userId: string,
+  ): Promise<string[]> {
+    const { title, body } = accessRecoveredMessage();
+    return this.writeRows(
+      tx,
+      {
+        userId,
+        storeId: null,
+        operationId: null,
+        type: NotificationType.ACCESS_RECOVERED,
+        title,
+        body,
+      },
+      { sms: true },
+    );
+  }
+
+  /**
    * The rows telling a user a manager reset their access (14a): in-app and SMS.
    * Written after the reset cleared the push tokens, so a lost phone gets no push.
    */
@@ -505,7 +529,8 @@ export class NotificationsService {
     tx: Prisma.TransactionClient,
     common: {
       userId: string;
-      storeId: string;
+      /** Null when no store is involved (a recovery with security answers). */
+      storeId: string | null;
       /** Null when no operation caused it (a move between goals). */
       operationId: string | null;
       type: NotificationType;

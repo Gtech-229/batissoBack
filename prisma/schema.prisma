@@ -106,6 +106,8 @@ enum ActivityAction {
   STORE_QR_CODE_REGENERATED
   /// A manager reset a user's access after a lost phone (14a).
   ACCESS_RESET
+  /// A manager removed a user's security answers, in a reset (14b).
+  SECURITY_QUESTIONS_CLEARED
 }
 
 enum AccountStatus {
@@ -203,19 +205,22 @@ model StoreSettings {
 
 /// A person using the mobile app (customer or store staff), identified by phone.
 model User {
-  id                String    @id @default(uuid(7)) @db.Uuid
-  phone             String    @unique /// E.164
-  firstName         String
-  lastName          String
+  id                     String    @id @default(uuid(7)) @db.Uuid
+  phone                  String    @unique /// E.164
+  firstName              String
+  lastName               String
   /// scrypt hash of the 6-digit PIN; null until the user activates the app.
-  pinHash           String?
-  failedPinAttempts Int       @default(0)
-  pinLockedUntil    DateTime?
+  pinHash                String?
+  failedPinAttempts      Int       @default(0)
+  pinLockedUntil         DateTime?
   /// The user's QR code (feature 23): a random opaque code a store scans to
   /// reach their account there. Created on first read; regenerating replaces it.
-  qrCode            String?   @unique @db.VarChar(32)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  qrCode                 String?   @unique @db.VarChar(32)
+  /// Wrong recovery tries (14b): 3 lock recovery for 24 hours.
+  failedRecoveryAttempts Int       @default(0)
+  recoveryLockedUntil    DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   memberships         StoreMember[]
   activityLogs        ActivityLog[]
@@ -244,8 +249,38 @@ model User {
   disputeMessages     DisputeMessage[]
   // Feature 13: cash closings made as the manager.
   cashClosings        CashClosing[]
+  // Feature 14b: the answers to the user's security questions.
+  securityAnswers     UserSecurityAnswer[]
 
   @@map("users")
+}
+
+/// A security question admins offer (14b). Its text never changes once created:
+/// users answered that text. Deactivated, it stays for those who chose it.
+model SecurityQuestion {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  text      String   @unique @db.VarChar(200)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  answers UserSecurityAnswer[]
+
+  @@map("security_questions")
+}
+
+/// A user's answer to one security question: three rows per user, or none.
+model UserSecurityAnswer {
+  userId     String   @db.Uuid
+  questionId String   @db.Uuid
+  /// Normalized answer, hashed like a PIN (pepper, then scrypt).
+  answerHash String
+  createdAt  DateTime @default(now())
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question SecurityQuestion @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@id([userId, questionId])
+  @@map("user_security_answers")
 }
 
 /// A one-time SMS code sent to a phone. Once the code is verified, it becomes a
@@ -810,6 +845,8 @@ enum NotificationType {
   DISPUTE_CLOSED
   /// A manager reset the user's access: sent to that user (14a).
   ACCESS_RESET
+  /// The user recovered their access with their security answers (14b).
+  ACCESS_RECOVERED
 }
 
 enum NotificationChannel {

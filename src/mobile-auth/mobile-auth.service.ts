@@ -11,11 +11,15 @@ import type { AuthenticatedUser } from './authenticated-user.js';
 import { minutesUntil } from '../common/minutes-until.js';
 import { isPhoneCountry, normalizePhone } from '../common/phone.js';
 import type { Prisma, User } from '../generated/prisma/client.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import type { SecurityAnswerDto } from '../security-questions/dto/security-answers.dto.js';
+import { normalizeAnswer } from '../security-questions/normalize-answer.js';
 import { SMS_SENDER, type SmsSender } from '../sms/sms-sender.js';
 import { SystemSettingsService } from '../system-settings/system-settings.service.js';
 import type { VerificationResponse } from './dto/code-responses.js';
 import type { ChallengeResponse } from './dto/login.dto.js';
+import type { RecoveryQuestionsResponse } from './dto/recovery.dto.js';
 import type { MeResponse } from './dto/me.js';
 import {
   toMobileUserProfile,
@@ -29,6 +33,8 @@ import {
   CODE_TTL_MS,
   CODES_PER_DAY,
   CODES_PER_HOUR,
+  RECOVERY_LOCK_DURATION_MS,
+  RECOVERY_MAX_ATTEMPTS,
   REFRESH_TOKEN_TTL_MS,
   VERIFICATION_TTL_MS,
 } from './mobile-auth.constants.js';
@@ -37,18 +43,27 @@ import {
   invalidCode,
   invalidCredentials,
   invalidPhone,
+  invalidRecoveryAnswers,
   invalidRefreshToken,
   invalidVerification,
   notAuthenticated,
   pinLocked,
   pinUnchanged,
+  recoveryLocked,
+  recoveryNotConfigured,
+  securityAnswersRequired,
 } from './mobile-auth.errors.js';
 import { isValidDeviceSignature } from './device-key.js';
 import { decidePinAttempt } from './pin-attempts.js';
 import { PinCheck } from './pin-check.service.js';
 import { PinHasher } from './pin-hasher.js';
+import { revokeAccess } from './revoke-access.js';
 
 const HOUR_MS = 60 * 60 * 1000;
+const QUESTION_ORDER = [
+  { question: { createdAt: 'asc' } },
+  { questionId: 'asc' },
+] as const;
 const DAY_MS = 24 * HOUR_MS;
 
 // Matches no user: a device lookup for an unknown phone finds nothing, at the
@@ -95,6 +110,7 @@ export class MobileAuthService {
     private readonly settings: SystemSettingsService,
     private readonly pinHasher: PinHasher,
     private readonly pinCheck: PinCheck,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -201,7 +217,10 @@ export class MobileAuthService {
 
     const user = await this.prisma.user.findUnique({
       where: { phone },
-      select: { pinHash: true },
+      select: {
+        pinHash: true,
+        _count: { select: { securityAnswers: true } },
+      },
     });
     if (!user) {
       throw invalidCode();
@@ -209,6 +228,8 @@ export class MobileAuthService {
     return {
       verificationToken: outcome.token,
       pinSet: user.pinHash !== null,
+      securityQuestionsRequired:
+        user.pinHash === null && user._count.securityAnswers > 0,
       expiresIn: VERIFICATION_TTL_MS / 1000,
     };
   }
@@ -286,6 +307,13 @@ export class MobileAuthService {
         if (!row || row.pinHash !== null) {
           return { kind: 'invalid-verification' as const };
         }
+        // After a manager reset, the SIM alone must not be enough (14b).
+        const answers = await tx.userSecurityAnswer.count({
+          where: { userId: user.id },
+        });
+        if (answers > 0) {
+          return { kind: 'answers-required' as const };
+        }
         await tx.user.update({
           where: { id: user.id },
           data: {
@@ -328,12 +356,194 @@ export class MobileAuthService {
     switch (outcome.kind) {
       case 'invalid-verification':
         throw invalidVerification();
+      case 'answers-required':
+        throw securityAnswersRequired();
       case 'invalid':
         throw invalidCredentials();
       case 'locked':
         throw pinLocked(minutesUntil(outcome.lockedUntil, new Date()));
     }
     return this.toSession(user, outcome.sessionId, refresh.secret);
+  }
+
+  /**
+   * The user's security questions, for a phone just proven by an SMS code: the
+   * token is why this route may say whether questions exist.
+   */
+  async recoveryQuestions(
+    verificationToken: string,
+  ): Promise<RecoveryQuestionsResponse> {
+    const { user } = await this.liveVerification(verificationToken);
+    const answers = await this.prisma.userSecurityAnswer.findMany({
+      where: { userId: user.id },
+      orderBy: [...QUESTION_ORDER],
+      select: { question: { select: { id: true, text: true } } },
+    });
+    if (answers.length === 0) {
+      throw recoveryNotConfigured();
+    }
+    return { questions: answers.map(({ question }) => question) };
+  }
+
+  /**
+   * Recovery without a manager (14b): a verified SMS code plus all the right
+   * answers. Access is taken away everywhere, the new PIN is set, and a session
+   * opens on this device. A wrong try keeps the token, like a wrong PIN, and
+   * counts toward the lock; the refusal never says which answer was wrong.
+   */
+  async recover(
+    verificationToken: string,
+    given: SecurityAnswerDto[],
+    newPin: string,
+    publicKey: string,
+    deviceName: string | undefined,
+  ): Promise<MobileSession> {
+    const { verification, deviceId, user } =
+      await this.liveVerification(verificationToken);
+    const stored = await this.prisma.userSecurityAnswer.findMany({
+      where: { userId: user.id },
+      select: { questionId: true, answerHash: true },
+    });
+    if (stored.length === 0) {
+      throw recoveryNotConfigured();
+    }
+    // Fast path only: the decision that counts is taken again under the lock.
+    if (user.recoveryLockedUntil && user.recoveryLockedUntil > new Date()) {
+      throw recoveryLocked(this.hoursUntil(user.recoveryLockedUntil));
+    }
+
+    // The slow scrypt work happens before the transaction (short row locks).
+    // Every answer is compared, so the time does not tell which one was wrong.
+    const answersByQuestion = new Map(
+      given.map(({ questionId, answer }) => [questionId, answer]),
+    );
+    const checks = await Promise.all(
+      stored.map(({ questionId, answerHash }) =>
+        this.pinHasher.verify(
+          normalizeAnswer(answersByQuestion.get(questionId) ?? ''),
+          answerHash,
+        ),
+      ),
+    );
+    const answersOk = checks.every(Boolean);
+    const pinHash = await this.pinHasher.hash(newPin);
+    const refresh = this.tokens.newRefreshSecret();
+    const checkedHashes = stored.map(({ answerHash }) => answerHash).sort();
+
+    const outcome = await this.prisma.$transaction(async (tx) => {
+      // Every live row of this phone, in one order, before the user lock:
+      // `revokeAccess` retires them, and POST /auth/pin holds one of them while
+      // it waits for the user.
+      const tokens = await tx.$queryRaw<
+        { id: string; tokenExpiresAt: Date | null }[]
+      >`
+        SELECT "id", "tokenExpiresAt" FROM "phone_verifications"
+        WHERE "phone" = ${user.phone} AND "consumedAt" IS NULL
+        ORDER BY "id" FOR UPDATE`;
+      const token = tokens.find((row) => row.id === verification.id);
+      const at = new Date();
+      if (!token?.tokenExpiresAt || token.tokenExpiresAt <= at) {
+        return { kind: 'invalid-verification' as const };
+      }
+
+      const [row] = await tx.$queryRaw<
+        { failedRecoveryAttempts: number; recoveryLockedUntil: Date | null }[]
+      >`
+        SELECT "failedRecoveryAttempts", "recoveryLockedUntil" FROM "users"
+        WHERE "id" = ${user.id}::uuid FOR UPDATE`;
+      if (row.recoveryLockedUntil && row.recoveryLockedUntil > at) {
+        // Locked by a concurrent request: refused, and not counted again.
+        return {
+          kind: 'locked' as const,
+          lockedUntil: row.recoveryLockedUntil,
+        };
+      }
+      const current = await tx.userSecurityAnswer.findMany({
+        where: { userId: user.id },
+        select: { answerHash: true },
+      });
+      const currentHashes = current.map(({ answerHash }) => answerHash).sort();
+      // Replaced or cleared since the check: that verdict is about old answers.
+      if (currentHashes.join() !== checkedHashes.join()) {
+        return { kind: 'invalid' as const };
+      }
+
+      if (!answersOk) {
+        const attempts = row.failedRecoveryAttempts + 1;
+        const lockedUntil =
+          attempts >= RECOVERY_MAX_ATTEMPTS
+            ? new Date(at.getTime() + RECOVERY_LOCK_DURATION_MS)
+            : null;
+        await tx.user.update({
+          where: { id: user.id },
+          data: lockedUntil
+            ? { failedRecoveryAttempts: 0, recoveryLockedUntil: lockedUntil }
+            : { failedRecoveryAttempts: attempts },
+        });
+        return { kind: 'invalid' as const };
+      }
+
+      await revokeAccess(tx, user, at);
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          pinHash,
+          failedRecoveryAttempts: 0,
+          recoveryLockedUntil: null,
+        },
+      });
+      const sessionId = await this.openSession(
+        tx,
+        user.id,
+        deviceId,
+        { publicKey, name: deviceName },
+        refresh.hash,
+        at,
+      );
+      const notificationIds = await this.notifications.recordAccessRecovered(
+        tx,
+        user.id,
+      );
+      return { kind: 'recovered' as const, sessionId, notificationIds };
+    });
+
+    // Thrown after the commit, so a counted wrong try is kept.
+    switch (outcome.kind) {
+      case 'invalid-verification':
+        throw invalidVerification();
+      case 'invalid':
+        throw invalidRecoveryAnswers();
+      case 'locked':
+        throw recoveryLocked(this.hoursUntil(outcome.lockedUntil));
+    }
+    void this.notifications.dispatch(outcome.notificationIds);
+    return this.toSession(user, outcome.sessionId, refresh.secret);
+  }
+
+  /** The verification behind a token, or 401 INVALID_VERIFICATION. */
+  private async liveVerification(verificationToken: string) {
+    const verification = await this.prisma.phoneVerification.findUnique({
+      where: { tokenHash: hashToken(verificationToken) },
+    });
+    if (
+      !verification?.deviceId ||
+      verification.consumedAt ||
+      !verification.tokenExpiresAt ||
+      verification.tokenExpiresAt <= new Date()
+    ) {
+      throw invalidVerification();
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { phone: verification.phone },
+    });
+    if (!user) {
+      throw invalidVerification();
+    }
+    return { verification, deviceId: verification.deviceId, user };
+  }
+
+  private hoursUntil(date: Date): number {
+    return Math.max(1, Math.ceil((date.getTime() - Date.now()) / HOUR_MS));
   }
 
   /**

@@ -28,6 +28,13 @@ export class VerificationResponse {
   pinSet: boolean;
 
   @ApiProperty({
+    description:
+      '`true` : sans PIN mais avec des questions de sécurité (après une réinitialisation) ; le PIN se choisit par `POST /auth/recovery`, pas par `POST /auth/pin`',
+    example: false,
+  })
+  securityQuestionsRequired: boolean;
+
+  @ApiProperty({
     description: 'Durée de validité du jeton, en secondes',
     example: 600,
   })

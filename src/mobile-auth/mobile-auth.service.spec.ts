@@ -1,5 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import type { TokensService } from '../admin-auth/tokens.service.js';
+import type { NotificationsService } from '../notifications/notifications.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import type { SmsSender } from '../sms/sms-sender.js';
 import type { SystemSettingsService } from '../system-settings/system-settings.service.js';
@@ -24,6 +25,7 @@ function setup(options: { challengeCount: number; user: object | null }) {
     {} as SystemSettingsService,
     {} as PinHasher,
     {} as PinCheck,
+    {} as NotificationsService,
   );
   return { prisma, service };
 }

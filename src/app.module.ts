@@ -24,6 +24,7 @@ import { StaffModule } from './staff/staff.module.js';
 import { StoresModule } from './stores/stores.module.js';
 import { SystemSettingsModule } from './system-settings/system-settings.module.js';
 import { CountriesModule } from './countries/countries.module.js';
+import { SecurityQuestionsModule } from './security-questions/security-questions.module.js';
 import { DisputesModule } from './disputes/disputes.module.js';
 
 @Module({
@@ -50,6 +51,7 @@ import { DisputesModule } from './disputes/disputes.module.js';
     DisputesModule,
     CashClosingsModule,
     AccessRecoveryModule,
+    SecurityQuestionsModule,
   ],
   providers: [
     // Registered as providers (not in main.ts) so e2e tests get them too.
