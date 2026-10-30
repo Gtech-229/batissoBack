@@ -4,6 +4,7 @@ import {
   AMOUNT_RULE_MESSAGE,
   formatAmount,
   IsAmount,
+  IsCountedAmount,
   isAmount,
   parseAmount,
 } from './money.js';
@@ -60,5 +61,40 @@ describe('money', () => {
     expect(formatAmount(parseAmount(big))).toBe(big);
     // A JSON number would have been rounded:
     expect(String(Number(big))).not.toBe(big);
+  });
+});
+
+class CountedDto {
+  @IsCountedAmount()
+  amount: unknown;
+}
+
+describe('IsCountedAmount', () => {
+  const isValid = (amount: unknown) => {
+    const dto = new CountedDto();
+    dto.amount = amount;
+    return validateSync(dto).length === 0;
+  };
+
+  it('accepts 0 and whole numbers up to 18 digits', () => {
+    for (const amount of ['0', '1', '48500', '9'.repeat(18)]) {
+      expect(isValid(amount)).toBe(true);
+    }
+  });
+
+  it('refuses a leading zero, a sign, decimals, 19 digits, and non-strings', () => {
+    for (const amount of [
+      '00',
+      '01',
+      '-1',
+      '+1',
+      '1.5',
+      '9'.repeat(19),
+      '',
+      0,
+      null,
+    ]) {
+      expect(isValid(amount)).toBe(false);
+    }
   });
 });

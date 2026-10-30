@@ -37,3 +37,17 @@ export function IsAmount(): PropertyDecorator {
     Matches(AMOUNT_PATTERN, { message: AMOUNT_RULE_MESSAGE }),
   );
 }
+
+// A counted amount: as an amount, but 0 is valid (an empty cash drawer).
+const COUNTED_AMOUNT_PATTERN = /^(0|[1-9][0-9]{0,17})$/;
+
+export const COUNTED_AMOUNT_RULE_MESSAGE =
+  'Le montant compté doit être un entier positif ou nul écrit en chiffres, sans décimales (ex. "48500")';
+
+/** DTO decorator for a counted amount: `IsAmount`, with "0" allowed. */
+export function IsCountedAmount(): PropertyDecorator {
+  return applyDecorators(
+    IsString({ message: COUNTED_AMOUNT_RULE_MESSAGE }),
+    Matches(COUNTED_AMOUNT_PATTERN, { message: COUNTED_AMOUNT_RULE_MESSAGE }),
+  );
+}

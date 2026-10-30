@@ -170,6 +170,7 @@ model HardwareStore {
   articles        Article[]
   materialOrders  MaterialOrder[]
   disputes        Dispute[]
+  cashClosings    CashClosing[]
 
   @@index([status, createdAt])
   // Stores of a country (country store counts, filters by country).
@@ -239,6 +240,8 @@ model User {
   // Feature 12: disputes opened, and messages written in their threads.
   disputesOpened      Dispute[]
   disputeMessages     DisputeMessage[]
+  // Feature 13: cash closings made as the manager.
+  cashClosings        CashClosing[]
 
   @@map("users")
 }
@@ -757,17 +760,18 @@ model Operation {
   device               String?            @db.VarChar(100)
   createdAt            DateTime           @default(now())
 
-  account            Account        @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  store              HardwareStore  @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  goal               Goal           @relation(fields: [goalId], references: [id], onDelete: Restrict)
-  author             User           @relation("OperationAuthor", fields: [authorId], references: [id], onDelete: Restrict)
-  validatedBy        User?          @relation("OperationValidatedBy", fields: [validatedById], references: [id], onDelete: Restrict)
-  correctedOperation Operation?     @relation("OperationCorrection", fields: [correctedOperationId], references: [id], onDelete: Restrict)
-  correctedBy        Operation[]    @relation("OperationCorrection")
+  account            Account               @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  store              HardwareStore         @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  goal               Goal                  @relation(fields: [goalId], references: [id], onDelete: Restrict)
+  author             User                  @relation("OperationAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  validatedBy        User?                 @relation("OperationValidatedBy", fields: [validatedById], references: [id], onDelete: Restrict)
+  correctedOperation Operation?            @relation("OperationCorrection", fields: [correctedOperationId], references: [id], onDelete: Restrict)
+  correctedBy        Operation[]           @relation("OperationCorrection")
   notifications      Notification[]
-  materialOrder      MaterialOrder? @relation("OrderDebit")
-  recreditedOrder    MaterialOrder? @relation("OrderRecredit")
+  materialOrder      MaterialOrder?        @relation("OrderDebit")
+  recreditedOrder    MaterialOrder?        @relation("OrderRecredit")
   disputes           Dispute[]
+  cashClosing        CashClosingOperation?
 
   // An account's history, newest first.
   @@index([accountId, createdAt])
@@ -917,4 +921,56 @@ model DisputeMessage {
   // A thread, oldest first.
   @@index([disputeId, createdAt])
   @@map("dispute_messages")
+}
+
+/// The manager's count of the store's cash (feature 13): what should be in the
+/// drawer since the last closing, what was counted, and the difference. Final
+/// (a trigger refuses UPDATE and DELETE): a counting mistake is explained in
+/// the next closing. It never moves money.
+model CashClosing {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  storeId          String   @db.Uuid
+  /// The manager who counted.
+  managerId        String   @db.Uuid
+  currencyCode     String   @db.VarChar(3)
+  /// Sum of the DEPOSIT operations it counted.
+  depositsTotal    BigInt
+  /// Sum of the CORRECTION DEBIT operations it counted.
+  correctionsTotal BigInt
+  /// depositsTotal - correctionsTotal (a CHECK); can be negative.
+  expectedTotal    BigInt
+  countedTotal     BigInt
+  /// countedTotal - expectedTotal (a CHECK): positive is extra cash.
+  discrepancy      BigInt
+  /// Required when the discrepancy is not 0 (a CHECK).
+  justification    String?  @db.VarChar(500)
+  /// The client's key for this request: a retry never closes twice.
+  idempotencyKey   String   @unique @db.Uuid
+  /// The app's deviceId of the manager's session.
+  device           String?  @db.VarChar(100)
+  createdAt        DateTime @default(now())
+
+  store      HardwareStore          @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  manager    User                   @relation(fields: [managerId], references: [id], onDelete: Restrict)
+  operations CashClosingOperation[]
+
+  // A store's closings, newest first.
+  @@index([storeId, createdAt])
+  @@map("cash_closings")
+}
+
+/// An operation a closing counted. operationId is the key: an operation is
+/// counted in one closing only. This, not createdAt, is the period's boundary:
+/// createdAt is its transaction's start, so an operation waiting on a closing's
+/// lock would look older than the closing and the next one would miss it.
+/// Append-only (a trigger).
+model CashClosingOperation {
+  operationId String @id @db.Uuid
+  closingId   String @db.Uuid
+
+  operation Operation   @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  closing   CashClosing @relation(fields: [closingId], references: [id], onDelete: Restrict)
+
+  @@index([closingId])
+  @@map("cash_closing_operations")
 }

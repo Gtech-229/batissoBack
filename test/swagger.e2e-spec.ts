@@ -97,6 +97,10 @@ describe('Swagger document (e2e)', () => {
       'GET /api/v1/stores/{storeId}/disputes',
       'GET /api/v1/stores/{storeId}/disputes/{disputeId}',
       'POST /api/v1/stores/{storeId}/disputes/{disputeId}/messages',
+      'GET /api/v1/stores/{storeId}/cash-closings/pending',
+      'POST /api/v1/stores/{storeId}/cash-closings',
+      'GET /api/v1/stores/{storeId}/cash-closings',
+      'GET /api/v1/stores/{storeId}/cash-closings/{closingId}',
     ]) {
       expect(security(route)).toEqual([{ bearer: [] }]);
     }
@@ -167,6 +171,10 @@ describe('Swagger document (e2e)', () => {
         'GET /api/v1/stores/{storeId}/disputes',
         'GET /api/v1/stores/{storeId}/disputes/{disputeId}',
         'POST /api/v1/stores/{storeId}/disputes/{disputeId}/messages',
+        'GET /api/v1/stores/{storeId}/cash-closings/pending',
+        'POST /api/v1/stores/{storeId}/cash-closings',
+        'GET /api/v1/stores/{storeId}/cash-closings',
+        'GET /api/v1/stores/{storeId}/cash-closings/{closingId}',
       ]),
     );
   });

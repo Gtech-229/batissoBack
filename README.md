@@ -362,6 +362,26 @@ the store's manager in one thread (Bearer sessions):
 A dispute never changes an operation: a fix is a correction or a cancellation
 with re-credit. Messages can never be changed or deleted.
 
+## Cash closing
+
+At the end of the day the store's **manager** counts the cash in the drawer
+(Bearer session):
+
+1. See what should be there:
+   `GET /api/v1/stores/:storeId/cash-closings/pending` gives the deposits and
+   corrections since the last closing, and the expected amount (deposits minus
+   corrections; purchases and re-credits move savings, not cash).
+2. Close it: `POST /api/v1/stores/:storeId/cash-closings` with
+   `{ "countedTotal": "48500", "justification": "<if it differs>" }` and an
+   `Idempotency-Key` header. A count that differs needs a justification
+   (409 `JUSTIFICATION_REQUIRED` otherwise).
+3. Read the history: `GET /api/v1/stores/:storeId/cash-closings` and
+   `.../cash-closings/:closingId`.
+
+A closing covers everything since the previous one, so a skipped day rolls into
+the next. It moves no money and is final: a counting mistake is explained in the
+next closing.
+
 ## Common commands
 
 | Command | What it does |
