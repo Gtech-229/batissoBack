@@ -10,21 +10,30 @@ export type PinDecision =
  * lesson). Reaching `maxPinAttempts` locks the user for 15 minutes, even with
  * the right PIN; `maxPinAttempts = 0` counts but never locks. The one PIN rule:
  * signing in and confirming an order (10b) both use it.
+ *
+ * `checkedHash` is the hash the PIN was compared with, before this lock: if it
+ * has changed since (a reset, a PIN change), the verdict is about a PIN that no
+ * longer exists, so it is refused and not counted.
  */
 export async function decidePinAttempt(
   tx: Prisma.TransactionClient,
   userId: string,
   pinOk: boolean,
+  checkedHash: string | null,
   maxPinAttempts: number,
   now: Date,
 ): Promise<PinDecision> {
   // Raw SQL because Prisma has no row lock.
   const [row] = await tx.$queryRaw<
-    { pinLockedUntil: Date | null; failedPinAttempts: number }[]
+    {
+      pinHash: string | null;
+      pinLockedUntil: Date | null;
+      failedPinAttempts: number;
+    }[]
   >`
-    SELECT "pinLockedUntil", "failedPinAttempts" FROM "users"
+    SELECT "pinHash", "pinLockedUntil", "failedPinAttempts" FROM "users"
     WHERE "id" = ${userId}::uuid FOR UPDATE`;
-  if (!row) {
+  if (!row || row.pinHash !== checkedHash) {
     return { kind: 'invalid' };
   }
   if (row.pinLockedUntil && row.pinLockedUntil > now) {

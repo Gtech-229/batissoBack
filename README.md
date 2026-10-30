@@ -382,6 +382,23 @@ A closing covers everything since the previous one, so a skipped day rolls into
 the next. It moves no money and is final: a counting mistake is explained in the
 next closing.
 
+## Lost phone and PIN change
+
+A customer or seller who lost their phone, or forgot their PIN, goes to their
+store's **manager**, who checks their identity at the counter (Bearer session):
+
+- Customer: `POST /api/v1/stores/:storeId/accounts/:accountId/access-reset`
+- Seller: `POST /api/v1/stores/:storeId/sellers/:userId/access-reset`
+
+The PIN is wiped, every session is closed, and no device is trusted any more, in
+every store. The person then signs in as at activation: `POST /api/v1/auth/code`,
+`/auth/code/verify` (`pinSet: false`), and `/auth/pin` with a new PIN. They keep
+their phone number. A store manager cannot be reset this way.
+
+A signed-in user changes their own PIN with `PUT /api/v1/me/pin`
+(`{ "currentPin": "...", "newPin": "..." }`). Their sessions on other devices
+close; those devices stay trusted and sign in with the new PIN.
+
 ## Common commands
 
 | Command | What it does |

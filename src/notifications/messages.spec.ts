@@ -1,4 +1,5 @@
 import {
+  accessResetMessage,
   cancellationRequestedMessage,
   correctionMessage,
   depositMessage,
@@ -15,6 +16,18 @@ import {
   paidOrderCancelledMessage,
   purchaseMessage,
 } from './messages.js';
+
+describe('accessResetMessage', () => {
+  it('names the store and the way back in', () => {
+    const { title, body } = accessResetMessage({
+      storeName: 'Quincaillerie Sira',
+    });
+
+    expect(title).toBe('Accès réinitialisé');
+    expect(body).toContain('Quincaillerie Sira a réinitialisé votre accès');
+    expect(body).toContain('nouveau code PIN');
+  });
+});
 
 describe('groupThousands', () => {
   it.each([

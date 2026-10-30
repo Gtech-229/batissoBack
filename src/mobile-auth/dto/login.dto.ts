@@ -2,7 +2,7 @@ import { ApiProperty, PickType } from '@nestjs/swagger';
 import { IsString, Length, Matches } from 'class-validator';
 import { VerifyCodeDto } from './request-code.dto.js';
 
-const PIN_FORMAT_MESSAGE = 'Le code PIN doit contenir 6 chiffres';
+export const PIN_FORMAT_MESSAGE = 'Le code PIN doit contenir 6 chiffres';
 
 /** `POST /auth/challenge`: phone and deviceId, same rules as the SMS code step. */
 export class ChallengeDto extends PickType(VerifyCodeDto, [

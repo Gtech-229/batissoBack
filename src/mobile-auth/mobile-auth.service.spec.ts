@@ -4,6 +4,7 @@ import type { PrismaService } from '../prisma/prisma.service.js';
 import type { SmsSender } from '../sms/sms-sender.js';
 import type { SystemSettingsService } from '../system-settings/system-settings.service.js';
 import { maskPhone, MobileAuthService } from './mobile-auth.service.js';
+import type { PinCheck } from './pin-check.service.js';
 import type { PinHasher } from './pin-hasher.js';
 
 /** The service with a mocked Prisma: only what `login` reads before the PIN. */
@@ -22,6 +23,7 @@ function setup(options: { challengeCount: number; user: object | null }) {
     {} as TokensService,
     {} as SystemSettingsService,
     {} as PinHasher,
+    {} as PinCheck,
   );
   return { prisma, service };
 }

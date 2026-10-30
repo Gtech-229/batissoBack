@@ -104,6 +104,8 @@ enum ActivityAction {
   ARTICLE_UPDATED
   ARTICLE_PRICE_CHANGED
   STORE_QR_CODE_REGENERATED
+  /// A manager reset a user's access after a lost phone (14a).
+  ACCESS_RESET
 }
 
 enum AccountStatus {
@@ -806,6 +808,8 @@ enum NotificationType {
   DISPUTE_STORE_REPLY
   /// The customer closed a dispute (accepted or withdrew): sent to the managers (12).
   DISPUTE_CLOSED
+  /// A manager reset the user's access: sent to that user (14a).
+  ACCESS_RESET
 }
 
 enum NotificationChannel {

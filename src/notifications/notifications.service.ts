@@ -22,6 +22,7 @@ import {
   type NotificationView,
 } from './dto/notification-view.js';
 import {
+  accessResetMessage,
   cancellationRequestedMessage,
   correctionMessage,
   disputeClosedMessage,
@@ -330,6 +331,29 @@ export class NotificationsService {
         storeId: event.storeId,
         operationId: event.operationId,
         type: NotificationType.PURCHASE_RECORDED,
+        title,
+        body,
+      },
+      { sms: true },
+    );
+  }
+
+  /**
+   * The rows telling a user a manager reset their access (14a): in-app and SMS.
+   * Written after the reset cleared the push tokens, so a lost phone gets no push.
+   */
+  async recordAccessReset(
+    tx: Prisma.TransactionClient,
+    event: { userId: string; storeId: string; storeName: string },
+  ): Promise<string[]> {
+    const { title, body } = accessResetMessage(event);
+    return this.writeRows(
+      tx,
+      {
+        userId: event.userId,
+        storeId: event.storeId,
+        operationId: null,
+        type: NotificationType.ACCESS_RESET,
         title,
         body,
       },

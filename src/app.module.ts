@@ -5,6 +5,7 @@ import { AccountsModule } from './accounts/accounts.module.js';
 import { ActivityLogModule } from './activity-log/activity-log.module.js';
 import { AdminAuthModule } from './admin-auth/admin-auth.module.js';
 import { AdminsModule } from './admins/admins.module.js';
+import { AccessRecoveryModule } from './access-recovery/access-recovery.module.js';
 import { CashClosingsModule } from './cash-closings/cash-closings.module.js';
 import { CatalogueModule } from './catalogue/catalogue.module.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
@@ -48,6 +49,7 @@ import { DisputesModule } from './disputes/disputes.module.js';
     OrdersModule,
     DisputesModule,
     CashClosingsModule,
+    AccessRecoveryModule,
   ],
   providers: [
     // Registered as providers (not in main.ts) so e2e tests get them too.

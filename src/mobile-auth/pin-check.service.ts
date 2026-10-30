@@ -38,7 +38,14 @@ export class PinCheck {
     const { maxPinAttempts } = await this.settings.get();
 
     const decision = await this.prisma.$transaction((tx) =>
-      decidePinAttempt(tx, userId, pinOk, maxPinAttempts, new Date()),
+      decidePinAttempt(
+        tx,
+        userId,
+        pinOk,
+        user?.pinHash ?? null,
+        maxPinAttempts,
+        new Date(),
+      ),
     );
     if (decision.kind === 'locked') {
       throw pinLocked(minutesUntil(decision.lockedUntil, new Date()));

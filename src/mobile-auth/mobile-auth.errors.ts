@@ -74,6 +74,14 @@ export function invalidPin(): BadRequestException {
   });
 }
 
+/** A PIN change to the same PIN: nothing to change, no attempt counted. */
+export function pinUnchanged(): BadRequestException {
+  return new BadRequestException({
+    message: 'Le nouveau code PIN doit être différent de l’actuel',
+    error: 'PIN_UNCHANGED',
+  });
+}
+
 export function pinLocked(minutesLeft: number): ForbiddenException {
   const minutes = minutesLeft > 1 ? `${minutesLeft} minutes` : '1 minute';
   return new ForbiddenException({

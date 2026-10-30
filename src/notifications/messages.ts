@@ -206,6 +206,16 @@ export function disputeStoreReplyMessage(dispute: {
   };
 }
 
+/** To the user: a manager reset their access (14a). */
+export function accessResetMessage(reset: {
+  storeName: string;
+}): NotificationMessage {
+  return {
+    title: 'Accès réinitialisé',
+    body: `${reset.storeName} a réinitialisé votre accès à Bâtisso. Connectez-vous avec un code SMS et choisissez un nouveau code PIN. Si vous n’avez rien demandé, contactez cette quincaillerie.`,
+  };
+}
+
 /** To the store's managers: the customer closed their dispute (12). */
 export function disputeClosedMessage(dispute: {
   operationReference: string;

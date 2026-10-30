@@ -7,6 +7,7 @@ import {
 } from '../admin-auth/secrets.js';
 import { ACCESS_TOKEN_TTL_SECONDS } from '../admin-auth/admin-auth.constants.js';
 import { TokensService } from '../admin-auth/tokens.service.js';
+import type { AuthenticatedUser } from './authenticated-user.js';
 import { minutesUntil } from '../common/minutes-until.js';
 import { isPhoneCountry, normalizePhone } from '../common/phone.js';
 import type { Prisma, User } from '../generated/prisma/client.js';
@@ -38,10 +39,13 @@ import {
   invalidPhone,
   invalidRefreshToken,
   invalidVerification,
+  notAuthenticated,
   pinLocked,
+  pinUnchanged,
 } from './mobile-auth.errors.js';
 import { isValidDeviceSignature } from './device-key.js';
 import { decidePinAttempt } from './pin-attempts.js';
+import { PinCheck } from './pin-check.service.js';
 import { PinHasher } from './pin-hasher.js';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -90,6 +94,7 @@ export class MobileAuthService {
     private readonly tokens: TokensService,
     private readonly settings: SystemSettingsService,
     private readonly pinHasher: PinHasher,
+    private readonly pinCheck: PinCheck,
   ) {}
 
   /**
@@ -249,6 +254,7 @@ export class MobileAuthService {
       ? {
           kind: 'check' as const,
           pinOk: await this.pinHasher.verify(pin, user.pinHash),
+          checkedHash: user.pinHash,
         }
       : { kind: 'set' as const, pinHash: await this.pinHasher.hash(pin) };
     const { maxPinAttempts } = await this.settings.get();
@@ -293,6 +299,7 @@ export class MobileAuthService {
           tx,
           user.id,
           step.pinOk,
+          step.checkedHash,
           maxPinAttempts,
           at,
         );
@@ -404,7 +411,8 @@ export class MobileAuthService {
     if (user.pinLockedUntil && user.pinLockedUntil > now) {
       throw pinLocked(minutesUntil(user.pinLockedUntil, now));
     }
-    const pinOk = await this.pinHasher.verify(pin, user.pinHash);
+    const checkedHash = user.pinHash;
+    const pinOk = await this.pinHasher.verify(pin, checkedHash);
     const { maxPinAttempts } = await this.settings.get();
     const refresh = this.tokens.newRefreshSecret();
 
@@ -414,6 +422,7 @@ export class MobileAuthService {
         tx,
         user.id,
         pinOk,
+        checkedHash,
         maxPinAttempts,
         at,
       );
@@ -490,6 +499,53 @@ export class MobileAuthService {
       where: { id: sessionId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+  }
+
+  /**
+   * Changes the signed-in user's PIN. The current PIN is checked like an order
+   * confirmation (same lockout). Sessions on other devices end; this one stays,
+   * and other devices stay trusted, so they sign in again with the new PIN.
+   */
+  async changePin(
+    actor: AuthenticatedUser,
+    currentPin: string,
+    newPin: string,
+  ): Promise<void> {
+    if (currentPin === newPin) {
+      throw pinUnchanged();
+    }
+    await this.pinCheck.verify(actor.userId, currentPin);
+    // The slow scrypt work happens before the transaction (short row lock).
+    const pinHash = await this.pinHasher.hash(newPin);
+
+    const changed = await this.prisma.$transaction(async (tx) => {
+      // A reset revokes this session under the same lock: the PIN it wiped must
+      // not come back through a change that was already on its way.
+      await tx.$queryRaw`
+        SELECT 1 FROM "users" WHERE "id" = ${actor.userId}::uuid FOR UPDATE`;
+      const live = await tx.userSession.count({
+        where: { id: actor.sessionId, revokedAt: null },
+      });
+      if (live === 0) {
+        return false;
+      }
+      await tx.user.update({
+        where: { id: actor.userId },
+        data: { pinHash, failedPinAttempts: 0, pinLockedUntil: null },
+      });
+      await tx.userSession.updateMany({
+        where: {
+          userId: actor.userId,
+          id: { not: actor.sessionId },
+          revokedAt: null,
+        },
+        data: { revokedAt: new Date() },
+      });
+      return true;
+    });
+    if (!changed) {
+      throw notAuthenticated();
+    }
   }
 
   /** The signed-in user and the stores they work in (active memberships). */
