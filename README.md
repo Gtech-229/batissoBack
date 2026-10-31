@@ -416,6 +416,22 @@ After a manager reset, someone with questions must also answer them
 sends `{ "clearSecurityQuestions": true }` with the reset, after checking their
 identity.
 
+## Transaction proofs
+
+A photo of a receipt, or of a contract signed by hand, can be attached to a deposit
+or a material order (Bearer session, multipart, one JPEG or PNG of at most 5 MB in
+the field `photo`, 5 proofs at most on each):
+
+- Staff: `POST /api/v1/stores/:storeId/accounts/:accountId/operations/:operationId/proofs`
+  and `POST /api/v1/stores/:storeId/orders/:orderId/proofs`
+- The account holder: the same under `/api/v1/me/accounts/:accountId/...`
+
+`GET` on those paths lists the proofs, and `.../proofs/:proofId/file` gives the
+image. A manager removes a proof with `DELETE /api/v1/stores/:storeId/proofs/:proofId`
+and a `reason`: the file is deleted, and the record and the reason stay. A proof
+never changes the operation or the order. Files live in the private `PROOF_DIR`,
+which belongs in the backups next to `ID_PHOTO_DIR`.
+
 ## Common commands
 
 | Command | What it does |

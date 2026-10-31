@@ -4,6 +4,9 @@ import { resolve } from 'node:path';
 /** The test photo directory, from `ID_PHOTO_DIR` in .env.test. */
 export const PHOTO_DIR = resolve(process.env.ID_PHOTO_DIR!);
 
+/** The test proof directory, from `PROOF_DIR` in .env.test. */
+export const PROOF_DIR = resolve(process.env.PROOF_DIR!);
+
 /**
  * Small files that only need the right first bytes: the API checks the type from
  * the content and never decodes the image.
@@ -27,4 +30,15 @@ export async function storedPhotos(): Promise<string[]> {
 export async function clearPhotos(): Promise<void> {
   await rm(PHOTO_DIR, { recursive: true, force: true });
   await mkdir(PHOTO_DIR, { recursive: true });
+}
+
+/** The names of the files in the test proof directory, sorted. */
+export async function storedProofs(): Promise<string[]> {
+  return (await readdir(PROOF_DIR)).sort();
+}
+
+/** Empties the test proof directory (it stays in place for the API). */
+export async function clearProofs(): Promise<void> {
+  await rm(PROOF_DIR, { recursive: true, force: true });
+  await mkdir(PROOF_DIR, { recursive: true });
 }

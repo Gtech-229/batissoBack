@@ -106,6 +106,17 @@ describe('Swagger document (e2e)', () => {
       'POST /api/v1/stores/{storeId}/sellers/{userId}/access-reset',
       'PUT /api/v1/me/security-questions',
       'GET /api/v1/me/security-questions',
+      'POST /api/v1/stores/{storeId}/accounts/{accountId}/operations/{operationId}/proofs',
+      'GET /api/v1/stores/{storeId}/accounts/{accountId}/operations/{operationId}/proofs',
+      'POST /api/v1/stores/{storeId}/orders/{orderId}/proofs',
+      'GET /api/v1/stores/{storeId}/orders/{orderId}/proofs',
+      'GET /api/v1/stores/{storeId}/proofs/{proofId}/file',
+      'DELETE /api/v1/stores/{storeId}/proofs/{proofId}',
+      'POST /api/v1/me/accounts/{accountId}/operations/{operationId}/proofs',
+      'GET /api/v1/me/accounts/{accountId}/operations/{operationId}/proofs',
+      'POST /api/v1/me/accounts/{accountId}/orders/{orderId}/proofs',
+      'GET /api/v1/me/accounts/{accountId}/orders/{orderId}/proofs',
+      'GET /api/v1/me/accounts/{accountId}/proofs/{proofId}/file',
     ]) {
       expect(security(route)).toEqual([{ bearer: [] }]);
     }
@@ -187,6 +198,17 @@ describe('Swagger document (e2e)', () => {
         'GET /api/v1/me/security-questions',
         'POST /api/v1/auth/recovery/questions',
         'POST /api/v1/auth/recovery',
+        'POST /api/v1/stores/{storeId}/accounts/{accountId}/operations/{operationId}/proofs',
+        'GET /api/v1/stores/{storeId}/accounts/{accountId}/operations/{operationId}/proofs',
+        'POST /api/v1/stores/{storeId}/orders/{orderId}/proofs',
+        'GET /api/v1/stores/{storeId}/orders/{orderId}/proofs',
+        'GET /api/v1/stores/{storeId}/proofs/{proofId}/file',
+        'DELETE /api/v1/stores/{storeId}/proofs/{proofId}',
+        'POST /api/v1/me/accounts/{accountId}/operations/{operationId}/proofs',
+        'GET /api/v1/me/accounts/{accountId}/operations/{operationId}/proofs',
+        'POST /api/v1/me/accounts/{accountId}/orders/{orderId}/proofs',
+        'GET /api/v1/me/accounts/{accountId}/orders/{orderId}/proofs',
+        'GET /api/v1/me/accounts/{accountId}/proofs/{proofId}/file',
       ]),
     );
   });

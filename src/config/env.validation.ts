@@ -77,6 +77,11 @@ export class EnvironmentVariables {
   @MinLength(1)
   ID_PHOTO_DIR: string = 'storage/id-photos';
 
+  /** Private directory of the proofs of transactions; never served statically. */
+  @IsString()
+  @MinLength(1)
+  PROOF_DIR: string = 'storage/proofs';
+
   /** Used once, to create the super admin when none exists. */
   @IsOptional()
   @TrimLowerCase()
