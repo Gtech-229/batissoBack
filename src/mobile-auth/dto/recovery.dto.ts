@@ -17,7 +17,7 @@ export class RecoveryQuestionsDto extends PickType(SetPinDto, [
 
 export class RecoveryQuestionsResponse {
   @ApiProperty({
-    description: 'Les 3 questions de sécurité de l’utilisateur',
+    description: 'Les questions de sécurité choisies par l’utilisateur',
     type: [OfferedQuestion],
   })
   questions: OfferedQuestion[];

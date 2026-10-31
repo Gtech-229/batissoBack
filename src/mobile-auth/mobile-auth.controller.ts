@@ -179,7 +179,7 @@ export class MobileAuthController {
   }
 
   /**
-   * @description Recover access with the three security answers: every old session and device loses access, the new PIN is set, a session opens here
+   * @description Recover access with an answer to each of the user's security questions: every old session and device loses access, the new PIN is set, a session opens here
    * @route POST /api/v1/auth/recovery
    * @access Public (needs a verification token)
    * @body RecoverAccessDto (verificationToken, answers, newPin, publicKey, deviceName?)
@@ -191,7 +191,7 @@ export class MobileAuthController {
   @ApiOperation({
     summary: 'Récupérer mon accès avec mes questions de sécurité',
     description:
-      'Avec le jeton de `POST /auth/code/verify` et les réponses aux 3 questions : toutes doivent être justes, et l’erreur ne dit jamais laquelle ne l’est pas. Toutes les sessions sont fermées, aucun ancien appareil n’est plus reconnu, le nouveau code PIN est enregistré et une session s’ouvre sur cet appareil. L’utilisateur est prévenu par SMS. Trois essais incorrects bloquent la récupération pendant 24 heures. Après un essai incorrect, le jeton reste valable jusqu’à son expiration.',
+      'Avec le jeton de `POST /auth/code/verify` et une réponse à chacune de ses questions : toutes doivent être justes, et l’erreur ne dit jamais laquelle ne l’est pas. Toutes les sessions sont fermées, aucun ancien appareil n’est plus reconnu, le nouveau code PIN est enregistré et une session s’ouvre sur cet appareil. L’utilisateur est prévenu par SMS. Trois essais incorrects bloquent la récupération pendant 24 heures. Après un essai incorrect, le jeton reste valable jusqu’à son expiration.',
   })
   @ApiOkResponse({ description: 'Session ouverte', type: MobileSession })
   @ApiBadRequestResponse({

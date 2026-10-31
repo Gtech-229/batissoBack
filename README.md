@@ -401,15 +401,15 @@ close; those devices stay trusted and sign in with the new PIN.
 
 ## Security questions
 
-Admins manage the questions (`/api/v1/admin/security-questions`; three are seeded,
-a question's text never changes, and at least 3 stay active). A user chooses three
-and answers them with `PUT /api/v1/me/security-questions`, with their current PIN.
-This is optional.
+The list of 10 questions is set by migrations. A user picks 3 to 5 of them and
+answers with `PUT /api/v1/me/security-questions`, with their current PIN. This is
+optional.
 
 To recover with no manager: `POST /api/v1/auth/code`, `/auth/code/verify`, then
-`/auth/recovery/questions` with the token, then `/auth/recovery` with the three
-answers, a new PIN, and the device's public key. All three must be right; three
-wrong tries lock recovery for 24 hours. Every old session and device loses access.
+`/auth/recovery/questions` with the token, then `/auth/recovery` with an answer to
+each question the user picked, a new PIN, and the device's public key. All must be
+right; three wrong tries lock recovery for 24 hours. Every old session and device
+loses access.
 
 After a manager reset, someone with questions must also answer them
 (`securityQuestionsRequired: true`). If they forgot their answers, the manager

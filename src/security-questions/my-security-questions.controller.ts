@@ -55,7 +55,7 @@ export class MySecurityQuestionsController {
   }
 
   /**
-   * @description Set the signed-in user's three security answers, replacing any before
+   * @description Set the signed-in user's security answers (3 to 5), replacing any before
    * @route PUT /api/v1/me/security-questions
    * @access Mobile session (Bearer)
    * @body SetSecurityAnswersDto (currentPin, answers: questionId, answer)
@@ -66,7 +66,7 @@ export class MySecurityQuestionsController {
   @ApiOperation({
     summary: 'Définir mes questions de sécurité',
     description:
-      'Trois questions différentes parmi celles proposées, avec le code PIN actuel. Remplace les réponses précédentes. Elles permettent de récupérer l’accès sans le gérant, avec un code SMS ; elles sont aussi demandées après une réinitialisation par le gérant.',
+      'De 3 à 5 questions différentes parmi celles proposées, avec le code PIN actuel. Remplace les réponses précédentes. Elles permettent de récupérer l’accès sans le gérant, avec un code SMS ; elles sont aussi demandées après une réinitialisation par le gérant.',
   })
   @ApiNoContentResponse({ description: 'Réponses enregistrées' })
   @ApiBadRequestResponse({

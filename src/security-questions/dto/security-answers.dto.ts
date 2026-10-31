@@ -11,9 +11,12 @@ import {
 } from 'class-validator';
 import { PIN_FORMAT_MESSAGE } from '../../mobile-auth/dto/login.dto.js';
 import { IsSecurityAnswer } from '../normalize-answer.js';
-import { SECURITY_QUESTION_COUNT } from '../security-questions.constants.js';
+import {
+  SECURITY_QUESTION_MAX,
+  SECURITY_QUESTION_MIN,
+} from '../security-questions.constants.js';
 
-const ANSWER_COUNT_MESSAGE = `Il faut répondre à ${SECURITY_QUESTION_COUNT} questions`;
+const ANSWER_COUNT_MESSAGE = `Il faut répondre à ${SECURITY_QUESTION_MIN} à ${SECURITY_QUESTION_MAX} questions`;
 
 export class SecurityAnswerDto {
   @ApiProperty({
@@ -35,14 +38,14 @@ export class SecurityAnswerDto {
 /** The answers of a user: the same shape to set them and to recover. */
 export class SecurityAnswersDto {
   @ApiProperty({
-    description: 'Les 3 réponses',
+    description: 'Une réponse par question (3 à 5)',
     type: [SecurityAnswerDto],
-    minItems: SECURITY_QUESTION_COUNT,
-    maxItems: SECURITY_QUESTION_COUNT,
+    minItems: SECURITY_QUESTION_MIN,
+    maxItems: SECURITY_QUESTION_MAX,
   })
   @IsArray({ message: ANSWER_COUNT_MESSAGE })
-  @ArrayMinSize(SECURITY_QUESTION_COUNT, { message: ANSWER_COUNT_MESSAGE })
-  @ArrayMaxSize(SECURITY_QUESTION_COUNT, { message: ANSWER_COUNT_MESSAGE })
+  @ArrayMinSize(SECURITY_QUESTION_MIN, { message: ANSWER_COUNT_MESSAGE })
+  @ArrayMaxSize(SECURITY_QUESTION_MAX, { message: ANSWER_COUNT_MESSAGE })
   @ValidateNested({ each: true })
   @Type(() => SecurityAnswerDto)
   answers: SecurityAnswerDto[];

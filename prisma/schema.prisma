@@ -255,8 +255,9 @@ model User {
   @@map("users")
 }
 
-/// A security question admins offer (14b). Its text never changes once created:
-/// users answered that text. Deactivated, it stays for those who chose it.
+/// A security question on offer (14b). The list is set by migrations. A text
+/// never changes: users answered it. Retired (`active` false), it stays for
+/// those who chose it.
 model SecurityQuestion {
   id        String   @id @default(uuid(7)) @db.Uuid
   text      String   @unique @db.VarChar(200)
@@ -268,7 +269,7 @@ model SecurityQuestion {
   @@map("security_questions")
 }
 
-/// A user's answer to one security question: three rows per user, or none.
+/// A user's answer to one security question: 3 to 5 rows per user, or none.
 model UserSecurityAnswer {
   userId     String   @db.Uuid
   questionId String   @db.Uuid

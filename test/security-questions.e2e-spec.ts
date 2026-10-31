@@ -2,26 +2,17 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
-import { createAdmin } from './utils/admins.js';
-import { accessCookieFor, createTestApp } from './utils/app.js';
+import { createTestApp } from './utils/app.js';
 import { createMali } from './utils/countries.js';
 import { resetDatabase } from './utils/reset-database.js';
 import { signedInStaff, type MobileStaff } from './utils/staff.js';
 import { TEST_PIN } from './utils/users.js';
 
 const UNKNOWN_ID = '0192f0a4-7b1c-7c3e-9d2a-5e6f7a8b9c0d';
-const QUESTIONS = '/api/v1/admin/security-questions';
-
-interface View {
-  id: string;
-  text: string;
-  active: boolean;
-}
 
 describe('Security questions (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
-  let cookie: string;
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -30,8 +21,6 @@ describe('Security questions (e2e)', () => {
 
   beforeEach(async () => {
     await resetDatabase(prisma);
-    await createAdmin(prisma, { email: 'awa@batisso.test' });
-    cookie = await accessCookieFor(app, 'awa@batisso.test');
   });
 
   afterAll(async () => {
@@ -39,156 +28,9 @@ describe('Security questions (e2e)', () => {
   });
 
   const api = () => request(app.getHttpServer());
-  const create = (text: string) =>
-    api().post(QUESTIONS).set('Cookie', cookie).send({ text });
-  const setActive = (id: string, active: boolean) =>
-    api().patch(`${QUESTIONS}/${id}`).set('Cookie', cookie).send({ active });
-
-  /** `count` active questions, through the API. */
-  async function createQuestions(count: number): Promise<View[]> {
-    const views: View[] = [];
-    for (let i = 1; i <= count; i += 1) {
-      const res = await create(`Question numéro ${i} ?`).expect(201);
-      views.push(res.body as View);
-    }
-    return views;
-  }
-
-  describe('admin routes', () => {
-    it('creates an active question, trimming its text', async () => {
-      const res = await create('  Quel est votre plat préféré ?  ').expect(201);
-
-      expect(res.body).toEqual({
-        id: expect.any(String) as string,
-        text: 'Quel est votre plat préféré ?',
-        active: true,
-        createdAt: expect.any(String) as string,
-      });
-    });
-
-    it('refuses a duplicate text', async () => {
-      await create('Quel est votre plat préféré ?').expect(201);
-
-      const res = await create('Quel est votre plat préféré ?').expect(409);
-
-      expect((res.body as { error: string }).error).toBe(
-        'SECURITY_QUESTION_EXISTS',
-      );
-    });
-
-    it('refuses a text too short or too long, or missing', async () => {
-      await create('Oui').expect(400);
-      await create('x'.repeat(201)).expect(400);
-      await api().post(QUESTIONS).set('Cookie', cookie).send({}).expect(400);
-    });
-
-    it('lists every question, active or not, oldest first', async () => {
-      const [first, second, third, fourth] = await createQuestions(4);
-      await setActive(second.id, false).expect(200);
-
-      const res = await api().get(QUESTIONS).set('Cookie', cookie).expect(200);
-
-      const views = res.body as View[];
-      expect(views.map((view) => view.id)).toEqual([
-        first.id,
-        second.id,
-        third.id,
-        fourth.id,
-      ]);
-      expect(views[1].active).toBe(false);
-    });
-
-    it('deactivates and reactivates a question', async () => {
-      const [question] = await createQuestions(4);
-
-      const off = await setActive(question.id, false).expect(200);
-      expect((off.body as View).active).toBe(false);
-
-      const on = await setActive(question.id, true).expect(200);
-      expect((on.body as View).active).toBe(true);
-    });
-
-    it('never drops below 3 active questions', async () => {
-      const [question] = await createQuestions(3);
-
-      const res = await setActive(question.id, false).expect(409);
-
-      expect((res.body as { error: string }).error).toBe(
-        'TOO_FEW_SECURITY_QUESTIONS',
-      );
-      expect(
-        await prisma.securityQuestion.count({ where: { active: true } }),
-      ).toBe(3);
-    });
-
-    it('keeps 3 active questions under parallel deactivations', async () => {
-      const questions = await createQuestions(5);
-
-      await Promise.all(
-        questions.map((question) =>
-          setActive(question.id, false).then((res) => res.status),
-        ),
-      );
-
-      expect(
-        await prisma.securityQuestion.count({ where: { active: true } }),
-      ).toBe(3);
-    });
-
-    it('lets the last 3 active questions be set active again', async () => {
-      const [question] = await createQuestions(3);
-
-      await setActive(question.id, true).expect(200);
-    });
-
-    it('allows no change of text', async () => {
-      const [question] = await createQuestions(1);
-
-      await api()
-        .patch(`${QUESTIONS}/${question.id}`)
-        .set('Cookie', cookie)
-        .send({ active: true, text: 'Un autre texte ?' })
-        .expect(400);
-
-      const stored = await prisma.securityQuestion.findUniqueOrThrow({
-        where: { id: question.id },
-      });
-      expect(stored.text).toBe(question.text);
-    });
-
-    it('answers 404 for an unknown question and 400 for a bad id or value', async () => {
-      const [question] = await createQuestions(1);
-
-      await setActive(UNKNOWN_ID, true).expect(404);
-      await setActive('not-a-uuid', true).expect(400);
-      await api()
-        .patch(`${QUESTIONS}/${question.id}`)
-        .set('Cookie', cookie)
-        .send({ active: 'yes' })
-        .expect(400);
-    });
-
-    it('is open to any admin role, and needs an admin session', async () => {
-      await createAdmin(prisma, {
-        email: 'super@batisso.test',
-        role: 'SUPER_ADMIN',
-      });
-      const superCookie = await accessCookieFor(app, 'super@batisso.test');
-
-      await api().get(QUESTIONS).set('Cookie', superCookie).expect(200);
-      await api().get(QUESTIONS).expect(401);
-      await api().post(QUESTIONS).send({ text: 'Sans session ?' }).expect(401);
-    });
-
-    it('refuses a mobile session', async () => {
-      await createMali(prisma);
-      const staff = await signedInStaff(app, prisma, { phone: '+22376000000' });
-
-      await api()
-        .get(QUESTIONS)
-        .set('Authorization', staff.authorization)
-        .expect(401);
-    });
+  it('has no admin routes: the list is set by migrations', async () => {
+    await api().get('/api/v1/admin/security-questions').expect(404);
+    await api().post('/api/v1/admin/security-questions').expect(404);
   });
 
   describe('a user setting their answers', () => {
@@ -215,7 +57,7 @@ describe('Security questions (e2e)', () => {
     beforeEach(async () => {
       await createMali(prisma);
       staff = await signedInStaff(app, prisma, { phone: '+22376000000' });
-      for (let i = 1; i <= 4; i += 1) {
+      for (let i = 1; i <= 6; i += 1) {
         await prisma.securityQuestion.create({
           data: { text: `Question offerte ${i} ?` },
         });
@@ -247,7 +89,7 @@ describe('Security questions (e2e)', () => {
       };
       expect(body.configured).toBe(false);
       expect(body.chosen).toEqual([]);
-      expect(body.available).toHaveLength(4);
+      expect(body.available).toHaveLength(6);
       expect(body.available.map((q) => q.id)).not.toContain(inactiveId);
     });
 
@@ -289,6 +131,7 @@ describe('Security questions (e2e)', () => {
       const before = await stored();
       const others = await prisma.securityQuestion.findMany({
         where: { active: true, id: { not: ids[0] } },
+        take: 3,
       });
 
       await set({
@@ -334,7 +177,36 @@ describe('Security questions (e2e)', () => {
       expect(await stored()).toHaveLength(0);
     });
 
-    it('needs exactly three answers', async () => {
+    it.each([3, 4, 5])('accepts %i answers', async (count) => {
+      const offered = await prisma.securityQuestion.findMany({
+        where: { active: true },
+        take: count,
+      });
+
+      await set({
+        currentPin: TEST_PIN,
+        answers: answersFor(offered.map((question) => question.id)),
+      }).expect(204);
+
+      expect(await stored()).toHaveLength(count);
+    });
+
+    it('replaces 5 answers with 3, leaving none behind', async () => {
+      const offered = await prisma.securityQuestion.findMany({
+        where: { active: true },
+        take: 5,
+      });
+      await set({
+        currentPin: TEST_PIN,
+        answers: answersFor(offered.map((question) => question.id)),
+      }).expect(204);
+
+      await set({ currentPin: TEST_PIN, answers: answersFor() }).expect(204);
+
+      expect(await stored()).toHaveLength(3);
+    });
+
+    it('needs 3 to 5 answers', async () => {
       const others = await prisma.securityQuestion.findMany({
         where: { active: true },
       });

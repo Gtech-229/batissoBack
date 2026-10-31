@@ -271,6 +271,35 @@ describe('Account recovery with security questions (e2e)', () => {
       ]).expect(200);
     });
 
+    it('asks every question the user picked, all five', async () => {
+      const extra = [];
+      for (const text of ['Quatre ?', 'Cinq ?']) {
+        const question = await prisma.securityQuestion.create({
+          data: { text: `Question ${text}` },
+        });
+        extra.push({ questionId: question.id, answer: `Réponse ${text}` });
+      }
+      const five = [...rightAnswers(), ...extra];
+      await api()
+        .put('/api/v1/me/security-questions')
+        .set('Authorization', customer.authorization)
+        .send({ currentPin: TEST_PIN, answers: five })
+        .expect(204);
+      const { verificationToken } = await verifiedCode();
+
+      const shown = await questionsFor(verificationToken).expect(200);
+      const { questions } = shown.body as { questions: unknown[] };
+      expect(questions).toHaveLength(5);
+
+      const three = await recover(verificationToken, rightAnswers()).expect(
+        401,
+      );
+      expect(errorOf(three)).toBe('INVALID_RECOVERY_ANSWERS');
+      expect((await stored()).failedRecoveryAttempts).toBe(1);
+
+      await recover(verificationToken, five).expect(200);
+    });
+
     it('uses a token once', async () => {
       await setAnswers();
       const { verificationToken } = await verifiedCode();

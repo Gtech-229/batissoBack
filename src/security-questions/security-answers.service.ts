@@ -42,7 +42,7 @@ export class SecurityAnswersService {
   }
 
   /**
-   * Sets the user's three answers, replacing any before. The current PIN is
+   * Sets the user's answers, 3 to 5 of them, replacing any before. The current PIN is
    * required: a borrowed unlocked phone must not be able to rewrite recovery.
    */
   async set(
