@@ -120,6 +120,23 @@ describe('Cash closing schema (e2e)', () => {
       'amounts_not_negative',
     ],
     [
+      'a negative total of deposits',
+      {
+        depositsTotal: -1n,
+        correctionsTotal: 0n,
+        expectedTotal: -1n,
+        countedTotal: 0n,
+        discrepancy: 1n,
+        justification: 'x',
+      },
+      'amounts_not_negative',
+    ],
+    [
+      'a negative total of corrections',
+      { depositsTotal: 3999n, correctionsTotal: -1n },
+      'amounts_not_negative',
+    ],
+    [
       'a difference without a justification',
       { countedTotal: 3500n, discrepancy: -500n },
       'justified',
@@ -157,6 +174,12 @@ describe('Cash closing schema (e2e)', () => {
     await expect(
       prisma.cashClosing.delete({ where: { id: stored.id } }),
     ).rejects.toThrow(/append-only: DELETE refused/);
+    await expect(
+      prisma.cashClosingOperation.update({
+        where: { operationId },
+        data: { closingId: stored.id },
+      }),
+    ).rejects.toThrow(/append-only: UPDATE refused/);
     await expect(
       prisma.cashClosingOperation.delete({ where: { operationId } }),
     ).rejects.toThrow(/append-only: DELETE refused/);

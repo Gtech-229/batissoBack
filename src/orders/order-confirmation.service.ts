@@ -106,6 +106,11 @@ export class OrderConfirmationService {
             throw orderStatusConflict(order.status);
           }
           if (request.confirmationCodeId !== undefined) {
+            // The order, then its code: the order ConfirmationCodesService
+            // takes them in, so a new code and a confirmation cannot deadlock.
+            await tx.$queryRaw`
+              SELECT 1 FROM "material_orders"
+              WHERE "id" = ${order.id}::uuid FOR UPDATE`;
             const { count } = await tx.orderConfirmationCode.updateMany({
               where: {
                 id: request.confirmationCodeId,

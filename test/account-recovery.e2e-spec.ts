@@ -190,6 +190,13 @@ describe('Account recovery with security questions (e2e)', () => {
 
       const res = await recover(verificationToken, rightAnswers()).expect(200);
 
+      const hashes = await prisma.userSecurityAnswer.findMany({
+        where: { userId: customer.userId },
+      });
+      const body = JSON.stringify(res.body);
+      expect(body).not.toContain('Fatou');
+      expect(body).not.toContain('answerHash');
+      expect(body).not.toContain(hashes[0].answerHash);
       const session = res.body as Session;
       await api()
         .get('/api/v1/me')
@@ -300,6 +307,37 @@ describe('Account recovery with security questions (e2e)', () => {
       await recover(verificationToken, five).expect(200);
     });
 
+    it('retires every other live token and code of the phone', async () => {
+      await setAnswers();
+      /** Past the SMS cooldown, so the next code can be sent. */
+      const ageCodes = () =>
+        prisma.phoneVerification.updateMany({
+          data: { createdAt: new Date(Date.now() - 120_000) },
+        });
+      const first = await verifiedCode();
+      await ageCodes();
+      const second = await verifiedCode();
+      await ageCodes();
+      await api()
+        .post('/api/v1/auth/code')
+        .send({ phone: customer.phone })
+        .expect(202);
+      const pending = sms.lastCodeFor(customer.phone);
+
+      await recover(second.verificationToken, rightAnswers()).expect(200);
+
+      const other = await recover(
+        first.verificationToken,
+        rightAnswers(),
+      ).expect(401);
+      expect(errorOf(other)).toBe('INVALID_VERIFICATION');
+      const code = await api()
+        .post('/api/v1/auth/code/verify')
+        .send({ phone: customer.phone, code: pending, deviceId: NEW_DEVICE })
+        .expect(401);
+      expect(errorOf(code)).toBe('INVALID_CODE');
+    });
+
     it('uses a token once', async () => {
       await setAnswers();
       const { verificationToken } = await verifiedCode();
@@ -318,6 +356,7 @@ describe('Account recovery with security questions (e2e)', () => {
       const res = await recover(verificationToken, wrongAnswers()).expect(401);
 
       expect(errorOf(res)).toBe('INVALID_RECOVERY_ANSWERS');
+      expect(JSON.stringify(res.body)).not.toContain('pas la bonne');
       const after = await stored();
       expect(after.pinHash).toBe(before.pinHash);
       expect(after.failedRecoveryAttempts).toBe(1);
@@ -505,6 +544,19 @@ describe('Account recovery with security questions (e2e)', () => {
         .post(`/api/v1/stores/${storeId}/accounts/${accountId}/access-reset`)
         .set('Authorization', manager.authorization)
         .send(body);
+
+    it('keeps the recovery lock on a plain reset', async () => {
+      await setAnswers();
+      const lockedUntil = new Date(Date.now() + 3_600_000);
+      await prisma.user.update({
+        where: { id: customer.userId },
+        data: { recoveryLockedUntil: lockedUntil },
+      });
+
+      await reset();
+
+      expect((await stored()).recoveryLockedUntil).toEqual(lockedUntil);
+    });
 
     it('keeps the answers without the flag, or with it false', async () => {
       await setAnswers();

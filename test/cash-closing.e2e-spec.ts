@@ -427,6 +427,42 @@ describe('Daily cash closing (e2e)', () => {
         expect(await counts()).toEqual({ closings: 1, links: 1 });
       });
 
+      it('refuses another store’s key and shows none of its data', async () => {
+        await deposit('50000');
+        const key = randomUUID();
+        await close({ countedTotal: '50000' }, { key }).expect(201);
+
+        const refused = await close(
+          { countedTotal: '50000' },
+          { key, as: outsider, store: otherStoreId },
+        ).expect(409);
+
+        expect(refused.body.error).toBe('IDEMPOTENCY_KEY_REUSED');
+        const body = JSON.stringify(refused.body);
+        expect(body).not.toContain('Awa');
+        expect(body).not.toContain('50000');
+        expect(await counts()).toEqual({ closings: 1, links: 1 });
+      });
+
+      it('lets one of two stores win a key used at the same time', async () => {
+        const key = randomUUID();
+
+        const responses = await Promise.all([
+          close({ countedTotal: '0' }, { key }),
+          close(
+            { countedTotal: '0' },
+            { key, as: outsider, store: otherStoreId },
+          ),
+        ]);
+
+        expect(responses.map((r) => r.status).sort((a, b) => a - b)).toEqual([
+          201, 409,
+        ]);
+        const refused = responses.find((r) => r.status === 409);
+        expect(refused?.body.error).toBe('IDEMPOTENCY_KEY_REUSED');
+        expect(await prisma.cashClosing.count()).toBe(1);
+      });
+
       it('refuses a key reused for another count with 409 IDEMPOTENCY_KEY_REUSED', async () => {
         await deposit('50000');
         const key = randomUUID();

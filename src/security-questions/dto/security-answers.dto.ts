@@ -16,7 +16,7 @@ import {
   SECURITY_QUESTION_MIN,
 } from '../security-questions.constants.js';
 
-const ANSWER_COUNT_MESSAGE = `Il faut répondre à ${SECURITY_QUESTION_MIN} à ${SECURITY_QUESTION_MAX} questions`;
+const ANSWER_COUNT_MESSAGE = `Il faut de ${SECURITY_QUESTION_MIN} à ${SECURITY_QUESTION_MAX} réponses`;
 
 export class SecurityAnswerDto {
   @ApiProperty({

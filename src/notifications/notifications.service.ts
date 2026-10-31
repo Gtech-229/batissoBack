@@ -628,7 +628,9 @@ export class NotificationsService {
    * Stores the push token of the session's device, or removes it (`null`). A
    * token is unique: one already on another device (a phone that changed
    * hands, or a reinstalled app) is taken off it first, in the same transaction,
-   * so pushes only ever reach the phone's current user.
+   * so pushes only ever reach the phone's current user. A device a reset has
+   * untrusted takes no token: a request in flight when the reset committed
+   * changes nothing, and its session is already gone.
    */
   async setPushToken(
     actor: AuthenticatedUser,
@@ -645,12 +647,11 @@ export class NotificationsService {
             data: { pushToken: null },
           });
         }
-        await tx.userDevice.update({
+        await tx.userDevice.updateMany({
           where: {
-            userId_deviceId: {
-              userId: actor.userId,
-              deviceId: actor.deviceId,
-            },
+            userId: actor.userId,
+            deviceId: actor.deviceId,
+            ...(token !== null && { publicKey: { not: null } }),
           },
           data: { pushToken: token },
         });

@@ -254,6 +254,24 @@ describe('Notifications (e2e)', () => {
   });
 
   describe('PUT /me/devices/push-token', () => {
+    it('stores no token on a device a reset has untrusted (F-16)', async () => {
+      await prisma.userDevice.updateMany({
+        where: { user: { phone: customer.phone } },
+        data: { publicKey: null },
+      });
+
+      await api()
+        .put('/api/v1/me/devices/push-token')
+        .set('Authorization', customer.authorization)
+        .send({ token: 'token-of-the-lost-phone' })
+        .expect(204);
+
+      const devices = await prisma.userDevice.findMany({
+        where: { user: { phone: customer.phone } },
+      });
+      expect(devices.every((device) => device.pushToken === null)).toBe(true);
+    });
+
     const putToken = (as: MobileStaff, body: Record<string, unknown>) =>
       api()
         .put('/api/v1/me/devices/push-token')

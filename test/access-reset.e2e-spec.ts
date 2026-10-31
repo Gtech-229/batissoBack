@@ -1,4 +1,4 @@
-import type { INestApplication } from '@nestjs/common';
+import { Logger, type INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
@@ -232,6 +232,51 @@ describe('Lost phone reset (e2e)', () => {
         })
         .expect(401);
       expect((await stored()).pinHash).toBeNull();
+    });
+
+    it('retires a code that was sent but never verified', async () => {
+      await requestCode();
+      const code = sms.lastCodeFor(customer.phone);
+
+      await reset().expect(200);
+
+      const res = await verifyCode(code).expect(401);
+      expect((res.body as { error: string }).error).toBe('INVALID_CODE');
+    });
+
+    it('logs no phone, PIN, or token during a reset or a PIN change', async () => {
+      const spies = (['log', 'warn', 'error', 'debug', 'verbose'] as const).map(
+        (level) =>
+          vi.spyOn(Logger.prototype, level).mockImplementation(() => {}),
+      );
+      await prisma.userDevice.updateMany({
+        where: { userId: seller.userId },
+        data: { pushToken: 'push-token-of-the-phone' },
+      });
+
+      await api()
+        .put('/api/v1/me/pin')
+        .set('Authorization', seller.authorization)
+        .send({ currentPin: TEST_PIN, newPin: NEW_PIN })
+        .expect(204);
+      await reset().expect(200);
+      await api()
+        .post(`/api/v1/stores/${storeId}/sellers/${seller.userId}/access-reset`)
+        .set('Authorization', manager.authorization)
+        .expect(200);
+      await notificationsSent();
+
+      const lines = JSON.stringify(spies.map((spy) => spy.mock.calls));
+      spies.forEach((spy) => spy.mockRestore());
+      for (const secret of [
+        customer.phone,
+        seller.phone,
+        TEST_PIN,
+        NEW_PIN,
+        'push-token-of-the-phone',
+      ]) {
+        expect(lines).not.toContain(secret);
+      }
     });
 
     it('tells the person in-app and by SMS, never by push', async () => {

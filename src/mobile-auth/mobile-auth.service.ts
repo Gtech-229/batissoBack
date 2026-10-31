@@ -60,10 +60,6 @@ import { PinHasher } from './pin-hasher.js';
 import { revokeAccess } from './revoke-access.js';
 
 const HOUR_MS = 60 * 60 * 1000;
-const QUESTION_ORDER = [
-  { question: { createdAt: 'asc' } },
-  { questionId: 'asc' },
-] as const;
 const DAY_MS = 24 * HOUR_MS;
 
 // Matches no user: a device lookup for an unknown phone finds nothing, at the
@@ -248,23 +244,8 @@ export class MobileAuthService {
     deviceName: string | undefined,
   ): Promise<MobileSession> {
     const now = new Date();
-    const verification = await this.prisma.phoneVerification.findUnique({
-      where: { tokenHash: hashToken(verificationToken) },
-    });
-    if (
-      !verification?.deviceId ||
-      verification.consumedAt ||
-      !verification.tokenExpiresAt ||
-      verification.tokenExpiresAt <= now
-    ) {
-      throw invalidVerification();
-    }
-    const user = await this.prisma.user.findUnique({
-      where: { phone: verification.phone },
-    });
-    if (!user) {
-      throw invalidVerification();
-    }
+    const { verification, deviceId, user } =
+      await this.liveVerification(verificationToken);
     // Fast path only: the decision that counts is taken again under the lock.
     if (user.pinHash && user.pinLockedUntil && user.pinLockedUntil > now) {
       throw pinLocked(minutesUntil(user.pinLockedUntil, now));
@@ -280,7 +261,6 @@ export class MobileAuthService {
       : { kind: 'set' as const, pinHash: await this.pinHasher.hash(pin) };
     const { maxPinAttempts } = await this.settings.get();
     const refresh = this.tokens.newRefreshSecret();
-    const deviceId = verification.deviceId;
 
     const outcome = await this.prisma.$transaction(async (tx) => {
       // Locked so two requests with the same token cannot both use it.
@@ -376,7 +356,7 @@ export class MobileAuthService {
     const { user } = await this.liveVerification(verificationToken);
     const answers = await this.prisma.userSecurityAnswer.findMany({
       where: { userId: user.id },
-      orderBy: [...QUESTION_ORDER],
+      orderBy: [{ question: { createdAt: 'asc' } }, { questionId: 'asc' }],
       select: { question: { select: { id: true, text: true } } },
     });
     if (answers.length === 0) {

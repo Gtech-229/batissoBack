@@ -1,4 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
+import { readFileSync } from 'node:fs';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
@@ -28,6 +29,27 @@ describe('Security questions (e2e)', () => {
   });
 
   const api = () => request(app.getHttpServer());
+  it('seeds 10 distinct questions through the migrations', async () => {
+    // The reset above empties the table: what the migrations write is run again.
+    const migrations = [
+      'prisma/migrations/20261030150000_security_questions/migration.sql',
+      'prisma/migrations/20261031090000_security_question_list/migration.sql',
+    ];
+    for (const path of migrations) {
+      const [insert] =
+        readFileSync(path, 'utf8').match(
+          /INSERT INTO "security_questions"[^;]*;/,
+        ) ?? [];
+      await prisma.$executeRawUnsafe(insert!);
+    }
+
+    const questions = await prisma.securityQuestion.findMany();
+
+    expect(questions).toHaveLength(10);
+    expect(new Set(questions.map((q) => q.text)).size).toBe(10);
+    expect(questions.every((q) => q.active)).toBe(true);
+  });
+
   it('has no admin routes: the list is set by migrations', async () => {
     await api().get('/api/v1/admin/security-questions').expect(404);
     await api().post('/api/v1/admin/security-questions').expect(404);
@@ -211,10 +233,13 @@ describe('Security questions (e2e)', () => {
         where: { active: true },
       });
 
-      await set({
+      const tooFew = await set({
         currentPin: TEST_PIN,
         answers: answersFor(ids.slice(0, 2)),
       }).expect(400);
+      expect(JSON.stringify(tooFew.body)).toContain(
+        'Il faut de 3 à 5 réponses',
+      );
       await set({
         currentPin: TEST_PIN,
         answers: answersFor(others.map((question) => question.id)),

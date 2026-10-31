@@ -61,15 +61,20 @@ export class CashClosingsService {
 
   /** What should be in the drawer now. Reads only. */
   async pending(storeId: string): Promise<PendingCashView> {
-    const [operations, last, currencyCode] = await Promise.all([
-      this.uncounted(this.prisma, storeId),
-      this.prisma.cashClosing.findFirst({
-        where: { storeId },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        select: { createdAt: true },
-      }),
-      this.currencyOf(this.prisma, storeId),
-    ]);
+    // REPEATABLE READ: the totals and the date come from the same snapshot.
+    const [operations, last, currencyCode] = await this.prisma.$transaction(
+      async (tx) =>
+        [
+          await this.uncounted(tx, storeId),
+          await tx.cashClosing.findFirst({
+            where: { storeId },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            select: { createdAt: true },
+          }),
+          await this.currencyOf(tx, storeId),
+        ] as const,
+      ONE_SNAPSHOT,
+    );
     const totals = closingTotals(operations);
     return {
       depositsTotal: formatAmount(totals.depositsTotal),

@@ -11,7 +11,12 @@ export async function revokeAccess(
   at: Date,
 ): Promise<{ sessionsRevoked: number; devicesUntrusted: number }> {
   // Before the user lock, the order of POST /auth/pin (token, then user): the
-  // two cannot deadlock, and a token in flight dies here.
+  // two cannot deadlock, and a token in flight dies here. In id order, like a
+  // recovery, which takes the same rows.
+  await tx.$queryRaw`
+    SELECT 1 FROM "phone_verifications"
+    WHERE "phone" = ${user.phone} AND "consumedAt" IS NULL
+    ORDER BY "id" FOR UPDATE`;
   await tx.phoneVerification.updateMany({
     where: { phone: user.phone, consumedAt: null },
     data: { consumedAt: at },

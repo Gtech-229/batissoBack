@@ -1,4 +1,4 @@
-import type { INestApplication } from '@nestjs/common';
+import { Logger, type INestApplication } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
@@ -202,9 +202,19 @@ describe('Confirming an order with an SMS code (e2e)', () => {
     it('still answers when the SMS provider fails', async () => {
       const order = await prepare();
       sms.mode = 'reject';
+      const logged = vi
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => {});
 
       await requestCode(order.id).expect(201);
       expect(await codes(order.id)).toHaveLength(1);
+
+      // The failure is logged once the rejection settles, phone masked, no code.
+      await vi.waitFor(() => expect(logged).toHaveBeenCalledTimes(1));
+      const line = JSON.stringify(logged.mock.calls);
+      logged.mockRestore();
+      expect(line).not.toContain(customer.phone);
+      expect(line).not.toContain(codeOf());
     });
   });
 
@@ -277,7 +287,9 @@ describe('Confirming an order with an SMS code (e2e)', () => {
         data: { expiresAt: new Date(Date.now() - 1000) },
       });
 
-      await confirm(order.id, codeOf()).expect(400);
+      await confirm(order.id, codeOf())
+        .expect(400)
+        .expect((r) => expect(r.body.error).toBe('INVALID_CODE'));
       expect(await debits()).toBe(0);
     });
 
@@ -356,11 +368,14 @@ describe('Confirming an order with an SMS code (e2e)', () => {
         confirm(order.id, code),
       ]);
 
-      expect(responses.map((r) => r.status).sort((a, b) => a - b)).toEqual([
-        201,
-        expect.any(Number),
-      ]);
+      const [loser, ...others] = responses.filter((r) => r.status !== 201);
+      expect(others).toEqual([]);
       expect(responses.filter((r) => r.status === 201)).toHaveLength(1);
+      // The code was used, or the order was confirmed, by the winner.
+      expect([
+        [400, 'INVALID_CODE'],
+        [409, 'ORDER_STATUS'],
+      ]).toContainEqual([loser.status, loser.body.error]);
       expect(await debits()).toBe(1);
     });
 
