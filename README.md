@@ -432,6 +432,20 @@ and a `reason`: the file is deleted, and the record and the reason stay. A proof
 never changes the operation or the order. Files live in the private `PROOF_DIR`,
 which belongs in the backups next to `ID_PHOTO_DIR`.
 
+## Store reports
+
+The store's **manager** reads three reports (Bearer session), in any store status:
+
+- `GET /api/v1/stores/:storeId/reports/totals?from=2026-10-01&to=2026-10-31`:
+  deposits, corrections, purchases, and re-credits, with the cash received
+- `GET /api/v1/stores/:storeId/reports/customers?status=INACTIVE`: customers, the
+  quietest first. Active means a deposit in the last 30 days, or an account opened
+  in the last 30 days
+- `GET /api/v1/stores/:storeId/reports/sellers?from=2026-10-01&to=2026-10-31`: what
+  each staff member recorded
+
+`from` and `to` are whole days in UTC, `to` included, one year at most.
+
 ## Common commands
 
 | Command | What it does |

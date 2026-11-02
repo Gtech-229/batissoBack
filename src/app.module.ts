@@ -25,6 +25,7 @@ import { StoresModule } from './stores/stores.module.js';
 import { SystemSettingsModule } from './system-settings/system-settings.module.js';
 import { CountriesModule } from './countries/countries.module.js';
 import { SecurityQuestionsModule } from './security-questions/security-questions.module.js';
+import { StoreReportsModule } from './store-reports/store-reports.module.js';
 import { TransactionProofsModule } from './transaction-proofs/transaction-proofs.module.js';
 import { DisputesModule } from './disputes/disputes.module.js';
 
@@ -54,6 +55,7 @@ import { DisputesModule } from './disputes/disputes.module.js';
     AccessRecoveryModule,
     SecurityQuestionsModule,
     TransactionProofsModule,
+    StoreReportsModule,
   ],
   providers: [
     // Registered as providers (not in main.ts) so e2e tests get them too.
