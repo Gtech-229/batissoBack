@@ -8,6 +8,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { RequirePermission } from '../admin-auth/decorators/require-permission.decorator.js';
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
@@ -53,6 +54,7 @@ export class StoresController {
    * @returns 201 StoreDetail; 404 unknown country; 409 COUNTRY_INACTIVE
    */
   @Post()
+  @RequirePermission('stores.manage')
   @ApiOperation({
     summary: 'Inscrire une quincaillerie',
     description:
@@ -87,6 +89,7 @@ export class StoresController {
    * @returns 200 { items: StoreSummary[], total, page, pageSize }
    */
   @Get()
+  @RequirePermission('stores.read')
   @ApiOperation({
     summary: 'Lister les quincailleries',
     description:
@@ -110,6 +113,7 @@ export class StoresController {
    * @returns 200 StoreDetail; 409 STORE_CLOSED
    */
   @Patch(':id')
+  @RequirePermission('stores.manage')
   @ApiOperation({
     summary: 'Modifier les informations d’une quincaillerie',
     description:
@@ -145,6 +149,7 @@ export class StoresController {
    * @returns 200 StoreDetail; 400 if minDeposit would exceed maxBalance; 409 STORE_CLOSED
    */
   @Patch(':id/settings')
+  @RequirePermission('store-settings.manage')
   @ApiOperation({
     summary: 'Modifier les paramètres d’une quincaillerie',
     description:
@@ -180,6 +185,7 @@ export class StoresController {
    * @returns 200 StoreDetail (VERIFIED, verifiedAt set); 409 INVALID_STATUS_TRANSITION
    */
   @Patch(':id/verify')
+  @RequirePermission('stores.manage')
   @ApiOperation({
     summary: 'Vérifier une quincaillerie',
     description:
@@ -211,6 +217,7 @@ export class StoresController {
    * @returns 200 StoreDetail (SUSPENDED); 409 INVALID_STATUS_TRANSITION
    */
   @Patch(':id/suspend')
+  @RequirePermission('stores.manage')
   @ApiOperation({
     summary: 'Suspendre une quincaillerie',
     description:
@@ -251,6 +258,7 @@ export class StoresController {
    * @returns 200 StoreDetail (VERIFIED, reason cleared); 409 INVALID_STATUS_TRANSITION
    */
   @Patch(':id/reactivate')
+  @RequirePermission('stores.manage')
   @ApiOperation({
     summary: 'Réactiver une quincaillerie',
     description: 'SUSPENDED -> VERIFIED. Le motif de suspension est effacé.',
@@ -281,6 +289,7 @@ export class StoresController {
    * @returns 200 StoreDetail (CLOSED); 409 INVALID_STATUS_TRANSITION if already closed
    */
   @Patch(':id/close')
+  @RequirePermission('stores.manage')
   @ApiOperation({
     summary: 'Fermer une quincaillerie',
     description:
@@ -316,6 +325,7 @@ export class StoresController {
    * @returns 200 StoreDetail; 404 if unknown
    */
   @Get(':id')
+  @RequirePermission('stores.read')
   @ApiOperation({ summary: 'Détail d’une quincaillerie' })
   @ApiParam({ name: 'id', description: 'Identifiant de la quincaillerie' })
   @ApiOkResponse({ description: 'Quincaillerie', type: StoreDetail })

@@ -33,6 +33,21 @@ describe('Swagger document (e2e)', () => {
     await app.close();
   });
 
+  it('documents the role routes', () => {
+    const routes = operations.map(([route]) => route);
+
+    expect(routes).toEqual(
+      expect.arrayContaining([
+        'GET /api/v1/admin/permissions',
+        'GET /api/v1/admin/roles',
+        'POST /api/v1/admin/roles',
+        'PATCH /api/v1/admin/roles/{roleId}',
+        'DELETE /api/v1/admin/roles/{roleId}',
+        'PATCH /api/v1/admin/admins/{id}/role',
+      ]),
+    );
+  });
+
   it('documents the country routes', () => {
     const routes = operations.map(([route]) => route);
 

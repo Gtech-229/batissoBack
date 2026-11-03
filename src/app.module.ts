@@ -4,6 +4,7 @@ import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { AccountsModule } from './accounts/accounts.module.js';
 import { ActivityLogModule } from './activity-log/activity-log.module.js';
 import { AdminAuthModule } from './admin-auth/admin-auth.module.js';
+import { AdminRolesModule } from './admin-roles/admin-roles.module.js';
 import { AdminsModule } from './admins/admins.module.js';
 import { AccessRecoveryModule } from './access-recovery/access-recovery.module.js';
 import { CashClosingsModule } from './cash-closings/cash-closings.module.js';
@@ -37,6 +38,7 @@ import { DisputesModule } from './disputes/disputes.module.js';
     SystemSettingsModule,
     AdminAuthModule,
     AdminsModule,
+    AdminRolesModule,
     CountriesModule,
     StoresModule,
     MobileAuthModule,

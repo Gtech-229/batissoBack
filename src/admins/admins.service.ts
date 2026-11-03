@@ -1,4 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import {
+  roleNotFound,
+  superAdminHasNoRole,
+} from '../admin-roles/admin-roles.errors.js';
 import { hashPassword } from '../admin-auth/secrets.js';
 import { AdminRole, Prisma, type Admin } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -27,6 +31,7 @@ export class AdminsService {
           lastName: data.lastName,
           passwordHash: await hashPassword(data.password),
           role: AdminRole.ADMIN,
+          roleId: data.roleId,
           mustChangePassword: true,
           createdById,
         },
@@ -41,6 +46,13 @@ export class AdminsService {
       ) {
         throw emailAlreadyUsed();
       }
+      // P2003: the foreign key, so the role does not exist (or was just deleted).
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2003'
+      ) {
+        throw roleNotFound();
+      }
       throw error;
     }
   }
@@ -50,6 +62,35 @@ export class AdminsService {
       orderBy: { createdAt: 'desc' },
     });
     return admins.map(toAdminSummary);
+  }
+
+  /**
+   * Gives an ADMIN another role. It counts from their next request; their
+   * sessions stay open. The super admin has none to give.
+   */
+  async assignRole(id: string, roleId: string): Promise<AdminSummary> {
+    const admin = await this.prisma.admin.findUnique({ where: { id } });
+    if (!admin) {
+      throw adminNotFound();
+    }
+    if (admin.role === AdminRole.SUPER_ADMIN) {
+      throw superAdminHasNoRole();
+    }
+    try {
+      const updated = await this.prisma.admin.update({
+        where: { id },
+        data: { roleId },
+      });
+      return toAdminSummary(updated);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2003'
+      ) {
+        throw roleNotFound();
+      }
+      throw error;
+    }
   }
 
   /** Blocks login and signs the admin out everywhere, immediately. */

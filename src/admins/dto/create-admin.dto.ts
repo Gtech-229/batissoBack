@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsString, Length } from 'class-validator';
+import { IsEmail, IsString, IsUUID, Length } from 'class-validator';
 import {
   IsPassword,
   PASSWORD_RULE_MESSAGE,
@@ -33,4 +33,12 @@ export class CreateAdminDto {
   })
   @IsPassword()
   password: string;
+
+  @ApiProperty({
+    description:
+      'Identifiant du rôle donné à l’administrateur (voir `GET /admin/roles`)',
+    example: '0192f0a4-7b1c-7c3e-9d2a-5e6f7a8b9c0d',
+  })
+  @IsUUID(undefined, { message: 'Identifiant de rôle invalide' })
+  roleId: string;
 }

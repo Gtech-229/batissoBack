@@ -11,14 +11,22 @@ import { MobileRoute } from '../mobile-auth/decorators/mobile-route.decorator.js
 import { AdminAuthGuard } from './admin-auth.guard.js';
 import { AllowWhilePasswordChangeRequired } from './decorators/allow-while-password-change-required.decorator.js';
 import { Public } from './decorators/public.decorator.js';
-import { Roles } from './decorators/roles.decorator.js';
+import {
+  RequirePermission,
+  SuperAdminOnly,
+} from './decorators/require-permission.decorator.js';
+import { PERMISSION_NAMES } from './permissions.js';
 
 const SECRET = 'x'.repeat(32);
 const jwt = new JwtService({ secret: SECRET, signOptions: { expiresIn: 900 } });
 
 // Routes declared with real decorators, so the guard reads real metadata.
 class PlainController {
+  @RequirePermission('stores.read')
   route() {}
+
+  // No marker: the super admin's only, by default.
+  unmarked() {}
 }
 class DecoratedController {
   @Public()
@@ -27,12 +35,19 @@ class DecoratedController {
   @AllowWhilePasswordChangeRequired()
   me() {}
 
-  @Roles(['SUPER_ADMIN'])
+  @SuperAdminOnly()
   superOnly() {}
 }
-@Roles(['SUPER_ADMIN'])
+@SuperAdminOnly()
 class SuperAdminController {
   route() {}
+}
+@RequirePermission('countries.read')
+class CountriesController {
+  route() {}
+
+  @RequirePermission('countries.manage')
+  manage() {}
 }
 @MobileRoute()
 class MobileController {
@@ -44,7 +59,12 @@ interface Session {
   adminId: string;
   revokedAt: Date | null;
   expiresAt: Date;
-  admin: { role: string; isActive: boolean; mustChangePassword: boolean };
+  admin: {
+    role: string;
+    isActive: boolean;
+    mustChangePassword: boolean;
+    accessRole?: { permissions: string[] } | null;
+  };
 }
 
 function activeSession(overrides: Partial<Session> = {}): Session {
@@ -53,7 +73,12 @@ function activeSession(overrides: Partial<Session> = {}): Session {
     adminId: 'admin-1',
     revokedAt: null,
     expiresAt: new Date(Date.now() + 60_000),
-    admin: { role: 'ADMIN', isActive: true, mustChangePassword: false },
+    admin: {
+      role: 'ADMIN',
+      isActive: true,
+      mustChangePassword: false,
+      accessRole: { permissions: ['stores.read', 'countries.read'] },
+    },
     ...overrides,
   };
 }
@@ -194,6 +219,7 @@ describe('AdminAuthGuard', () => {
       adminId: 'admin-1',
       sessionId: 'session-1',
       role: 'ADMIN',
+      permissions: ['stores.read', 'countries.read'],
     });
   });
 
@@ -237,43 +263,108 @@ describe('AdminAuthGuard', () => {
     });
   });
 
-  describe('roles', () => {
-    it('refuses an ADMIN on a method restricted to SUPER_ADMIN', async () => {
-      const { guard } = guardWith(activeSession());
-
-      await expect(
-        guard.canActivate(
-          context(DecoratedController, 'superOnly', await accessCookie()).ctx,
-        ),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+  describe('permissions', () => {
+    const admin = (permissions: string[] | null) =>
+      activeSession({
+        admin: {
+          role: 'ADMIN',
+          isActive: true,
+          mustChangePassword: false,
+          accessRole: permissions === null ? null : { permissions },
+        },
+      });
+    const superAdmin = activeSession({
+      admin: {
+        role: 'SUPER_ADMIN',
+        isActive: true,
+        mustChangePassword: false,
+        accessRole: null,
+      },
     });
-
-    it('applies @Roles() placed on the controller class', async () => {
-      const { guard } = guardWith(activeSession());
-
-      await expect(
-        guard.canActivate(
-          context(SuperAdminController, 'route', await accessCookie()).ctx,
-        ),
-      ).rejects.toBeInstanceOf(ForbiddenException);
-    });
-
-    it('lets a SUPER_ADMIN through', async () => {
-      const { guard } = guardWith(
-        activeSession({
-          admin: {
-            role: 'SUPER_ADMIN',
-            isActive: true,
-            mustChangePassword: false,
-          },
-        }),
+    const allowed = async (
+      session: Session,
+      controller: new () => object,
+      method: string,
+    ) =>
+      guardWith(session).guard.canActivate(
+        context(controller, method, await accessCookie()).ctx,
       );
 
+    it('lets an ADMIN through with the route’s permission', async () => {
       await expect(
-        guard.canActivate(
-          context(DecoratedController, 'superOnly', await accessCookie()).ctx,
-        ),
+        allowed(admin(['stores.read']), PlainController, 'route'),
       ).resolves.toBe(true);
+    });
+
+    it('refuses an ADMIN without it', async () => {
+      await expect(
+        allowed(admin(['countries.read']), PlainController, 'route'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('refuses an ADMIN without any role', async () => {
+      await expect(
+        allowed(admin(null), PlainController, 'route'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('ignores a stored name that is not a permission', async () => {
+      await expect(
+        allowed(admin(['stores.*']), PlainController, 'route'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('reads a permission set on the class, and lets the method override it', async () => {
+      await expect(
+        allowed(admin(['countries.read']), CountriesController, 'route'),
+      ).resolves.toBe(true);
+      await expect(
+        allowed(admin(['countries.read']), CountriesController, 'manage'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('refuses an ADMIN on an unmarked route: deny by default', async () => {
+      await expect(
+        allowed(admin([...PERMISSION_NAMES]), PlainController, 'unmarked'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('refuses an ADMIN on a super admin route, every permission or not', async () => {
+      await expect(
+        allowed(admin([...PERMISSION_NAMES]), DecoratedController, 'superOnly'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(
+        allowed(admin([...PERMISSION_NAMES]), SuperAdminController, 'route'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('lets an ADMIN with no role reach their own account', async () => {
+      await expect(
+        allowed(admin(null), DecoratedController, 'me'),
+      ).resolves.toBe(true);
+    });
+
+    it('lets the super admin through everywhere, with every permission', async () => {
+      for (const [controller, method] of [
+        [PlainController, 'route'],
+        [PlainController, 'unmarked'],
+        [DecoratedController, 'superOnly'],
+        [SuperAdminController, 'route'],
+        [CountriesController, 'manage'],
+      ] as const) {
+        await expect(allowed(superAdmin, controller, method)).resolves.toBe(
+          true,
+        );
+      }
+      const { ctx, request } = context(
+        PlainController,
+        'route',
+        await accessCookie(),
+      );
+      await guardWith(superAdmin).guard.canActivate(ctx);
+      expect((request.admin as { permissions: string[] }).permissions).toEqual(
+        PERMISSION_NAMES,
+      );
     });
   });
 });

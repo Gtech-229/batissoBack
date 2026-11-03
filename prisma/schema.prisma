@@ -18,6 +18,20 @@ enum AdminRole {
 }
 
 /// A member of the Bâtisso team using the web admin (email + password).
+/// A named set of permissions the super admin gives to admins (feature 20).
+/// `permissions` holds names from the code's list (`src/admin-auth/permissions.ts`).
+model AccessRole {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  name        String   @unique @db.VarChar(60)
+  permissions String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  admins Admin[]
+
+  @@map("admin_roles")
+}
+
 model Admin {
   id                  String    @id @default(uuid(7)) @db.Uuid
   email               String    @unique
@@ -25,6 +39,9 @@ model Admin {
   lastName            String
   passwordHash        String
   role                AdminRole
+  /// The role of an ADMIN (feature 20). A SUPER_ADMIN has none and holds every
+  /// permission; an ADMIN without one reaches only their own account.
+  roleId              String?   @db.Uuid
   isActive            Boolean   @default(true)
   mustChangePassword  Boolean   @default(true)
   failedLoginAttempts Int       @default(0)
@@ -33,6 +50,7 @@ model Admin {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
+  accessRole           AccessRole?      @relation(fields: [roleId], references: [id], onDelete: Restrict)
   createdBy            Admin?           @relation("AdminCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdAdmins        Admin[]          @relation("AdminCreatedBy")
   sessions             AdminSession[]

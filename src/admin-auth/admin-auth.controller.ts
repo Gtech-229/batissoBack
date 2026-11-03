@@ -34,7 +34,7 @@ import { AllowWhilePasswordChangeRequired } from './decorators/allow-while-passw
 import { CurrentAdmin } from './decorators/current-admin.decorator.js';
 import { Public } from './decorators/public.decorator.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
-import { AdminProfile } from './dto/admin-profile.js';
+import { AdminProfile, MyAdminProfile } from './dto/admin-profile.js';
 import { LoginDto } from './dto/login.dto.js';
 
 @ApiTags('Administration - Authentification')
@@ -168,13 +168,23 @@ export class AdminAuthController {
     description:
       'Renvoie le profil de l’administrateur connecté. Accessible même si le mot de passe doit être changé (voir `mustChangePassword`).',
   })
-  @ApiOkResponse({ description: 'Profil', type: AdminProfile })
+  @ApiOkResponse({ description: 'Profil', type: MyAdminProfile })
   @ApiUnauthorizedResponse({
     description: 'Non connecté ou session terminée',
     type: ErrorResponse,
   })
-  me(@CurrentAdmin() admin: AuthenticatedAdmin): Promise<AdminProfile> {
-    return this.auth.me(admin.adminId);
+  async me(@CurrentAdmin() admin: AuthenticatedAdmin): Promise<MyAdminProfile> {
+    // The permissions the guard just read, so the answer matches this request.
+    const profile = await this.auth.me(admin.adminId);
+    return {
+      id: profile.id,
+      email: profile.email,
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      role: profile.role,
+      mustChangePassword: profile.mustChangePassword,
+      permissions: admin.permissions,
+    };
   }
 
   /**

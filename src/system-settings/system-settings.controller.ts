@@ -10,7 +10,7 @@ import {
 } from '@nestjs/swagger';
 import type { AuthenticatedAdmin } from '../admin-auth/authenticated-admin.js';
 import { CurrentAdmin } from '../admin-auth/decorators/current-admin.decorator.js';
-import { Roles } from '../admin-auth/decorators/roles.decorator.js';
+import { RequirePermission } from '../admin-auth/decorators/require-permission.decorator.js';
 import { ErrorResponse } from '../common/errors/error-response.js';
 import {
   SystemSettingsResponse,
@@ -32,6 +32,7 @@ export class SystemSettingsController {
    * @returns SystemSettingsResponse
    */
   @Get()
+  @RequirePermission('settings.read')
   @ApiOperation({
     summary: 'Lire les paramètres système',
     description:
@@ -50,7 +51,7 @@ export class SystemSettingsController {
    * @returns SystemSettingsResponse; applies from the next login
    */
   @Patch()
-  @Roles(['SUPER_ADMIN'])
+  @RequirePermission('settings.manage')
   @ApiOperation({
     summary: 'Modifier les paramètres système',
     description:

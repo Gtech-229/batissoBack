@@ -22,12 +22,13 @@ import {
 } from '@nestjs/swagger';
 import type { AuthenticatedAdmin } from '../admin-auth/authenticated-admin.js';
 import { CurrentAdmin } from '../admin-auth/decorators/current-admin.decorator.js';
-import { Roles } from '../admin-auth/decorators/roles.decorator.js';
+import { SuperAdminOnly } from '../admin-auth/decorators/require-permission.decorator.js';
 import { ErrorResponse } from '../common/errors/error-response.js';
 import { invalidAdminId } from './admins.errors.js';
 import { AdminsService } from './admins.service.js';
 import { AdminSummary } from './dto/admin-summary.js';
 import { CreateAdminDto } from './dto/create-admin.dto.js';
+import { AssignRoleDto } from '../admin-roles/dto/role.dto.js';
 
 // French error for a malformed id instead of Nest's "Validation failed (uuid is expected)".
 const AdminIdPipe = new ParseUUIDPipe({ exceptionFactory: invalidAdminId });
@@ -40,7 +41,7 @@ const AdminIdPipe = new ParseUUIDPipe({ exceptionFactory: invalidAdminId });
   type: ErrorResponse,
 })
 // Every route of this controller is super-admin only.
-@Roles(['SUPER_ADMIN'])
+@SuperAdminOnly()
 @Controller('admin/admins')
 export class AdminsController {
   constructor(private readonly admins: AdminsService) {}
@@ -49,7 +50,7 @@ export class AdminsController {
    * @description Create an ADMIN account with an initial password
    * @route POST /api/v1/admin/admins
    * @access Super admin
-   * @body CreateAdminDto (email, firstName, lastName, password)
+   * @body CreateAdminDto (email, firstName, lastName, password, roleId)
    * @returns 201 AdminSummary; the new admin must change the password at first login
    */
   @Post()
@@ -124,6 +125,42 @@ export class AdminsController {
     @CurrentAdmin() current: AuthenticatedAdmin,
   ): Promise<AdminSummary> {
     return this.admins.deactivate(id, current.adminId);
+  }
+
+  /**
+   * @description Give an admin another role; it counts from their next request
+   * @route PATCH /api/v1/admin/admins/:id/role
+   * @access Super admin
+   * @param id (UUID) admin id
+   * @body AssignRoleDto (roleId)
+   * @returns AdminSummary; 404 admin or role; 409 SUPER_ADMIN_HAS_NO_ROLE
+   */
+  @Patch(':id/role')
+  @ApiOperation({
+    summary: 'Changer le rôle d’un administrateur',
+    description:
+      'Le nouveau rôle s’applique dès sa requête suivante, sans qu’il ait à se reconnecter. Le super administrateur a toutes les permissions et n’a pas de rôle.',
+  })
+  @ApiParam({ name: 'id', description: 'Identifiant de l’administrateur' })
+  @ApiOkResponse({ description: 'Rôle changé', type: AdminSummary })
+  @ApiBadRequestResponse({
+    description: 'Identifiant invalide (`details`)',
+    type: ErrorResponse,
+  })
+  @ApiNotFoundResponse({
+    description: 'Administrateur ou rôle introuvable',
+    type: ErrorResponse,
+  })
+  @ApiConflictResponse({
+    description:
+      'Le super administrateur n’a pas de rôle (`SUPER_ADMIN_HAS_NO_ROLE`)',
+    type: ErrorResponse,
+  })
+  assignRole(
+    @Param('id', AdminIdPipe) id: string,
+    @Body() body: AssignRoleDto,
+  ): Promise<AdminSummary> {
+    return this.admins.assignRole(id, body.roleId);
   }
 
   /**

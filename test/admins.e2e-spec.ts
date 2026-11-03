@@ -14,6 +14,7 @@ describe('Admin management (e2e)', () => {
   let prisma: PrismaService;
   let superCookie: string;
   let superId: string;
+  let roleId: string;
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -28,6 +29,11 @@ describe('Admin management (e2e)', () => {
     });
     superId = superAdmin.id;
     superCookie = await accessCookieFor(app, 'super@batisso.test');
+    roleId = (
+      await prisma.accessRole.create({
+        data: { name: 'Support', permissions: ['stores.read'] },
+      })
+    ).id;
   });
 
   afterAll(async () => {
@@ -35,17 +41,18 @@ describe('Admin management (e2e)', () => {
   });
 
   const api = () => request(app.getHttpServer());
-  const newAdmin = {
+  const newAdmin = () => ({
     email: '  Moussa@Batisso.TEST ',
     firstName: ' Moussa ',
     lastName: 'Keita',
     password: 'Initial#2026',
-  };
+    roleId,
+  });
 
   describe('access', () => {
     it('refuses every route without a session', async () => {
       await api().get('/api/v1/admin/admins').expect(401);
-      await api().post('/api/v1/admin/admins').send(newAdmin).expect(401);
+      await api().post('/api/v1/admin/admins').send(newAdmin()).expect(401);
     });
 
     it('refuses an ADMIN on every route', async () => {
@@ -63,7 +70,7 @@ describe('Admin management (e2e)', () => {
       await api()
         .post('/api/v1/admin/admins')
         .set('Cookie', cookie)
-        .send(newAdmin)
+        .send(newAdmin())
         .expect(403);
       await api()
         .patch(`/api/v1/admin/admins/${admin.id}/deactivate`)
@@ -77,7 +84,7 @@ describe('Admin management (e2e)', () => {
       const response = await api()
         .post('/api/v1/admin/admins')
         .set('Cookie', superCookie)
-        .send(newAdmin)
+        .send(newAdmin())
         .expect(201);
 
       expect(response.body).toMatchObject({
@@ -87,6 +94,7 @@ describe('Admin management (e2e)', () => {
         role: 'ADMIN',
         mustChangePassword: true,
         isActive: true,
+        roleId,
       });
       expect(response.body).not.toHaveProperty('passwordHash');
       const stored = await prisma.admin.findUniqueOrThrow({
@@ -116,7 +124,7 @@ describe('Admin management (e2e)', () => {
       const response = await api()
         .post('/api/v1/admin/admins')
         .set('Cookie', superCookie)
-        .send(newAdmin)
+        .send(newAdmin())
         .expect(409);
 
       expect(response.body).toMatchObject({
@@ -136,7 +144,7 @@ describe('Admin management (e2e)', () => {
         (d) => d.field,
       );
       expect(fields.sort()).toEqual(
-        ['email', 'firstName', 'lastName', 'password'].sort(),
+        ['email', 'firstName', 'lastName', 'password', 'roleId'].sort(),
       );
     });
 
@@ -144,7 +152,7 @@ describe('Admin management (e2e)', () => {
       const response = await api()
         .post('/api/v1/admin/admins')
         .set('Cookie', superCookie)
-        .send({ ...newAdmin, role: 'SUPER_ADMIN' })
+        .send({ ...newAdmin(), role: 'SUPER_ADMIN' })
         .expect(400);
 
       expect(response.body.details).toEqual([

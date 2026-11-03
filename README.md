@@ -36,12 +36,29 @@ Check it works:
    example from Swagger UI. The session lives in httpOnly cookies, which the
    browser sends automatically.
 3. The super admin creates the other admins (`POST /api/v1/admin/admins`) with an
-   initial password. A new admin must change it (`PATCH /api/v1/admin/auth/password`)
-   before using anything else.
+   initial password and a role. A new admin must change the password
+   (`PATCH /api/v1/admin/auth/password`) before using anything else.
 
 Security settings (max login attempts before a 15-minute lock, max sessions per
 admin, max wrong PINs before a mobile user is locked, where 0 means no limit) are
-editable by the super admin at `PATCH /api/v1/admin/settings`.
+editable at `PATCH /api/v1/admin/settings`, by the super admin or an admin whose
+role holds `settings.manage`.
+
+### Roles and permissions
+
+The super admin decides what each admin may do. A role holds permissions, and each
+admin has one role:
+
+- `GET /api/v1/admin/permissions` lists them: `countries.read`, `countries.manage`,
+  `stores.read`, `stores.manage`, `store-settings.manage`, `settings.read`,
+  `settings.manage`
+- `POST`, `GET`, `PATCH`, `DELETE` on `/api/v1/admin/roles` manage the roles
+- `PATCH /api/v1/admin/admins/:id/role` gives an admin a role
+
+A change counts from the admin's next request. The super admin has every
+permission and no role; managing admins and roles stays theirs alone. The
+`Administrateur` role, created by the migration, holds what an admin could do
+before roles existed.
 
 ## First country and store
 

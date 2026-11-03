@@ -7,6 +7,7 @@ import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
 import { MobileRoute } from '../mobile-auth/decorators/mobile-route.decorator.js';
+import { AdminRole } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ACCESS_COOKIE } from './admin-auth.constants.js';
 import {
@@ -16,7 +17,15 @@ import {
 } from './admin-auth.errors.js';
 import { AllowWhilePasswordChangeRequired } from './decorators/allow-while-password-change-required.decorator.js';
 import { Public } from './decorators/public.decorator.js';
-import { Roles } from './decorators/roles.decorator.js';
+import {
+  RequirePermission,
+  SuperAdminOnly,
+} from './decorators/require-permission.decorator.js';
+import {
+  isPermission,
+  PERMISSION_NAMES,
+  type Permission,
+} from './permissions.js';
 import type { AccessTokenClaims } from './tokens.service.js';
 
 /**
@@ -54,7 +63,13 @@ export class AdminAuthGuard implements CanActivate {
       where: { id: claims.sid },
       include: {
         admin: {
-          select: { role: true, isActive: true, mustChangePassword: true },
+          select: {
+            role: true,
+            isActive: true,
+            mustChangePassword: true,
+            // Read here, in the same query: a change counts from the next request.
+            accessRole: { select: { permissions: true } },
+          },
         },
       },
     });
@@ -79,8 +94,11 @@ export class AdminAuthGuard implements CanActivate {
       throw passwordChangeRequired();
     }
 
-    const roles = this.reflector.getAllAndOverride(Roles, targets);
-    if (roles && !roles.includes(session.admin.role)) {
+    const superAdmin = session.admin.role === AdminRole.SUPER_ADMIN;
+    const permissions: Permission[] = superAdmin
+      ? PERMISSION_NAMES
+      : (session.admin.accessRole?.permissions ?? []).filter(isPermission);
+    if (!superAdmin && !this.allows(targets, permissions)) {
       throw forbidden();
     }
 
@@ -88,8 +106,36 @@ export class AdminAuthGuard implements CanActivate {
       adminId: session.adminId,
       sessionId: session.id,
       role: session.admin.role,
+      permissions,
     };
     return true;
+  }
+
+  /**
+   * Whether an ADMIN may reach this route: its permission, or their own account
+   * (the routes open during a password change). Anything else is the super
+   * admin's, so a route left unmarked opens to nobody else.
+   */
+  private allows(
+    targets: Parameters<Reflector['getAllAndOverride']>[1],
+    permissions: Permission[],
+  ): boolean {
+    if (this.reflector.getAllAndOverride(SuperAdminOnly, targets)) {
+      return false;
+    }
+    const required = this.reflector.getAllAndOverride(
+      RequirePermission,
+      targets,
+    );
+    if (required) {
+      return permissions.includes(required);
+    }
+    return Boolean(
+      this.reflector.getAllAndOverride(
+        AllowWhilePasswordChangeRequired,
+        targets,
+      ),
+    );
   }
 
   private async verifyAccessToken(token: unknown): Promise<AccessTokenClaims> {

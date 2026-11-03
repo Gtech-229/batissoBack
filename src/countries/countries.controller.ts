@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { RequirePermission } from '../admin-auth/decorators/require-permission.decorator.js';
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
@@ -32,6 +33,7 @@ export class CountriesController {
    * @returns 201 CountrySummary; 409 COUNTRY_ALREADY_EXISTS
    */
   @Post()
+  @RequirePermission('countries.manage')
   @ApiOperation({
     summary: 'Créer un pays',
     description:
@@ -58,6 +60,7 @@ export class CountriesController {
    * @returns 200 CountrySummary[]
    */
   @Get()
+  @RequirePermission('countries.read')
   @ApiOperation({
     summary: 'Lister les pays',
     description: 'Tous les pays, actifs ou non, triés par code ISO.',
@@ -75,6 +78,7 @@ export class CountriesController {
    * @returns 200 CountrySummary; 404 if unknown
    */
   @Get(':code')
+  @RequirePermission('countries.read')
   @ApiOperation({ summary: 'Consulter un pays' })
   @ApiParam({ name: 'code', description: 'Code ISO du pays (ex. ML)' })
   @ApiOkResponse({ description: 'Le pays', type: CountrySummary })
@@ -92,6 +96,7 @@ export class CountriesController {
    * @returns 200 CountrySummary; 409 COUNTRY_IN_USE when changing the currency of a country with stores
    */
   @Patch(':code')
+  @RequirePermission('countries.manage')
   @ApiOperation({
     summary: 'Modifier un pays',
     description:
@@ -124,6 +129,7 @@ export class CountriesController {
    * @returns 200 CountrySummary; 409 ANOTHER_COUNTRY_ACTIVE if another country is active
    */
   @Patch(':code/activate')
+  @RequirePermission('countries.manage')
   @ApiOperation({
     summary: 'Activer un pays',
     description:
@@ -148,6 +154,7 @@ export class CountriesController {
    * @returns 200 CountrySummary; 409 COUNTRY_IN_USE if a store is not closed
    */
   @Patch(':code/deactivate')
+  @RequirePermission('countries.manage')
   @ApiOperation({
     summary: 'Désactiver un pays',
     description:

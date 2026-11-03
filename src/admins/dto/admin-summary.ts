@@ -14,6 +14,15 @@ export class AdminSummary extends AdminProfile {
   isActive: boolean;
 
   @ApiProperty({
+    description:
+      'Identifiant du rôle de l’administrateur ; null pour le super administrateur, qui a toutes les permissions',
+    example: '0192f0a4-7b1c-7c3e-9d2a-5e6f7a8b9c0d',
+    nullable: true,
+    type: String,
+  })
+  roleId: string | null;
+
+  @ApiProperty({
     description: 'Date de création (ISO 8601, UTC)',
     example: '2026-10-05T12:00:00.000Z',
   })
@@ -30,6 +39,7 @@ export function toAdminSummary(admin: Admin): AdminSummary {
     role: profile.role,
     mustChangePassword: profile.mustChangePassword,
     isActive: admin.isActive,
+    roleId: admin.roleId,
     createdAt: admin.createdAt.toISOString(),
   };
 }

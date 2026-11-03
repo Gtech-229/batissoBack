@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { AdminRole, type Admin } from '../../generated/prisma/client.js';
+import { PERMISSION_NAMES, type Permission } from '../permissions.js';
 
 export class AdminProfile {
   @ApiProperty({
@@ -30,6 +31,17 @@ export class AdminProfile {
     example: false,
   })
   mustChangePassword: boolean;
+}
+
+/** The signed-in admin's own profile, with what they may do now. */
+export class MyAdminProfile extends AdminProfile {
+  @ApiProperty({
+    description:
+      'Ce que l’administrateur peut faire maintenant : toutes les permissions pour le super administrateur',
+    enum: PERMISSION_NAMES,
+    isArray: true,
+  })
+  permissions: Permission[];
 }
 
 /** Keeps only public fields: never the password hash or lockout state. */
