@@ -446,6 +446,12 @@ The store's **manager** reads three reports (Bearer session), in any store statu
 
 `from` and `to` are whole days in UTC, `to` included, one year at most.
 
+Each report downloads as a file: add `/export` to the path and `format=pdf` or
+`format=xlsx` to the query, for example
+`GET /api/v1/stores/:storeId/reports/totals/export?from=2026-10-01&to=2026-10-31&format=pdf`.
+The customers file holds every customer of the filter, 5,000 rows at most. Each
+export is written to the store's activity log.
+
 ## Common commands
 
 | Command | What it does |

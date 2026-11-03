@@ -112,6 +112,8 @@ enum ActivityAction {
   PROOF_ATTACHED
   /// A manager removed a proof, with a reason (24).
   PROOF_REMOVED
+  /// A manager exported a report as a file: data left the app (15b).
+  REPORT_EXPORTED
 }
 
 enum AccountStatus {

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ONE_SNAPSHOT, toSkipTake } from '../common/pagination.js';
 import { formatAmount } from '../common/money.js';
 import {
+  ActivityAction,
   MaterialOrderStatus,
   OperationChannel,
   OperationDirection,
@@ -9,8 +10,14 @@ import {
   OperationType,
   Prisma,
 } from '../generated/prisma/client.js';
+import type { AuthenticatedUser } from '../mobile-auth/authenticated-user.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { invalidFields, storeNotFound } from '../stores/stores.errors.js';
+import type {
+  ExportCustomersDto,
+  ExportFormat,
+  ExportPeriodDto,
+} from './dto/report-export.dto.js';
 import type { ReportPeriodDto } from './dto/report-period.dto.js';
 import type {
   CustomersQueryDto,
@@ -21,6 +28,15 @@ import type {
   TotalsReport,
 } from './dto/report-views.js';
 import { MAX_PERIOD_DAYS, periodRange } from './period-range.js';
+import { renderPdf } from './render-pdf.js';
+import { renderXlsx } from './render-xlsx.js';
+import {
+  customersTable,
+  sellersTable,
+  totalsTable,
+  type ReportTable,
+} from './report-table.js';
+import { EXPORT_MAX_ROWS, exportTooLarge } from './store-reports.errors.js';
 
 type Tx = Prisma.TransactionClient;
 
@@ -44,6 +60,18 @@ const PAID_ORDER_STATUSES = [
   MaterialOrderStatus.DELIVERED,
   MaterialOrderStatus.CANCELLED_AFTER_DEBIT,
 ];
+
+/** A report as a file, ready to send. */
+export interface ReportFile {
+  content: Buffer;
+  contentType: string;
+  fileName: string;
+}
+
+const CONTENT_TYPES: Record<ExportFormat, string> = {
+  pdf: 'application/pdf',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
 
 /** One group of a store's operations over a period. */
 interface OperationGroup {
@@ -135,8 +163,29 @@ export class StoreReportsService {
     storeId: string,
     query: CustomersQueryDto,
   ): Promise<CustomersReport> {
+    const { items, activeCount, inactiveCount, total } =
+      await this.readCustomers(storeId, query.status, toSkipTake(query));
+    return {
+      items,
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+      activeCount,
+      inactiveCount,
+    };
+  }
+
+  /**
+   * The customers matching a filter: a page, or all of them for a file, within
+   * `EXPORT_MAX_ROWS`. The counts come first, so a file too large reads no row.
+   * Reading the last deposit in the query keeps each read to one statement.
+   */
+  private async readCustomers(
+    storeId: string,
+    status: CustomerStatus | undefined,
+    page: { skip: number; take: number } | 'all',
+  ) {
     const activeSince = new Date(Date.now() - ACTIVE_WINDOW_DAYS * DAY_MS);
-    const { skip, take } = toSkipTake(query);
     const activity = Prisma.sql`
       SELECT a."id", a."number", a."balance", a."customerId",
         last."at" AS "lastDepositAt",
@@ -150,60 +199,63 @@ export class StoreReportsService {
       ) last ON TRUE
       WHERE a."storeId" = ${storeId}::uuid`;
     const statusFilter =
-      query.status === 'ACTIVE'
+      status === 'ACTIVE'
         ? Prisma.sql`WHERE r."lastActivityAt" >= ${activeSince}`
-        : query.status === 'INACTIVE'
+        : status === 'INACTIVE'
           ? Prisma.sql`WHERE r."lastActivityAt" < ${activeSince}`
           : Prisma.empty;
+    const pageClause =
+      page === 'all'
+        ? Prisma.empty
+        : Prisma.sql`LIMIT ${page.take} OFFSET ${page.skip}`;
 
-    const [rows, [counts]] = await this.prisma.$transaction(
-      async (tx) =>
-        [
-          await tx.$queryRaw<CustomerRow[]>`
-            SELECT r."id" AS "accountId", r."number" AS "accountNumber",
-              u."firstName", u."lastName", r."balance",
-              r."lastDepositAt", r."lastActivityAt"
-            FROM (${activity}) r
-            JOIN "users" u ON u."id" = r."customerId"
-            ${statusFilter}
-            ORDER BY r."lastActivityAt" ASC, r."id" ASC
-            LIMIT ${take} OFFSET ${skip}`,
-          await tx.$queryRaw<{ active: bigint; inactive: bigint }[]>`
-            SELECT
-              COUNT(*) FILTER (WHERE r."lastActivityAt" >= ${activeSince}) AS "active",
-              COUNT(*) FILTER (WHERE r."lastActivityAt" < ${activeSince}) AS "inactive"
-            FROM (${activity}) r`,
-        ] as const,
-      ONE_SNAPSHOT,
-    );
+    return this.prisma.$transaction(async (tx) => {
+      const [counts] = await tx.$queryRaw<
+        { active: bigint; inactive: bigint }[]
+      >`
+        SELECT
+          COUNT(*) FILTER (WHERE r."lastActivityAt" >= ${activeSince}) AS "active",
+          COUNT(*) FILTER (WHERE r."lastActivityAt" < ${activeSince}) AS "inactive"
+        FROM (${activity}) r`;
+      const activeCount = Number(counts.active);
+      const inactiveCount = Number(counts.inactive);
+      const total =
+        status === 'ACTIVE'
+          ? activeCount
+          : status === 'INACTIVE'
+            ? inactiveCount
+            : activeCount + inactiveCount;
+      if (page === 'all' && total > EXPORT_MAX_ROWS) {
+        throw exportTooLarge();
+      }
 
-    const activeCount = Number(counts.active);
-    const inactiveCount = Number(counts.inactive);
-    const total =
-      query.status === 'ACTIVE'
-        ? activeCount
-        : query.status === 'INACTIVE'
-          ? inactiveCount
-          : activeCount + inactiveCount;
-    const statusOf = (row: CustomerRow): CustomerStatus =>
-      row.lastActivityAt >= activeSince ? 'ACTIVE' : 'INACTIVE';
+      const rows = await tx.$queryRaw<CustomerRow[]>`
+        SELECT r."id" AS "accountId", r."number" AS "accountNumber",
+          u."firstName", u."lastName", r."balance",
+          r."lastDepositAt", r."lastActivityAt"
+        FROM (${activity}) r
+        JOIN "users" u ON u."id" = r."customerId"
+        ${statusFilter}
+        ORDER BY r."lastActivityAt" ASC, r."id" ASC
+        ${pageClause}`;
+      const statusOf = (row: CustomerRow): CustomerStatus =>
+        row.lastActivityAt >= activeSince ? 'ACTIVE' : 'INACTIVE';
 
-    return {
-      items: rows.map((row) => ({
-        accountId: row.accountId,
-        accountNumber: row.accountNumber,
-        firstName: row.firstName,
-        lastName: row.lastName,
-        balance: formatAmount(row.balance),
-        lastDepositAt: row.lastDepositAt,
-        status: statusOf(row),
-      })),
-      total,
-      page: query.page,
-      pageSize: query.pageSize,
-      activeCount,
-      inactiveCount,
-    };
+      return {
+        items: rows.map((row) => ({
+          accountId: row.accountId,
+          accountNumber: row.accountNumber,
+          firstName: row.firstName,
+          lastName: row.lastName,
+          balance: formatAmount(row.balance),
+          lastDepositAt: row.lastDepositAt,
+          status: statusOf(row),
+        })),
+        total,
+        activeCount,
+        inactiveCount,
+      };
+    }, ONE_SNAPSHOT);
   }
 
   /**
@@ -319,6 +371,87 @@ export class StoreReportsService {
     };
   }
 
+  /** The totals report as a file. */
+  async exportTotals(
+    storeId: string,
+    actor: AuthenticatedUser,
+    { format, ...period }: ExportPeriodDto,
+  ): Promise<ReportFile> {
+    const report = await this.totals(storeId, period);
+    return this.toFile(storeId, actor, totalsTable(report), {
+      name: `rapport-totaux-${period.from}-${period.to}`,
+      format,
+      logged: { report: 'totals', ...period },
+    });
+  }
+
+  /** Every customer matching the filter as a file, within `EXPORT_MAX_ROWS`. */
+  async exportCustomers(
+    storeId: string,
+    actor: AuthenticatedUser,
+    { format, status }: ExportCustomersDto,
+  ): Promise<ReportFile> {
+    const { items } = await this.readCustomers(storeId, status, 'all');
+    const today = new Date().toISOString().slice(0, 10);
+    const currencyCode = await this.currencyOf(this.prisma, storeId);
+    const table = customersTable(items, status, today, currencyCode);
+    return this.toFile(storeId, actor, table, {
+      name: `rapport-clients-${today}`,
+      format,
+      logged: { report: 'customers', ...(status && { status }) },
+    });
+  }
+
+  /** The activity by seller as a file. */
+  async exportSellers(
+    storeId: string,
+    actor: AuthenticatedUser,
+    { format, ...period }: ExportPeriodDto,
+  ): Promise<ReportFile> {
+    const report = await this.sellers(storeId, period);
+    return this.toFile(storeId, actor, sellersTable(report), {
+      name: `rapport-vendeurs-${period.from}-${period.to}`,
+      format,
+      logged: { report: 'sellers', ...period },
+    });
+  }
+
+  /**
+   * Renders a table and logs the export. The log comes after the file exists, so
+   * a refused export leaves no trace. It never holds a customer's name.
+   */
+  private async toFile(
+    storeId: string,
+    actor: AuthenticatedUser,
+    table: ReportTable,
+    file: {
+      name: string;
+      format: ExportFormat;
+      logged: Record<string, string>;
+    },
+  ): Promise<ReportFile> {
+    const content =
+      file.format === 'pdf' ? await renderPdf(table) : await renderXlsx(table);
+    await this.prisma.activityLog.create({
+      data: {
+        storeId,
+        userId: actor.userId,
+        action: ActivityAction.REPORT_EXPORTED,
+        newValue: {
+          ...file.logged,
+          format: file.format,
+          rows: table.rows.length,
+        },
+        device: actor.deviceId,
+      },
+    });
+    return {
+      content,
+      contentType: CONTENT_TYPES[file.format],
+      fileName: `${file.name}.${file.format}`,
+    };
+  }
+
   /** The bounds of a valid period, or a 400 on `to`. */
   private boundsOf(period: ReportPeriodDto) {
     const range = periodRange(period.from, period.to);
@@ -335,7 +468,10 @@ export class StoreReportsService {
     return range;
   }
 
-  private async currencyOf(client: Tx, storeId: string): Promise<string> {
+  private async currencyOf(
+    client: Tx | PrismaService,
+    storeId: string,
+  ): Promise<string> {
     const store = await client.hardwareStore.findUnique({
       where: { id: storeId },
       select: { country: { select: { currencyCode: true } } },

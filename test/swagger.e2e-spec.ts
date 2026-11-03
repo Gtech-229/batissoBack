@@ -120,6 +120,9 @@ describe('Swagger document (e2e)', () => {
       'GET /api/v1/stores/{storeId}/reports/totals',
       'GET /api/v1/stores/{storeId}/reports/customers',
       'GET /api/v1/stores/{storeId}/reports/sellers',
+      'GET /api/v1/stores/{storeId}/reports/totals/export',
+      'GET /api/v1/stores/{storeId}/reports/customers/export',
+      'GET /api/v1/stores/{storeId}/reports/sellers/export',
     ]) {
       expect(security(route)).toEqual([{ bearer: [] }]);
     }
@@ -215,6 +218,9 @@ describe('Swagger document (e2e)', () => {
         'GET /api/v1/stores/{storeId}/reports/totals',
         'GET /api/v1/stores/{storeId}/reports/customers',
         'GET /api/v1/stores/{storeId}/reports/sellers',
+        'GET /api/v1/stores/{storeId}/reports/totals/export',
+        'GET /api/v1/stores/{storeId}/reports/customers/export',
+        'GET /api/v1/stores/{storeId}/reports/sellers/export',
       ]),
     );
   });
