@@ -20,6 +20,7 @@ export const PERMISSIONS = {
   'disputes.read':
     'Lire les contestations en cours de toutes les quincailleries',
   'activity.read': 'Lire le journal d’activité de toutes les quincailleries',
+  'stats.read': 'Voir les statistiques de la plateforme',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

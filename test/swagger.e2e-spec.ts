@@ -49,6 +49,17 @@ describe('Swagger document (e2e)', () => {
     );
   });
 
+  it('documents the admin statistics route (feature 16d)', () => {
+    const stats = operations.find(
+      ([route]) => route === 'GET /api/v1/admin/stats',
+    )?.[1];
+
+    expect(stats).toBeDefined();
+    expect((stats?.parameters ?? []).map((p) => p.name)).toEqual(
+      expect.arrayContaining(['from', 'to']),
+    );
+  });
+
   it('documents the admin dispute and activity routes (feature 16c)', () => {
     const routes = operations.map(([route]) => route);
 

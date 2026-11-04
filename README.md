@@ -76,15 +76,16 @@ admin has one role:
 - `GET /api/v1/admin/permissions` lists them: `countries.read`, `countries.manage`,
   `stores.read`, `stores.manage`, `store-settings.manage`, `settings.read`,
   `settings.manage`, `subscriptions.read`, `subscriptions.manage`,
-  `accounts.read`, `accounts.manage`, `disputes.read`, `activity.read`
+  `accounts.read`, `accounts.manage`, `disputes.read`, `activity.read`,
+  `stats.read`
 - `POST`, `GET`, `PATCH`, `DELETE` on `/api/v1/admin/roles` manage the roles
 - `PATCH /api/v1/admin/admins/:id/role` gives an admin a role
 
 A change counts from the admin's next request. The super admin has every
 permission and no role; managing admins and roles stays theirs alone. The
 `Administrateur` role, created by the migration, holds what an admin could do
-before roles existed; the subscription, account, dispute and activity
-permissions came later and are granted by the super admin.
+before roles existed; the subscription, account, dispute, activity and
+statistics permissions came later and are granted by the super admin.
 
 ## First country and store
 
@@ -453,6 +454,14 @@ Admins read, across every store, without acting in them:
 - `GET /api/v1/admin/activity?storeId=...&action=...&from=2026-11-01&to=2026-11-30`
   (`activity.read`): every store's activity log, newest first, each entry with
   its store; the days are UTC and both included.
+- `GET /api/v1/admin/stats?from=2026-11-01&to=2026-11-30` (`stats.read`): the
+  platform's figures, in total and per country (each country with a store).
+  Counts only, never amounts: stores by status and by subscription state, and
+  accounts in total and suspended, as of now; stores registered, accounts
+  opened, and accounts with a confirmed deposit in the period; and the trust
+  signals: disputes opened in the period and unresolved now, corrections,
+  refused orders, and cash closings with a discrepancy in the period. The
+  period follows the store reports' rule: both days required, 366 at most.
 
 ## Cash closing
 
