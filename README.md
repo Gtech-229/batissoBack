@@ -221,7 +221,8 @@ customer's other accounts and their sign-in stay untouched.
 - A suspended account refuses deposits and goal moves (`ACCOUNT_SUSPENDED`).
   Purchases, deliveries, cancellations with their re-credit, corrections, and
   every read still work.
-- Staff see `status` and `statusReason` on the account; the customer sees the
+- Staff see `status` and `statusReason` on the account, except a staff member on
+  their own account, who never sees the reason; the customer sees the
   status only and gets a notice (app and SMS) on each change, without the reason.
 
 ## Customer identity photo

@@ -110,22 +110,24 @@ describe('Admin accounts (e2e)', () => {
     body.items.map((a) => a.number);
 
   describe('GET /admin/accounts', () => {
+    // Phones share no digit run with the account numbers, so a number search
+    // can only match through the number (F-48).
     async function seed() {
       await account({
         number: 'C-000001',
-        phone: '+22376000001',
+        phone: '+22376123401',
         firstName: 'Awa',
         lastName: 'Traoré',
         createdAt: new Date('2026-10-01T00:00:00Z'),
       });
       await account({
         number: 'C-000002',
-        phone: '+22376000002',
+        phone: '+22376451278',
         createdAt: new Date('2026-10-02T00:00:00Z'),
       });
       await account({
         number: 'C-000003',
-        phone: '+22376000001',
+        phone: '+22376123401',
         firstName: 'Awa',
         lastName: 'Traoré',
         store: otherStoreId,
@@ -152,7 +154,7 @@ describe('Admin accounts (e2e)', () => {
           id: expect.any(String) as string,
           firstName: 'Awa',
           lastName: 'Traoré',
-          phone: '+22376000001',
+          phone: '+22376123401',
         },
         status: 'ACTIVE',
         statusReason: null,
@@ -168,8 +170,8 @@ describe('Admin accounts (e2e)', () => {
       ['the number', '?q=c-000002', ['C-000002']],
       ['a first name, any case', '?q=AWA', ['C-000003', 'C-000001']],
       ['a last name', '?q=keita', ['C-000002']],
-      ['local phone digits', '?q=76%2000%2000%2002', ['C-000002']],
-      ['an international phone', '?q=%2B22376000001', ['C-000003', 'C-000001']],
+      ['local phone digits', '?q=76%2045%2012%2078', ['C-000002']],
+      ['an international phone', '?q=%2B22376123401', ['C-000003', 'C-000001']],
       ['the store', `?storeId=STORE`, ['C-000002', 'C-000001']],
       ['the store and a name', `?storeId=STORE&q=awa`, ['C-000001']],
     ])('finds by %s', async (_label, query, expected) => {
