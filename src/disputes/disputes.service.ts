@@ -30,9 +30,11 @@ import {
   type DisputeView,
   type MyDisputeView,
 } from './dto/dispute-view.js';
-import type {
-  ListDisputesQueryDto,
-  ListMyDisputesQueryDto,
+import {
+  UNRESOLVED_STATUSES,
+  type AdminDisputesQueryDto,
+  type ListDisputesQueryDto,
+  type ListMyDisputesQueryDto,
 } from './dto/list-disputes.dto.js';
 
 /** Newest first; the id breaks ties within one millisecond (uuid v7). */
@@ -247,6 +249,44 @@ export class DisputesService {
       ONE_SNAPSHOT,
     );
     return paginated(disputes.map(toDisputeView), total, query);
+  }
+
+  /**
+   * Admins oversee the disputes still waiting for an answer (16c), in every
+   * store: OPEN or ANSWERED, never CLOSED. Read-only, the staff view.
+   */
+  async listUnresolved(
+    query: AdminDisputesQueryDto,
+  ): Promise<Paginated<DisputeView>> {
+    const where: Prisma.DisputeWhereInput = {
+      status: query.status ?? { in: [...UNRESOLVED_STATUSES] },
+      storeId: query.storeId,
+    };
+    const [disputes, total] = await this.prisma.$transaction(
+      [
+        this.prisma.dispute.findMany({
+          where,
+          include: DISPUTE_INCLUDE,
+          orderBy: DISPUTES_ORDER,
+          ...toSkipTake(query),
+        }),
+        this.prisma.dispute.count({ where }),
+      ],
+      ONE_SNAPSHOT,
+    );
+    return paginated(disputes.map(toDisputeView), total, query);
+  }
+
+  /** One unresolved dispute, any store; a closed one is a 404, like an unknown id. */
+  async detailUnresolved(disputeId: string): Promise<DisputeView> {
+    const dispute = await this.prisma.dispute.findFirst({
+      where: { id: disputeId, status: { in: [...UNRESOLVED_STATUSES] } },
+      include: DISPUTE_INCLUDE,
+    });
+    if (!dispute) {
+      throw disputeNotFound();
+    }
+    return toDisputeView(dispute);
   }
 
   /** One dispute of this store, with its thread; another store's is a 404. */

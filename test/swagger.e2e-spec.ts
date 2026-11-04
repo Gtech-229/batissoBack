@@ -49,6 +49,18 @@ describe('Swagger document (e2e)', () => {
     );
   });
 
+  it('documents the admin dispute and activity routes (feature 16c)', () => {
+    const routes = operations.map(([route]) => route);
+
+    expect(routes).toEqual(
+      expect.arrayContaining([
+        'GET /api/v1/admin/disputes',
+        'GET /api/v1/admin/disputes/{disputeId}',
+        'GET /api/v1/admin/activity',
+      ]),
+    );
+  });
+
   it('documents the admin account routes (feature 16b)', () => {
     const routes = operations.map(([route]) => route);
 

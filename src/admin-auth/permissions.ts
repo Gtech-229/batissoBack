@@ -17,6 +17,9 @@ export const PERMISSIONS = {
     'Enregistrer et corriger les abonnements des quincailleries',
   'accounts.read': 'Rechercher les comptes des clients, sans leur solde',
   'accounts.manage': 'Suspendre et réactiver les comptes des clients',
+  'disputes.read':
+    'Lire les contestations en cours de toutes les quincailleries',
+  'activity.read': 'Lire le journal d’activité de toutes les quincailleries',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

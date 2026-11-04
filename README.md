@@ -76,15 +76,15 @@ admin has one role:
 - `GET /api/v1/admin/permissions` lists them: `countries.read`, `countries.manage`,
   `stores.read`, `stores.manage`, `store-settings.manage`, `settings.read`,
   `settings.manage`, `subscriptions.read`, `subscriptions.manage`,
-  `accounts.read`, `accounts.manage`
+  `accounts.read`, `accounts.manage`, `disputes.read`, `activity.read`
 - `POST`, `GET`, `PATCH`, `DELETE` on `/api/v1/admin/roles` manage the roles
 - `PATCH /api/v1/admin/admins/:id/role` gives an admin a role
 
 A change counts from the admin's next request. The super admin has every
 permission and no role; managing admins and roles stays theirs alone. The
 `Administrateur` role, created by the migration, holds what an admin could do
-before roles existed; the subscription and account permissions came later and
-are granted by the super admin.
+before roles existed; the subscription, account, dispute and activity
+permissions came later and are granted by the super admin.
 
 ## First country and store
 
@@ -441,6 +441,18 @@ the store's manager in one thread (Bearer sessions):
 
 A dispute never changes an operation: a fix is a correction or a cancellation
 with re-credit. Messages can never be changed or deleted.
+
+### Admin oversight
+
+Admins read, across every store, without acting in them:
+
+- `GET /api/v1/admin/disputes?status=OPEN&storeId=...` (`disputes.read`): the
+  disputes still waiting for an answer, `OPEN` or `ANSWERED`, newest first, with
+  their threads, as the store's staff see them (names, no phone).
+  `GET /api/v1/admin/disputes/:disputeId` gives one; a closed one is a 404.
+- `GET /api/v1/admin/activity?storeId=...&action=...&from=2026-11-01&to=2026-11-30`
+  (`activity.read`): every store's activity log, newest first, each entry with
+  its store; the days are UTC and both included.
 
 ## Cash closing
 
