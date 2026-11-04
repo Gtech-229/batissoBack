@@ -12,6 +12,9 @@ export const PERMISSIONS = {
   'store-settings.manage': 'Modifier les paramètres d’une quincaillerie',
   'settings.read': 'Voir les paramètres de la plateforme',
   'settings.manage': 'Modifier les paramètres de la plateforme',
+  'subscriptions.read': 'Voir les abonnements des quincailleries',
+  'subscriptions.manage':
+    'Enregistrer et corriger les abonnements des quincailleries',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

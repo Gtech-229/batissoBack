@@ -1,3 +1,4 @@
+import { subscriptionStateWhere } from '../subscriptions/store-subscription.js';
 import { Injectable } from '@nestjs/common';
 import { definedOnly } from '../common/defined-only.js';
 import type { ValidationErrorDetail } from '../common/errors/error-response.js';
@@ -132,6 +133,8 @@ export class StoresService {
     const where: Prisma.HardwareStoreWhereInput = {
       status: query.status,
       countryCode: query.countryCode,
+      ...(query.subscriptionState &&
+        subscriptionStateWhere(query.subscriptionState)),
       ...(search && {
         OR: [
           { name: { contains: search, mode: 'insensitive' } },
@@ -147,6 +150,7 @@ export class StoresService {
           // id breaks ties between stores created in the same millisecond, so
           // pages never repeat or skip a store.
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          include: { subscriptions: true },
           ...toSkipTake(query),
         }),
         this.prisma.hardwareStore.count({ where }),

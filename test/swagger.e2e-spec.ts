@@ -7,6 +7,7 @@ type Operation = {
   summary?: string;
   responses?: Record<string, unknown>;
   security?: Record<string, unknown>[];
+  parameters?: { name: string }[];
 };
 
 describe('Swagger document (e2e)', () => {
@@ -45,6 +46,24 @@ describe('Swagger document (e2e)', () => {
         'DELETE /api/v1/admin/roles/{roleId}',
         'PATCH /api/v1/admin/admins/{id}/role',
       ]),
+    );
+  });
+
+  it('documents the subscription routes and the store filter (feature 16a)', () => {
+    const routes = operations.map(([route]) => route);
+
+    expect(routes).toEqual(
+      expect.arrayContaining([
+        'POST /api/v1/admin/stores/{id}/subscriptions',
+        'GET /api/v1/admin/stores/{id}/subscriptions',
+        'PATCH /api/v1/admin/subscriptions/{subscriptionId}',
+      ]),
+    );
+    const list = operations.find(
+      ([route]) => route === 'GET /api/v1/admin/stores',
+    )?.[1];
+    expect((list?.parameters ?? []).map((p) => p.name)).toContain(
+      'subscriptionState',
     );
   });
 

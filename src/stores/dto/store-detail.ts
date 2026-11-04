@@ -5,8 +5,15 @@ import type {
   HardwareStore,
   StoreMember,
   StoreSettings,
+  Subscription,
   User,
 } from '../../generated/prisma/client.js';
+import { SubscriptionView } from '../../subscriptions/dto/subscription.dto.js';
+import { toStoreSubscription } from '../../subscriptions/store-subscription.js';
+import {
+  SUBSCRIPTION_STATES,
+  type SubscriptionState,
+} from '../../subscriptions/subscription-status.js';
 import { StoreStatus } from '../../generated/prisma/client.js';
 
 export class StoreCountry {
@@ -113,6 +120,21 @@ export class StoreDetail {
   @ApiProperty({ type: [StoreManager] })
   managers: StoreManager[];
 
+  @ApiProperty({
+    description:
+      'Abonnement du jour (UTC) : ACTIVE (en cours), UPCOMING (aucun en cours, un à venir), EXPIRED (tous terminés) ou NONE (jamais abonnée)',
+    enum: SUBSCRIPTION_STATES,
+    example: 'ACTIVE',
+  })
+  subscriptionState: SubscriptionState;
+
+  @ApiProperty({
+    description: 'L’abonnement en cours, null si aucun',
+    type: SubscriptionView,
+    nullable: true,
+  })
+  currentSubscription: SubscriptionView | null;
+
   @ApiProperty({ example: '2026-10-06T09:00:00.000Z' })
   createdAt: string;
 }
@@ -122,6 +144,7 @@ export type StoreWithDetail = HardwareStore & {
   country: Country;
   settings: StoreSettings | null;
   members: (StoreMember & { user: User })[];
+  subscriptions: Subscription[];
 };
 
 /** What to load for a store detail: country, settings, active managers. */
@@ -133,6 +156,8 @@ export const STORE_DETAIL_INCLUDE = {
     include: { user: true },
     orderBy: { createdAt: 'asc' },
   },
+  // A store has few: its state and current one are computed from all of them.
+  subscriptions: true,
 } as const;
 
 export function toStoreDetail(store: StoreWithDetail): StoreDetail {
@@ -173,6 +198,7 @@ export function toStoreDetail(store: StoreWithDetail): StoreDetail {
       lastName: member.user.lastName,
       phone: member.user.phone,
     })),
+    ...toStoreSubscription(store.subscriptions),
     createdAt: store.createdAt.toISOString(),
   };
 }

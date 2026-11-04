@@ -60,6 +60,9 @@ model Admin {
   storesCreated        HardwareStore[]      @relation("StoreCreatedBy")
   storeStatusChanges   HardwareStore[]      @relation("StoreStatusChangedBy")
   storeSettingsUpdates StoreSettings[]
+  // Feature 16a: subscriptions this admin recorded or last edited.
+  subscriptionsCreated Subscription[]       @relation("SubscriptionCreatedBy")
+  subscriptionsUpdated Subscription[]       @relation("SubscriptionUpdatedBy")
 
   @@map("admins")
 }
@@ -223,11 +226,41 @@ model HardwareStore {
   disputes        Dispute[]
   proofs          TransactionProof[]
   cashClosings    CashClosing[]
+  subscriptions   Subscription[]
 
   @@index([status, createdAt])
   // Stores of a country (country store counts, filters by country).
   @@index([countryCode])
   @@map("hardware_stores")
+}
+
+enum SubscriptionPlan {
+  TRIAL
+  STANDARD
+  PRO
+}
+
+/// A store's subscription (feature 16a), recorded by an admin: a plan over a
+/// period of calendar days, both included. Recorded only: no billing, no plan
+/// limits. Its status (upcoming, active, expired) is computed from today's
+/// date, never stored. Two subscriptions of a store never overlap.
+model Subscription {
+  id          String           @id @default(uuid(7)) @db.Uuid
+  storeId     String           @db.Uuid
+  plan        SubscriptionPlan
+  startsOn    DateTime         @db.Date
+  endsOn      DateTime         @db.Date
+  createdById String?          @db.Uuid
+  updatedById String?          @db.Uuid
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  store     HardwareStore @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  createdBy Admin?        @relation("SubscriptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy Admin?        @relation("SubscriptionUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([storeId, startsOn])
+  @@map("subscriptions")
 }
 
 /// Money rules of one store. Amounts are integers in the smallest currency unit.

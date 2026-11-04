@@ -4,7 +4,8 @@ import { isDay } from '../period-range.js';
 
 const DAY_MESSAGE = 'La date doit être au format AAAA-MM-JJ';
 
-function IsDay(): PropertyDecorator {
+/** A real `YYYY-MM-DD` calendar day (UTC). */
+export function IsDay(): PropertyDecorator {
   return ValidateBy({
     name: 'isDay',
     validator: {

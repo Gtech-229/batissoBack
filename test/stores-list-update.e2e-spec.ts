@@ -76,6 +76,8 @@ describe('Stores: list and updates (e2e)', () => {
         phone: '+22320220000',
         status: 'CLOSED',
         createdAt: '2026-10-03T00:00:00.000Z',
+        subscriptionState: 'NONE',
+        currentSubscription: null,
       });
     });
 

@@ -75,14 +75,15 @@ admin has one role:
 
 - `GET /api/v1/admin/permissions` lists them: `countries.read`, `countries.manage`,
   `stores.read`, `stores.manage`, `store-settings.manage`, `settings.read`,
-  `settings.manage`
+  `settings.manage`, `subscriptions.read`, `subscriptions.manage`
 - `POST`, `GET`, `PATCH`, `DELETE` on `/api/v1/admin/roles` manage the roles
 - `PATCH /api/v1/admin/admins/:id/role` gives an admin a role
 
 A change counts from the admin's next request. The super admin has every
 permission and no role; managing admins and roles stays theirs alone. The
 `Administrateur` role, created by the migration, holds what an admin could do
-before roles existed.
+before roles existed; the subscription permissions came later and are granted
+by the super admin.
 
 ## First country and store
 
@@ -103,6 +104,25 @@ There is no seed data, so a fresh database has no country. As an admin:
    A store can then be suspended, reactivated, or closed (final).
 
 Lists are paginated: `?page=1&pageSize=20` returns `{ items, total, page, pageSize }`.
+
+### Subscriptions
+
+An admin with `subscriptions.manage` records each store's subscriptions by hand,
+the trial included; registering a store creates none. V1 only records them: no
+billing, no limit per plan, nothing automatic when one ends.
+
+- `POST /api/v1/admin/stores/:id/subscriptions` with
+  `{ "plan": "TRIAL" | "STANDARD" | "PRO", "startsOn": "2026-11-01", "endsOn": "2026-11-30" }`:
+  both days included, UTC. Two subscriptions of a store never overlap
+  (`SUBSCRIPTION_OVERLAP`); a closed store gets no new one (`STORE_CLOSED`).
+- `GET` on the same path lists them, newest first, each with its status of the
+  day: `UPCOMING`, `ACTIVE`, or `EXPIRED` (`subscriptions.read`).
+- `PATCH /api/v1/admin/subscriptions/:subscriptionId` corrects the plan or the
+  dates; to stop one early, move `endsOn` earlier. There is no delete.
+- The store list and detail show `subscriptionState` (`ACTIVE`, `UPCOMING`,
+  `EXPIRED`, `NONE`) and `currentSubscription`; filter the list with
+  `?subscriptionState=EXPIRED` to find the stores to follow up, and suspend one
+  with `PATCH /api/v1/admin/stores/:id/suspend` if needed.
 
 ## First mobile sign-in
 
