@@ -174,6 +174,25 @@ describe('Cancelling a paid order (e2e)', () => {
   const setStoreStatus = (status: 'VERIFIED' | 'SUSPENDED' | 'CLOSED') =>
     prisma.hardwareStore.update({ where: { id: storeId }, data: { status } });
 
+  describe('a suspended account (16b)', () => {
+    it('still debits a confirmed purchase and re-credits its cancellation', async () => {
+      await deposit('50000');
+      await prisma.account.update({
+        where: { id: accountId },
+        data: { status: 'SUSPENDED', statusReason: 'Fraude suspectée' },
+      });
+
+      const order = await confirmed(4);
+      await cancel(order.id).expect(201);
+
+      const account = await prisma.account.findUniqueOrThrow({
+        where: { id: accountId },
+      });
+      expect(account.balance).toBe(50000n);
+      expect(account.status).toBe('SUSPENDED');
+    });
+  });
+
   describe('POST /stores/:storeId/orders/:orderId/cancel-after-debit', () => {
     it('cancels a paid order and re-credits its goal, linked to the debit', async () => {
       const goalId = await createGoal();

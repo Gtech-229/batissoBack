@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { accountNotFound } from '../accounts/accounts.errors.js';
+import {
+  accountNotFound,
+  accountSuspended,
+} from '../accounts/accounts.errors.js';
 import { formatAmount, parseAmount } from '../common/money.js';
 import {
   paginated,
@@ -9,6 +12,7 @@ import {
   ONE_SNAPSHOT,
 } from '../common/pagination.js';
 import {
+  AccountStatus,
   OperationChannel,
   OperationDirection,
   OperationStatus,
@@ -113,8 +117,13 @@ export class LedgerService {
           // FOR UPDATE: deposits on one account run one after the other, so each
           // reads the balance the previous one wrote.
           const [account] = await tx.$queryRaw<
-            { customerId: string; balance: bigint; currencyCode: string }[]
-          >`SELECT "customerId", "balance", "currencyCode" FROM "accounts"
+            {
+              customerId: string;
+              balance: bigint;
+              currencyCode: string;
+              status: AccountStatus;
+            }[]
+          >`SELECT "customerId", "balance", "currencyCode", "status" FROM "accounts"
           WHERE "id" = ${accountId}::uuid AND "storeId" = ${store.storeId}::uuid
           FOR UPDATE`;
           if (!account) {
@@ -131,6 +140,10 @@ export class LedgerService {
 
           if (account.customerId === actor.userId) {
             throw ownAccountDeposit();
+          }
+          // Under the account lock, which a suspension also takes (16b).
+          if (account.status === AccountStatus.SUSPENDED) {
+            throw accountSuspended();
           }
 
           // FOR SHARE: an admin's change to the limits waits for this deposit.

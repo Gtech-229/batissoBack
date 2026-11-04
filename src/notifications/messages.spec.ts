@@ -1,6 +1,7 @@
 import {
   accessRecoveredMessage,
   accessResetMessage,
+  accountStatusMessage,
   cancellationRequestedMessage,
   correctionMessage,
   depositMessage,
@@ -17,6 +18,53 @@ import {
   paidOrderCancelledMessage,
   purchaseMessage,
 } from './messages.js';
+
+describe('accountStatusMessage', () => {
+  const change = { accountNumber: 'C-000123', storeName: 'Quincaillerie Sira' };
+
+  it('tells a suspension: account, store, what stops and what still works', () => {
+    const { title, body } = accountStatusMessage({
+      ...change,
+      suspended: true,
+    });
+
+    expect(title).toBe('Compte suspendu');
+    expect(body).toContain('C-000123');
+    expect(body).toContain('Quincaillerie Sira');
+    expect(body).toContain('ne reçoit plus de dépôts');
+    expect(body).toContain('achats de matériaux restent possibles');
+  });
+
+  it('tells a reactivation', () => {
+    const { title, body } = accountStatusMessage({
+      ...change,
+      suspended: false,
+    });
+
+    expect(title).toBe('Compte réactivé');
+    expect(body).toContain('de nouveau actif');
+  });
+
+  it('never claims the money is "sécurisé" or "garanti"', () => {
+    const text = [true, false]
+      .map((suspended) => accountStatusMessage({ ...change, suspended }))
+      .map((m) => m.title + m.body)
+      .join(' ');
+
+    expect(text).not.toMatch(/sécuris|garanti/);
+  });
+
+  it('fits the columns with a long store name', () => {
+    const { title, body } = accountStatusMessage({
+      ...change,
+      storeName: 'Q'.repeat(150),
+      suspended: true,
+    });
+
+    expect(title.length).toBeLessThanOrEqual(100);
+    expect(body.length).toBeLessThanOrEqual(500);
+  });
+});
 
 describe('accessResetMessage', () => {
   it('names the store and the way back in', () => {

@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { accountNotFound } from '../accounts/accounts.errors.js';
+import {
+  accountNotFound,
+  accountSuspended,
+} from '../accounts/accounts.errors.js';
 import {
   GOAL_INCLUDE,
   toGoalView,
@@ -20,6 +23,7 @@ import {
   type PaginationQueryDto,
 } from '../common/pagination.js';
 import {
+  AccountStatus,
   GoalMovementReason,
   GoalStatus,
   Prisma,
@@ -113,6 +117,14 @@ export class GoalsService {
           const parallel = await this.replay(tx, idempotencyKey, request);
           if (parallel) {
             return { result: parallel, toNotify: [] };
+          }
+          // The row is locked, as a suspension also locks it (16b).
+          const { status } = await tx.account.findUniqueOrThrow({
+            where: { id: accountId },
+            select: { status: true },
+          });
+          if (status === AccountStatus.SUSPENDED) {
+            throw accountSuspended();
           }
 
           const goals = await tx.goal.findMany({

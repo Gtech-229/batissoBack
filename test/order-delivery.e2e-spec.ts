@@ -120,6 +120,11 @@ describe('Delivering material orders (e2e)', () => {
     api()
       .post(`/api/v1/stores/${store}/orders/${orderId}/deliver`)
       .set('Authorization', as.authorization);
+  const suspendAccount = () =>
+    prisma.account.update({
+      where: { id: accountId },
+      data: { status: 'SUSPENDED', statusReason: 'Fraude suspectée' },
+    });
   const setStoreStatus = (status: 'SUSPENDED' | 'CLOSED') =>
     prisma.hardwareStore.update({ where: { id: storeId }, data: { status } });
   const deliveredRows = () =>
@@ -231,6 +236,23 @@ describe('Delivering material orders (e2e)', () => {
         delivered.id,
       ]);
     }
+  });
+
+  describe('a suspended account (16b)', () => {
+    it('still confirms and hands over a purchase', async () => {
+      await suspendAccount();
+
+      const order = await confirmed();
+      await deliver(order.id).expect(200);
+
+      expect(
+        (
+          await prisma.materialOrder.findUniqueOrThrow({
+            where: { id: order.id },
+          })
+        ).status,
+      ).toBe('DELIVERED');
+    });
   });
 
   describe('refuses an order that is not confirmed with 409 ORDER_STATUS', () => {

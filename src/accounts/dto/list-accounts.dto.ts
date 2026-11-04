@@ -8,7 +8,7 @@ import {
   type Account,
   type User,
 } from '../../generated/prisma/client.js';
-import { AccountCustomerView } from './account-detail.js';
+import { AccountCustomerView, reasonFor } from './account-detail.js';
 
 /** `GET /stores/:storeId/accounts?page=1&pageSize=20&q=keita` */
 export class ListAccountsQueryDto extends PaginationQueryDto {
@@ -43,6 +43,15 @@ export class AccountSummary {
   status: AccountStatus;
 
   @ApiProperty({
+    description:
+      'Motif de la suspension par un administrateur, null si le compte est actif. Pour le personnel : le client ne le voit jamais.',
+    type: String,
+    nullable: true,
+    example: null,
+  })
+  statusReason: string | null;
+
+  @ApiProperty({
     description: 'Solde, en unités de la devise, en texte',
     example: '0',
   })
@@ -69,11 +78,13 @@ export class AccountSummary {
 
 export function toAccountSummary(
   account: Account & { customer: User },
+  viewerId: string,
 ): AccountSummary {
   return {
     id: account.id,
     number: account.number,
     status: account.status,
+    statusReason: reasonFor(account, viewerId),
     balance: formatAmount(account.balance),
     currencyCode: account.currencyCode,
     customer: {

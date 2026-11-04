@@ -356,6 +356,44 @@ describe('Cash deposits (e2e)', () => {
     });
   });
 
+  describe('a suspended account (16b)', () => {
+    it('refuses a deposit, and takes it again once reactivated', async () => {
+      await prisma.account.update({
+        where: { id: accountId },
+        data: { status: 'SUSPENDED', statusReason: 'Fraude suspectée' },
+      });
+
+      const refused = await deposit('5000').expect(409);
+      expect(refused.body).toMatchObject({
+        error: 'ACCOUNT_SUSPENDED',
+        message:
+          'Ce compte est suspendu : il ne prend plus de dépôts ni de mouvements entre objectifs. Les achats restent possibles.',
+      });
+      expect(await operations()).toHaveLength(0);
+
+      await prisma.account.update({
+        where: { id: accountId },
+        data: { status: 'ACTIVE', statusReason: null },
+      });
+      await deposit('5000').expect(201);
+      expect(await balances()).toEqual({ account: 5000n, unassigned: 5000n });
+    });
+
+    it('still answers the receipt of a deposit recorded before the suspension', async () => {
+      const key = randomUUID();
+      const first = await deposit('5000', { key }).expect(201);
+      await prisma.account.update({
+        where: { id: accountId },
+        data: { status: 'SUSPENDED', statusReason: 'Fraude suspectée' },
+      });
+
+      const retry = await deposit('5000', { key }).expect(200);
+
+      expect(retry.body).toEqual(first.body);
+      expect(await operations()).toHaveLength(1);
+    });
+  });
+
   describe('idempotency', () => {
     const KEY_RULE =
       'L’en-tête Idempotency-Key est requis : un UUID généré par l’application pour cette demande, renvoyé tel quel si elle est répétée';

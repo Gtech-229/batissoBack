@@ -49,6 +49,18 @@ describe('Swagger document (e2e)', () => {
     );
   });
 
+  it('documents the admin account routes (feature 16b)', () => {
+    const routes = operations.map(([route]) => route);
+
+    expect(routes).toEqual(
+      expect.arrayContaining([
+        'GET /api/v1/admin/accounts',
+        'PATCH /api/v1/admin/accounts/{id}/suspend',
+        'PATCH /api/v1/admin/accounts/{id}/reactivate',
+      ]),
+    );
+  });
+
   it('documents the subscription routes and the store filter (feature 16a)', () => {
     const routes = operations.map(([route]) => route);
 

@@ -127,8 +127,9 @@ export class AccountsController {
   list(
     @CurrentStore() store: CurrentStoreContext,
     @Query() query: ListAccountsQueryDto,
+    @CurrentUser() viewer: AuthenticatedUser,
   ): Promise<Paginated<AccountSummary>> {
-    return this.accounts.list(store.storeId, query);
+    return this.accounts.list(store.storeId, query, viewer.userId);
   }
 
   /**
@@ -155,8 +156,9 @@ export class AccountsController {
   scan(
     @CurrentStore() store: CurrentStoreContext,
     @Body() body: ScanQrCodeDto,
+    @CurrentUser() viewer: AuthenticatedUser,
   ): Promise<AccountDetail> {
-    return this.accounts.scan(store.storeId, body.code);
+    return this.accounts.scan(store.storeId, body.code, viewer.userId);
   }
 
   /**
@@ -182,7 +184,8 @@ export class AccountsController {
   detail(
     @CurrentStore() store: CurrentStoreContext,
     @Param('accountId', AccountIdPipe) accountId: string,
+    @CurrentUser() viewer: AuthenticatedUser,
   ): Promise<AccountDetail> {
-    return this.accounts.detail(store.storeId, accountId);
+    return this.accounts.detail(store.storeId, accountId, viewer.userId);
   }
 }

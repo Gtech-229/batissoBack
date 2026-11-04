@@ -63,6 +63,8 @@ model Admin {
   // Feature 16a: subscriptions this admin recorded or last edited.
   subscriptionsCreated Subscription[]       @relation("SubscriptionCreatedBy")
   subscriptionsUpdated Subscription[]       @relation("SubscriptionUpdatedBy")
+  // Feature 16b: accounts this admin last suspended or reactivated.
+  accountStatusChanges Account[]            @relation("AccountStatusChangedBy")
 
   @@map("admins")
 }
@@ -162,6 +164,9 @@ enum ActivityAction {
 
 enum AccountStatus {
   ACTIVE
+  /// Suspended by an admin (16b): no deposits and no goal moves; purchases
+  /// are still served.
+  SUSPENDED
 }
 
 enum GoalStatus {
@@ -490,38 +495,43 @@ model ActivityLog {
 /// smallest currency unit. The balance is a projection: deposits and debits
 /// (feature 6) update it in the same transaction as the operation they record.
 model Account {
-  id               String        @id @default(uuid(7)) @db.Uuid
+  id                String        @id @default(uuid(7)) @db.Uuid
   /// "C-" + at least 6 digits from the account_number_seq sequence. For display
   /// and staff search only: sequential, so never enough to reach an account.
-  number           String        @unique @db.VarChar(20)
-  customerId       String        @db.Uuid
-  storeId          String        @db.Uuid
+  number            String        @unique @db.VarChar(20)
+  customerId        String        @db.Uuid
+  storeId           String        @db.Uuid
   /// The store's country currency at opening (ISO 4217).
-  currencyCode     String        @db.VarChar(3)
-  balance          BigInt        @default(0)
-  beneficiaryName  String?       @db.VarChar(100)
-  beneficiaryPhone String? /// E.164
+  currencyCode      String        @db.VarChar(3)
+  balance           BigInt        @default(0)
+  beneficiaryName   String?       @db.VarChar(100)
+  beneficiaryPhone  String? /// E.164
   /// The identity photo: a generated file name (uuid + .jpg or .png) in the
   /// private ID_PHOTO_DIR directory; null until uploaded. Never in a response.
-  idPhotoPath      String?       @db.VarChar(100)
-  status           AccountStatus @default(ACTIVE)
+  idPhotoPath       String?       @db.VarChar(100)
+  status            AccountStatus @default(ACTIVE)
+  /// Why an admin suspended it (16b): for staff and admins, never the customer.
+  statusReason      String?       @db.VarChar(500)
+  statusChangedAt   DateTime?
+  statusChangedById String?       @db.Uuid
   /// When the customer accepted the store's terms, at the counter.
-  termsAcceptedAt  DateTime
+  termsAcceptedAt   DateTime
   /// The staff member who opened the account.
-  openedById       String        @db.Uuid
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  openedById        String        @db.Uuid
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
-  customer       User               @relation("AccountCustomer", fields: [customerId], references: [id], onDelete: Restrict)
-  store          HardwareStore      @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  openedBy       User               @relation("AccountOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
-  goals          Goal[]
-  operations     Operation[]
-  projects       Project[]
-  goalMovements  GoalMovement[]
-  materialOrders MaterialOrder[]
-  disputes       Dispute[]
-  proofs         TransactionProof[]
+  customer        User               @relation("AccountCustomer", fields: [customerId], references: [id], onDelete: Restrict)
+  statusChangedBy Admin?             @relation("AccountStatusChangedBy", fields: [statusChangedById], references: [id], onDelete: SetNull)
+  store           HardwareStore      @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  openedBy        User               @relation("AccountOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
+  goals           Goal[]
+  operations      Operation[]
+  projects        Project[]
+  goalMovements   GoalMovement[]
+  materialOrders  MaterialOrder[]
+  disputes        Dispute[]
+  proofs          TransactionProof[]
 
   @@unique([customerId, storeId])
   // The store's accounts, newest first (staff list and search).
@@ -967,6 +977,10 @@ enum NotificationType {
   ACCESS_RESET
   /// The user recovered their access with their security answers (14b).
   ACCESS_RECOVERED
+  /// An admin suspended the customer's account (16b).
+  ACCOUNT_SUSPENDED
+  /// An admin reactivated the customer's account (16b).
+  ACCOUNT_REACTIVATED
 }
 
 enum NotificationChannel {

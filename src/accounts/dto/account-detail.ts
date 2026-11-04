@@ -249,6 +249,15 @@ export class AccountDetail {
   hasIdPhoto: boolean;
 
   @ApiProperty({
+    description:
+      'Motif de la suspension par un administrateur, null si le compte est actif. Pour le personnel : le client ne le voit jamais.',
+    type: String,
+    nullable: true,
+    example: null,
+  })
+  statusReason: string | null;
+
+  @ApiProperty({
     description: 'Date d’ouverture',
     example: '2026-10-14T10:00:00.000Z',
   })
@@ -331,7 +340,22 @@ export function toProjectView(project: Project): ProjectView {
  * Public fields only: amounts as strings; never a PIN hash, lockout state, or
  * internal foreign keys.
  */
-export function toAccountDetail(account: AccountWithDetail): AccountDetail {
+/**
+ * The suspension reason for a staff reader, never for the account's own
+ * customer, even when they work in the store (F-43).
+ */
+export function reasonFor(
+  account: Pick<Account, 'customerId' | 'statusReason'>,
+  viewerId: string,
+): string | null {
+  return account.customerId === viewerId ? null : account.statusReason;
+}
+
+/** `viewerId`: the session user, so their own account never shows the reason. */
+export function toAccountDetail(
+  account: AccountWithDetail,
+  viewerId: string,
+): AccountDetail {
   return {
     ...toAccountFields(account),
     openedBy: {
@@ -341,6 +365,7 @@ export function toAccountDetail(account: AccountWithDetail): AccountDetail {
     },
     // Whether there is a photo, never where it is.
     hasIdPhoto: account.idPhotoPath !== null,
+    statusReason: reasonFor(account, viewerId),
   };
 }
 
@@ -351,7 +376,7 @@ export function toAccountFields(
     goals: GoalWithArticle[];
     projects: Project[];
   },
-): Omit<AccountDetail, 'openedBy' | 'hasIdPhoto'> {
+): Omit<AccountDetail, 'openedBy' | 'hasIdPhoto' | 'statusReason'> {
   return {
     id: account.id,
     number: account.number,

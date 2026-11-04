@@ -118,6 +118,7 @@ describe('Customer accounts (e2e)', () => {
           },
           createdAt: expect.any(String),
           hasIdPhoto: false,
+          statusReason: null,
         });
         const body = response.body as {
           id: string;
@@ -551,6 +552,7 @@ describe('Customer accounts (e2e)', () => {
           },
           createdAt: expect.any(String),
           hasIdPhoto: false,
+          statusReason: null,
         });
       });
 
@@ -625,6 +627,72 @@ describe('Customer accounts (e2e)', () => {
           goals: [{ label: 'Non affecté', isSystem: true }],
           openedBy: { userId: seller.userId },
         });
+      });
+
+      it('shows staff the suspension and its reason (16b)', async () => {
+        await prisma.account.update({
+          where: { id: fanta.id },
+          data: { status: 'SUSPENDED', statusReason: 'Fraude suspectée' },
+        });
+
+        const response = await detail(fanta.id).expect(200);
+
+        expect(response.body).toMatchObject({
+          status: 'SUSPENDED',
+          statusReason: 'Fraude suspectée',
+        });
+      });
+
+      it('never shows a staff member the reason on their own account (F-43)', async () => {
+        // The seller is also a customer of the store; a colleague opened it.
+        const own = (
+          await openAccount(
+            {
+              customer: {
+                phone: seller.phone,
+                firstName: 'Moussa',
+                lastName: 'Traoré',
+              },
+            },
+            manager,
+          ).expect(201)
+        ).body as { id: string };
+        await prisma.account.update({
+          where: { id: own.id },
+          data: { status: 'SUSPENDED', statusReason: 'Fraude suspectée' },
+        });
+        // The seller’s own QR code, as the app reads it.
+        const code = (
+          await api()
+            .get('/api/v1/me/qr-code')
+            .set('Authorization', seller.authorization)
+            .expect(200)
+        ).body.code as string;
+
+        const mine = await detail(own.id, seller).expect(200);
+        const listed = (
+          (await search({ q: seller.phone }).expect(200)).body.items as {
+            id: string;
+            status: string;
+            statusReason: string | null;
+          }[]
+        ).find((item) => item.id === own.id);
+        const scanned = await api()
+          .post(`/api/v1/stores/${storeId}/accounts/scan`)
+          .set('Authorization', seller.authorization)
+          .send({ code })
+          .expect(200);
+
+        for (const view of [mine.body, listed, scanned.body]) {
+          expect(view).toMatchObject({
+            status: 'SUSPENDED',
+            statusReason: null,
+          });
+        }
+        // A colleague still reads it.
+        expect(
+          (await detail(own.id, manager).expect(200)).body.statusReason,
+        ).toBe('Fraude suspectée');
       });
 
       it('lets a manager read it too', async () => {

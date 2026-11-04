@@ -103,7 +103,7 @@ export class IdPhotosService {
       // the request. It only leaves an unused file.
       await this.removeQuietly(previous, 'A replaced identity photo');
     }
-    return this.accounts.detail(store.storeId, accountId);
+    return this.accounts.detail(store.storeId, accountId, actor.userId);
   }
 
   /**

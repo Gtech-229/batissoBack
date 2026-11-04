@@ -19,6 +19,28 @@ export function invalidAccountId(): BadRequestException {
   return new BadRequestException('Identifiant de compte invalide');
 }
 
+/** Suspend only an active account, reactivate only a suspended one (16b). */
+export function invalidAccountTransition(
+  action: 'suspend' | 'reactivate',
+): ConflictException {
+  return new ConflictException({
+    message:
+      action === 'suspend'
+        ? 'Ce compte est déjà suspendu'
+        : 'Ce compte n’est pas suspendu',
+    error: 'INVALID_STATUS_TRANSITION',
+  });
+}
+
+/** A suspended account takes no deposit and no goal move (16b). */
+export function accountSuspended(): ConflictException {
+  return new ConflictException({
+    message:
+      'Ce compte est suspendu : il ne prend plus de dépôts ni de mouvements entre objectifs. Les achats restent possibles.',
+    error: 'ACCOUNT_SUSPENDED',
+  });
+}
+
 /** One account per customer and store. */
 export function accountExists(): ConflictException {
   return new ConflictException({

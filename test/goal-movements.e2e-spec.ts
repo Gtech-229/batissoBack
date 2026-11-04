@@ -338,6 +338,48 @@ describe('Moving money between goals (e2e)', () => {
     });
   });
 
+  describe('a suspended account (16b)', () => {
+    it('refuses a move, and allows it again once reactivated', async () => {
+      const cement = await createGoal('Ciment', '200000');
+      await prisma.account.update({
+        where: { id: accountId },
+        data: { status: 'SUSPENDED', statusReason: 'Fraude suspectée' },
+      });
+
+      const refused = await move(unassignedId, cement, '1000').expect(409);
+      expect(refused.body.error).toBe('ACCOUNT_SUSPENDED');
+      expect(await balanceOf(cement)).toBe(0n);
+      expect(await prisma.goalMovement.count()).toBe(0);
+
+      await prisma.account.update({
+        where: { id: accountId },
+        data: { status: 'ACTIVE', statusReason: null },
+      });
+      await move(unassignedId, cement, '1000').expect(201);
+      expect(await balanceOf(cement)).toBe(1000n);
+    });
+
+    it('still lets the customer create a goal and read the account, with its status but no reason', async () => {
+      await prisma.account.update({
+        where: { id: accountId },
+        data: { status: 'SUSPENDED', statusReason: 'Fraude suspectée' },
+      });
+
+      await createGoal('Fer', '100000');
+      const list = await api()
+        .get('/api/v1/me/accounts')
+        .set('Authorization', customer.authorization)
+        .expect(200);
+      const mine = (list.body as { id: string }[]).find(
+        (a) => a.id === accountId,
+      );
+
+      expect(mine).toMatchObject({ status: 'SUSPENDED' });
+      expect(mine).not.toHaveProperty('statusReason');
+      expect(JSON.stringify(list.body)).not.toContain('Fraude');
+    });
+  });
+
   describe('GET /me/accounts/:accountId/goal-movements', () => {
     it('lists moves and closings, newest first', async () => {
       await move(unassignedId, cementId, '20000').expect(201);

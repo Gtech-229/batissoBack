@@ -24,6 +24,7 @@ import {
 import {
   accessRecoveredMessage,
   accessResetMessage,
+  accountStatusMessage,
   cancellationRequestedMessage,
   correctionMessage,
   disputeClosedMessage,
@@ -378,6 +379,38 @@ export class NotificationsService {
         storeId: event.storeId,
         operationId: null,
         type: NotificationType.ACCESS_RESET,
+        title,
+        body,
+      },
+      { sms: true },
+    );
+  }
+
+  /**
+   * The rows telling the customer an admin suspended or reactivated one of
+   * their accounts (16b): in-app, SMS and push, like every change to what the
+   * money can do. Never the reason.
+   */
+  async recordAccountStatusChanged(
+    tx: Prisma.TransactionClient,
+    event: {
+      customerId: string;
+      storeId: string;
+      storeName: string;
+      accountNumber: string;
+      suspended: boolean;
+    },
+  ): Promise<string[]> {
+    const { title, body } = accountStatusMessage(event);
+    return this.writeRows(
+      tx,
+      {
+        userId: event.customerId,
+        storeId: event.storeId,
+        operationId: null,
+        type: event.suspended
+          ? NotificationType.ACCOUNT_SUSPENDED
+          : NotificationType.ACCOUNT_REACTIVATED,
         title,
         body,
       },

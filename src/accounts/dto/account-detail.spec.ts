@@ -1,5 +1,6 @@
 import type { Article, User } from '../../generated/prisma/client.js';
 import {
+  reasonFor,
   toAccountDetail,
   type AccountWithDetail,
   type GoalWithArticle,
@@ -61,6 +62,9 @@ const account = (
   beneficiaryPhone: '+22376778899',
   idPhotoPath: null,
   status: 'ACTIVE',
+  statusReason: null,
+  statusChangedAt: null,
+  statusChangedById: null,
   termsAcceptedAt: new Date('2026-10-14T10:00:00.000Z'),
   openedById: '2',
   createdAt: new Date('2026-10-14T10:00:00.000Z'),
@@ -72,9 +76,26 @@ const account = (
   ...overrides,
 });
 
+/** Read by a colleague: not the account's customer ('1'). */
+const STAFF_ID = 'staff-9';
+const detailFor = (a: Parameters<typeof toAccountDetail>[0]) =>
+  toAccountDetail(a, STAFF_ID);
+
+describe('reasonFor (F-43)', () => {
+  const suspended = { customerId: '1', statusReason: 'Fraude suspectée' };
+
+  it('gives a colleague the reason', () => {
+    expect(reasonFor(suspended, STAFF_ID)).toBe('Fraude suspectée');
+  });
+
+  it('never gives it to the account’s own customer, even as staff', () => {
+    expect(reasonFor(suspended, '1')).toBeNull();
+  });
+});
+
 describe('toAccountDetail', () => {
   it('writes money as exact strings, beyond the JSON number range', () => {
-    const detail = toAccountDetail(
+    const detail = detailFor(
       account({
         goals: [
           goal({}),
@@ -93,7 +114,7 @@ describe('toAccountDetail', () => {
   });
 
   it('never exposes PIN data or internal foreign keys', () => {
-    const json = JSON.stringify(toAccountDetail(account()));
+    const json = JSON.stringify(detailFor(account()));
 
     expect(json).not.toContain('scrypt');
     for (const key of [
@@ -110,7 +131,7 @@ describe('toAccountDetail', () => {
   });
 
   it('gives a null beneficiary when none was recorded', () => {
-    const detail = toAccountDetail(
+    const detail = detailFor(
       account({ beneficiaryName: null, beneficiaryPhone: null }),
     );
 
@@ -118,17 +139,17 @@ describe('toAccountDetail', () => {
   });
 
   it('keeps a beneficiary without a phone', () => {
-    const detail = toAccountDetail(account({ beneficiaryPhone: null }));
+    const detail = detailFor(account({ beneficiaryPhone: null }));
 
     expect(detail.beneficiary).toEqual({ name: 'Ali Keita', phone: null });
   });
 
   it('gives no equivalence for a goal without an article', () => {
-    expect(toAccountDetail(account()).goals[0].equivalence).toBeNull();
+    expect(detailFor(account()).goals[0].equivalence).toBeNull();
   });
 
   it('shows a linked goal as whole units of its article at the price of the day', () => {
-    const detail = toAccountDetail(
+    const detail = detailFor(
       account({
         goals: [
           goal({

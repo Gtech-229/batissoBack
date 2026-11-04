@@ -155,6 +155,18 @@ describe('Manager corrections of deposits (e2e)', () => {
   };
 
   describe('POST .../operations/:operationId/corrections', () => {
+    it('still corrects a deposit of a suspended account (16b)', async () => {
+      const recorded = await deposit('5000');
+      await prisma.account.update({
+        where: { id: accountId },
+        data: { status: 'SUSPENDED', statusReason: 'Fraude suspectée' },
+      });
+
+      await correct(recorded.id).expect(201);
+
+      expect(await balanceOf()).toBe(4000n);
+    });
+
     it('takes part of a deposit back, then the rest, linked to it with the reason', async () => {
       const recorded = await deposit('5000');
 

@@ -164,7 +164,7 @@ export class AccountsService {
         where: { id: accountId },
         include: ACCOUNT_DETAIL_INCLUDE,
       });
-      return toAccountDetail(account);
+      return toAccountDetail(account, actor.userId);
     });
   }
 
@@ -176,6 +176,7 @@ export class AccountsService {
   async list(
     storeId: string,
     query: ListAccountsQueryDto,
+    viewerId: string,
   ): Promise<Paginated<AccountSummary>> {
     const where: Prisma.AccountWhereInput = {
       storeId,
@@ -195,11 +196,19 @@ export class AccountsService {
       ],
       ONE_SNAPSHOT,
     );
-    return paginated(accounts.map(toAccountSummary), total, query);
+    return paginated(
+      accounts.map((account) => toAccountSummary(account, viewerId)),
+      total,
+      query,
+    );
   }
 
   /** One account of this store; another store's account is a 404. */
-  async detail(storeId: string, accountId: string): Promise<AccountDetail> {
+  async detail(
+    storeId: string,
+    accountId: string,
+    viewerId: string,
+  ): Promise<AccountDetail> {
     const account = await this.prisma.account.findFirst({
       where: { id: accountId, storeId },
       include: ACCOUNT_DETAIL_INCLUDE,
@@ -207,7 +216,7 @@ export class AccountsService {
     if (!account) {
       throw accountNotFound();
     }
-    return toAccountDetail(account);
+    return toAccountDetail(account, viewerId);
   }
 
   /**
@@ -230,7 +239,11 @@ export class AccountsService {
    * or replaced code and a person with no account here give the same 404: a
    * store learns nothing about people who are not its customers.
    */
-  async scan(storeId: string, code: string): Promise<AccountDetail> {
+  async scan(
+    storeId: string,
+    code: string,
+    viewerId: string,
+  ): Promise<AccountDetail> {
     const account = await this.prisma.account.findFirst({
       where: { storeId, customer: { qrCode: code } },
       include: ACCOUNT_DETAIL_INCLUDE,
@@ -238,7 +251,7 @@ export class AccountsService {
     if (!account) {
       throw accountNotFound();
     }
-    return toAccountDetail(account);
+    return toAccountDetail(account, viewerId);
   }
 
   /**

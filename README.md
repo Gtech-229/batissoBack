@@ -75,15 +75,16 @@ admin has one role:
 
 - `GET /api/v1/admin/permissions` lists them: `countries.read`, `countries.manage`,
   `stores.read`, `stores.manage`, `store-settings.manage`, `settings.read`,
-  `settings.manage`, `subscriptions.read`, `subscriptions.manage`
+  `settings.manage`, `subscriptions.read`, `subscriptions.manage`,
+  `accounts.read`, `accounts.manage`
 - `POST`, `GET`, `PATCH`, `DELETE` on `/api/v1/admin/roles` manage the roles
 - `PATCH /api/v1/admin/admins/:id/role` gives an admin a role
 
 A change counts from the admin's next request. The super admin has every
 permission and no role; managing admins and roles stays theirs alone. The
 `Administrateur` role, created by the migration, holds what an admin could do
-before roles existed; the subscription permissions came later and are granted
-by the super admin.
+before roles existed; the subscription and account permissions came later and
+are granted by the super admin.
 
 ## First country and store
 
@@ -205,6 +206,23 @@ at the counter (Bearer session):
    first). Detail: `GET /api/v1/stores/:storeId/accounts/:accountId`.
 3. The customer activates the app with the steps of "First mobile sign-in", then
    sees their accounts in every store: `GET /api/v1/me/accounts`.
+
+### Account suspension
+
+An admin can suspend one savings account (one customer at one store); the
+customer's other accounts and their sign-in stay untouched.
+
+- `GET /api/v1/admin/accounts?q=keita&storeId=...&status=SUSPENDED`
+  (`accounts.read`) searches every store's accounts by number, name, or phone
+  digits, newest first. It never shows a balance, an operation, or the photo.
+- `PATCH /api/v1/admin/accounts/:id/suspend` with `{ "reason": "..." }` (3 to 500
+  characters) and `PATCH /api/v1/admin/accounts/:id/reactivate`
+  (`accounts.manage`). A closed store's accounts cannot change.
+- A suspended account refuses deposits and goal moves (`ACCOUNT_SUSPENDED`).
+  Purchases, deliveries, cancellations with their re-credit, corrections, and
+  every read still work.
+- Staff see `status` and `statusReason` on the account; the customer sees the
+  status only and gets a notice (app and SMS) on each change, without the reason.
 
 ## Customer identity photo
 

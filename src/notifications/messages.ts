@@ -216,6 +216,26 @@ export function accessResetMessage(reset: {
   };
 }
 
+/**
+ * To the customer: an admin suspended or reactivated one of their accounts
+ * (16b). Never the reason: it is for staff and admins only.
+ */
+export function accountStatusMessage(change: {
+  suspended: boolean;
+  accountNumber: string;
+  storeName: string;
+}): NotificationMessage {
+  return change.suspended
+    ? {
+        title: 'Compte suspendu',
+        body: `Votre compte ${change.accountNumber} chez ${change.storeName} est suspendu : il ne reçoit plus de dépôts et vous ne pouvez plus déplacer d’argent entre vos objectifs. Vos achats de matériaux restent possibles. Renseignez-vous auprès de la quincaillerie.`,
+      }
+    : {
+        title: 'Compte réactivé',
+        body: `Votre compte ${change.accountNumber} chez ${change.storeName} est de nouveau actif : les dépôts et les mouvements entre vos objectifs reprennent.`,
+      };
+}
+
 /** To the user: their security answers just reset their access (14b). */
 export function accessRecoveredMessage(): NotificationMessage {
   return {
