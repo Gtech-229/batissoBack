@@ -255,6 +255,22 @@ describe('Store reports (e2e)', () => {
       await report('totals', query).expect(400);
     });
 
+    it.each(['totals', 'sellers'] as const)(
+      'refuses a %s period in year 0000 with a 400, not a 500 (F-25)',
+      async (name) => {
+        const res = await report(name, {
+          from: '0000-01-01',
+          to: '0000-01-31',
+        }).expect(400);
+
+        expect(
+          (res.body as { details: { field: string }[] }).details.map(
+            (d) => d.field,
+          ),
+        ).toEqual(['from', 'to']);
+      },
+    );
+
     it('works in a closed store', async () => {
       await prisma.hardwareStore.update({
         where: { id: storeId },

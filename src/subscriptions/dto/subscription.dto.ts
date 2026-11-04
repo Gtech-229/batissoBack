@@ -4,7 +4,7 @@ import {
   SubscriptionPlan,
   type Subscription,
 } from '../../generated/prisma/client.js';
-import { IsDay } from '../../store-reports/dto/report-period.dto.js';
+import { IsDay } from '../../common/validation/day.js';
 import {
   dateToDay,
   SUBSCRIPTION_STATUSES,

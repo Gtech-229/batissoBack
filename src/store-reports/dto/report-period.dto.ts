@@ -1,19 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ValidateBy } from 'class-validator';
-import { isDay } from '../period-range.js';
-
-const DAY_MESSAGE = 'La date doit être au format AAAA-MM-JJ';
-
-/** A real `YYYY-MM-DD` calendar day (UTC). */
-export function IsDay(): PropertyDecorator {
-  return ValidateBy({
-    name: 'isDay',
-    validator: {
-      validate: (value) => isDay(value),
-      defaultMessage: () => DAY_MESSAGE,
-    },
-  });
-}
+import { IsDay } from '../../common/validation/day.js';
 
 export class ReportPeriodDto {
   @ApiProperty({

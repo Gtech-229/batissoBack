@@ -146,6 +146,22 @@ describe('Subscriptions (e2e)', () => {
       await record(period(1, 10), 'not-a-uuid').expect(400);
     });
 
+    it('refuses a day in year 0000 with a 400, not a 500 (F-41)', async () => {
+      const response = await record({
+        plan: 'TRIAL',
+        startsOn: '0000-01-01',
+        endsOn: day(10),
+      }).expect(400);
+
+      expect(response.body.details).toEqual([
+        {
+          field: 'startsOn',
+          errors: ['La date doit être au format AAAA-MM-JJ'],
+        },
+      ]);
+      expect(await prisma.subscription.count()).toBe(0);
+    });
+
     it('validates every field in French', async () => {
       const response = await record({
         plan: 'GOLD',
@@ -262,6 +278,19 @@ describe('Subscriptions (e2e)', () => {
 
       await edit(id, { endsOn: day(5) }).expect(200);
     });
+
+    it.each(['startsOn', 'endsOn'])(
+      'refuses %s in year 0000 with a 400, not a 500 (F-41)',
+      async (field) => {
+        const id = await recorded(1, 10);
+
+        const response = await edit(id, { [field]: '0000-06-15' }).expect(400);
+
+        expect(
+          (response.body.details as { field: string }[]).map((d) => d.field),
+        ).toEqual([field]);
+      },
+    );
 
     it.each(['plan', 'startsOn', 'endsOn'])(
       'refuses null as %s with a 400',

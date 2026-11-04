@@ -1,4 +1,3 @@
-import { subscriptionStateWhere } from '../subscriptions/store-subscription.js';
 import { Injectable } from '@nestjs/common';
 import { definedOnly } from '../common/defined-only.js';
 import type { ValidationErrorDetail } from '../common/errors/error-response.js';
@@ -19,6 +18,7 @@ import {
   StoreStatus,
 } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { subscriptionStateWhere } from '../subscriptions/store-subscription.js';
 import {
   STORE_DETAIL_INCLUDE,
   toStoreDetail,

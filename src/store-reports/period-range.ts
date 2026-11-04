@@ -1,26 +1,9 @@
+import { parseDay } from '../common/validation/day.js';
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** A report's period: 366 days at most, so a leap year fits. */
 export const MAX_PERIOD_DAYS = 366;
-
-const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-/** The start of a `YYYY-MM-DD` day in UTC, or null when no such day exists. */
-function startOfDay(day: string): Date | null {
-  if (!DAY_PATTERN.test(day)) {
-    return null;
-  }
-  const date = new Date(`${day}T00:00:00.000Z`);
-  // `2026-02-30` parses to another day or to nothing: it must read back the same.
-  return !Number.isNaN(date.getTime()) &&
-    date.toISOString().slice(0, 10) === day
-    ? date
-    : null;
-}
-
-export function isDay(day: unknown): day is string {
-  return typeof day === 'string' && startOfDay(day) !== null;
-}
 
 /** `start` included, `end` excluded. Days are UTC (no time zone on `Country`). */
 export interface PeriodRange {
@@ -33,8 +16,8 @@ export interface PeriodRange {
  * is after `to` or the period is longer than `MAX_PERIOD_DAYS`.
  */
 export function periodRange(from: string, to: string): PeriodRange | null {
-  const start = startOfDay(from);
-  const last = startOfDay(to);
+  const start = parseDay(from);
+  const last = parseDay(to);
   if (!start || !last) {
     return null;
   }

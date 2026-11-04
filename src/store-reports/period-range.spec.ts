@@ -1,24 +1,4 @@
-import { isDay, periodRange } from './period-range.js';
-
-describe('isDay', () => {
-  it.each(['2026-10-31', '2024-02-29'])('accepts %s', (day) => {
-    expect(isDay(day)).toBe(true);
-  });
-
-  it.each([
-    '2026-02-30',
-    '2025-02-29',
-    '2026-13-01',
-    '2026-1-1',
-    '31/10/2026',
-    '2026-10-31T00:00:00Z',
-    '',
-    20261031,
-    null,
-  ])('refuses %j', (day) => {
-    expect(isDay(day)).toBe(false);
-  });
-});
+import { periodRange } from './period-range.js';
 
 describe('periodRange', () => {
   it('runs from the start of `from` to the end of `to`, in UTC', () => {
