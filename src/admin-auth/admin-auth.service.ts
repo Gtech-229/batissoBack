@@ -22,6 +22,12 @@ import { TokensService } from './tokens.service.js';
 // Matches no admin: used to give unknown emails the same work as known ones.
 const NO_ADMIN_ID = '00000000-0000-0000-0000-000000000000';
 
+/**
+ * Hashed for the equal-timing check. It is public (in the source), so matching
+ * it never counts as a correct password (F-36). Exported for the tests.
+ */
+export const DUMMY_PASSWORD = 'dummy-password-for-equal-timing';
+
 /** The lockout decision on one password attempt, taken under the row lock. */
 type PasswordAttempt =
   { kind: 'ok' } | { kind: 'invalid' } | { kind: 'locked'; lockedUntil: Date };
@@ -60,14 +66,19 @@ export class AdminAuthService {
       throw accountLocked(minutesUntil(admin.lockedUntil, new Date()));
     }
 
-    const passwordOk = await verifyPassword(
+    // An admin who has not set a password yet (feature 22) gets the same work
+    // as an unknown email, and the dummy check never counts as a match: the
+    // dummy password is in the source (F-36).
+    const storedHash = admin?.passwordHash ?? null;
+    const matches = await verifyPassword(
       password,
-      admin?.passwordHash ?? (await this.getDummyHash()),
+      storedHash ?? (await this.getDummyHash()),
     );
+    const passwordOk = storedHash !== null && matches;
     if (!admin) {
       // Same settings read and transaction as a wrong password on a real admin,
       // so the response time does not reveal whether the email exists (F-02).
-      await this.decideLogin(NO_ADMIN_ID, false, undefined);
+      await this.decideLogin(NO_ADMIN_ID, false, null, undefined);
       throw invalidCredentials();
     }
 
@@ -77,7 +88,12 @@ export class AdminAuthService {
       throw accountDisabled();
     }
 
-    const outcome = await this.decideLogin(admin.id, passwordOk, userAgent);
+    const outcome = await this.decideLogin(
+      admin.id,
+      passwordOk,
+      storedHash,
+      userAgent,
+    );
     switch (outcome.kind) {
       case 'locked':
         throw accountLocked(minutesUntil(outcome.lockedUntil, new Date()));
@@ -166,8 +182,8 @@ export class AdminAuthService {
   }
 
   /**
-   * Sets a new password, lifts the forced change, and signs out every other
-   * session: a password change should cut off anyone using the old one.
+   * Sets a new password and signs out every other session: a password change
+   * should cut off anyone using the old one.
    */
   async changePassword(
     adminId: string,
@@ -184,10 +200,9 @@ export class AdminAuthService {
     }
 
     // The slow scrypt work happens before the transaction (short row lock).
-    const passwordOk = await verifyPassword(
-      currentPassword,
-      admin.passwordHash,
-    );
+    const passwordOk =
+      admin.passwordHash !== null &&
+      (await verifyPassword(currentPassword, admin.passwordHash));
     const unchanged = newPassword === currentPassword;
     const passwordHash =
       passwordOk && !unchanged ? await hashPassword(newPassword) : null;
@@ -204,6 +219,7 @@ export class AdminAuthService {
           tx,
           adminId,
           passwordOk,
+          admin.passwordHash,
           maxLoginAttempts,
           now,
         );
@@ -215,7 +231,7 @@ export class AdminAuthService {
         }
         await tx.admin.update({
           where: { id: adminId },
-          data: { passwordHash, mustChangePassword: false },
+          data: { passwordHash },
         });
         await tx.adminSession.updateMany({
           where: { adminId, id: { not: sessionId }, revokedAt: null },
@@ -243,19 +259,29 @@ export class AdminAuthService {
    * right password, without counting; a failure counts and locks at
    * `maxLoginAttempts`; a success resets the counter. An id that matches no
    * admin gets the same round trips as a counted failure (F-02).
+   *
+   * A verdict is about one hash: `verifiedHash` is the one the password was
+   * checked against. If a reset replaced it before the lock, the attempt is
+   * refused without counting, so a sign-in that started before the reset
+   * cannot open a session with the old password (F-37).
    */
   private async countPasswordAttempt(
     tx: Prisma.TransactionClient,
     adminId: string,
     passwordOk: boolean,
+    verifiedHash: string | null,
     maxLoginAttempts: number,
     now: Date,
   ): Promise<PasswordAttempt> {
     // Raw SQL because Prisma has no row lock: FOR UPDATE makes every other
     // attempt on this admin wait here until this transaction ends.
     const [row] = await tx.$queryRaw<
-      { lockedUntil: Date | null; failedLoginAttempts: number }[]
-    >`SELECT "lockedUntil", "failedLoginAttempts" FROM "admins" WHERE "id" = ${adminId}::uuid FOR UPDATE`;
+      {
+        lockedUntil: Date | null;
+        failedLoginAttempts: number;
+        passwordHash: string | null;
+      }[]
+    >`SELECT "lockedUntil", "failedLoginAttempts", "passwordHash" FROM "admins" WHERE "id" = ${adminId}::uuid FOR UPDATE`;
 
     if (!row) {
       await tx.admin.updateMany({
@@ -267,6 +293,10 @@ export class AdminAuthService {
 
     if (row.lockedUntil && row.lockedUntil > now) {
       return { kind: 'locked', lockedUntil: row.lockedUntil };
+    }
+
+    if (row.passwordHash !== verifiedHash) {
+      return { kind: 'invalid' };
     }
 
     if (!passwordOk) {
@@ -300,6 +330,7 @@ export class AdminAuthService {
   private async decideLogin(
     adminId: string,
     passwordOk: boolean,
+    verifiedHash: string | null,
     userAgent: string | undefined,
   ): Promise<LoginOutcome> {
     const { maxLoginAttempts, maxAdminSessions } = await this.settings.get();
@@ -314,6 +345,7 @@ export class AdminAuthService {
           tx,
           adminId,
           passwordOk,
+          verifiedHash,
           maxLoginAttempts,
           now,
         );
@@ -366,7 +398,7 @@ export class AdminAuthService {
   }
 
   private getDummyHash(): Promise<string> {
-    this.dummyHash ??= hashPassword('dummy-password-for-equal-timing');
+    this.dummyHash ??= hashPassword(DUMMY_PASSWORD);
     return this.dummyHash;
   }
 }

@@ -27,10 +27,10 @@ export class AdminProfile {
 
   @ApiProperty({
     description:
-      'Vrai tant que l’administrateur doit changer son mot de passe avant d’accéder au reste de l’API',
-    example: false,
+      'Faux tant que l’administrateur n’a pas choisi son mot de passe (lien demandé par `POST /admin/auth/forgot-password?mode=set`) : il ne peut pas encore se connecter',
+    example: true,
   })
-  mustChangePassword: boolean;
+  hasPassword: boolean;
 }
 
 /** The signed-in admin's own profile, with what they may do now. */
@@ -52,6 +52,6 @@ export function toAdminProfile(admin: Admin): AdminProfile {
     firstName: admin.firstName,
     lastName: admin.lastName,
     role: admin.role,
-    mustChangePassword: admin.mustChangePassword,
+    hasPassword: admin.passwordHash !== null,
   };
 }

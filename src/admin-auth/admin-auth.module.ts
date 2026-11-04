@@ -8,12 +8,15 @@ import { ACCESS_TOKEN_TTL_SECONDS } from './admin-auth.constants.js';
 import { AdminAuthController } from './admin-auth.controller.js';
 import { AdminAuthGuard } from './admin-auth.guard.js';
 import { AdminAuthService } from './admin-auth.service.js';
+import { PasswordLinksService } from './password-links.service.js';
+import { EmailModule } from '../email/email.module.js';
 import { SuperAdminBootstrapService } from './super-admin-bootstrap.service.js';
 import { TokensService } from './tokens.service.js';
 
 @Module({
   imports: [
     SystemSettingsModule,
+    EmailModule,
     // registerAsync: the secret comes from the validated env, not a literal.
     JwtModule.registerAsync({
       inject: [ConfigService],
@@ -31,6 +34,7 @@ import { TokensService } from './tokens.service.js';
   providers: [
     SuperAdminBootstrapService,
     AdminAuthService,
+    PasswordLinksService,
     TokensService,
     // Global: protects every route of the app, not only this module's.
     { provide: APP_GUARD, useClass: AdminAuthGuard },

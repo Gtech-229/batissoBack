@@ -9,7 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import { MobileRoute } from '../mobile-auth/decorators/mobile-route.decorator.js';
 import { AdminAuthGuard } from './admin-auth.guard.js';
-import { AllowWhilePasswordChangeRequired } from './decorators/allow-while-password-change-required.decorator.js';
+import { OwnAccountRoute } from './decorators/own-account-route.decorator.js';
 import { Public } from './decorators/public.decorator.js';
 import {
   RequirePermission,
@@ -32,7 +32,7 @@ class DecoratedController {
   @Public()
   open() {}
 
-  @AllowWhilePasswordChangeRequired()
+  @OwnAccountRoute()
   me() {}
 
   @SuperAdminOnly()
@@ -62,7 +62,6 @@ interface Session {
   admin: {
     role: string;
     isActive: boolean;
-    mustChangePassword: boolean;
     accessRole?: { permissions: string[] } | null;
   };
 }
@@ -76,7 +75,6 @@ function activeSession(overrides: Partial<Session> = {}): Session {
     admin: {
       role: 'ADMIN',
       isActive: true,
-      mustChangePassword: false,
       accessRole: { permissions: ['stores.read', 'countries.read'] },
     },
     ...overrides,
@@ -193,7 +191,7 @@ describe('AdminAuthGuard', () => {
     [
       'of a deactivated admin',
       activeSession({
-        admin: { role: 'ADMIN', isActive: false, mustChangePassword: false },
+        admin: { role: 'ADMIN', isActive: false },
       }),
     ],
   ])('refuses a session that is %s', async (_label, session) => {
@@ -223,53 +221,12 @@ describe('AdminAuthGuard', () => {
     });
   });
 
-  describe('forced password change', () => {
-    const mustChange = activeSession({
-      admin: { role: 'ADMIN', isActive: true, mustChangePassword: true },
-    });
-
-    it('blocks ordinary routes with PASSWORD_CHANGE_REQUIRED', async () => {
-      const { guard } = guardWith(mustChange);
-
-      await expect(
-        guard.canActivate(
-          context(PlainController, 'route', await accessCookie()).ctx,
-        ),
-      ).rejects.toMatchObject({
-        response: { error: 'PASSWORD_CHANGE_REQUIRED' },
-      });
-    });
-
-    it('allows routes marked @AllowWhilePasswordChangeRequired()', async () => {
-      const { guard } = guardWith(mustChange);
-
-      await expect(
-        guard.canActivate(
-          context(DecoratedController, 'me', await accessCookie()).ctx,
-        ),
-      ).resolves.toBe(true);
-    });
-
-    it('reports the password change before a role refusal', async () => {
-      const { guard } = guardWith(mustChange);
-
-      await expect(
-        guard.canActivate(
-          context(DecoratedController, 'superOnly', await accessCookie()).ctx,
-        ),
-      ).rejects.toMatchObject({
-        response: { error: 'PASSWORD_CHANGE_REQUIRED' },
-      });
-    });
-  });
-
   describe('permissions', () => {
     const admin = (permissions: string[] | null) =>
       activeSession({
         admin: {
           role: 'ADMIN',
           isActive: true,
-          mustChangePassword: false,
           accessRole: permissions === null ? null : { permissions },
         },
       });
@@ -277,7 +234,6 @@ describe('AdminAuthGuard', () => {
       admin: {
         role: 'SUPER_ADMIN',
         isActive: true,
-        mustChangePassword: false,
         accessRole: null,
       },
     });

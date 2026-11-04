@@ -38,7 +38,6 @@ describe('Super admin bootstrap and system settings (e2e)', () => {
       email: 'superadmin@batisso.test',
       role: 'SUPER_ADMIN',
       isActive: true,
-      mustChangePassword: false,
     });
     expect(admins[0].passwordHash).toMatch(/^scrypt\$/);
   });

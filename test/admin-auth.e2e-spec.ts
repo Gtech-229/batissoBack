@@ -60,7 +60,7 @@ describe('Admin authentication (e2e)', () => {
         firstName: 'Awa',
         lastName: 'Diallo',
         role: 'ADMIN',
-        mustChangePassword: false,
+        hasPassword: true,
       });
       const cookies = cookiesFrom(response.headers['set-cookie']);
       const access = cookies.get(ACCESS)!.header;
@@ -390,29 +390,14 @@ describe('Admin authentication (e2e)', () => {
         .send({ currentPassword, newPassword });
     }
 
-    it('lets a new admin reach me and password, then unlocks the rest', async () => {
-      await createAdmin(prisma, {
-        email: 'new@batisso.test',
-        mustChangePassword: true,
-      });
-      const cookies = await loginCookies('new@batisso.test');
-      const access = cookies.get(ACCESS)!.pair;
-
-      const me = await request(app.getHttpServer())
-        .get('/api/v1/admin/auth/me')
-        .set('Cookie', access)
-        .expect(200);
-      expect(me.body.mustChangePassword).toBe(true);
+    it('replaces the password: the new one signs in, the old one no longer does', async () => {
+      await createAdmin(prisma, { email: 'awa@batisso.test' });
+      const access = (await loginCookies('awa@batisso.test')).get(ACCESS)!.pair;
 
       await changePassword(access, TEST_PASSWORD, 'Nouveau#2026').expect(204);
 
-      const after = await request(app.getHttpServer())
-        .get('/api/v1/admin/auth/me')
-        .set('Cookie', access)
-        .expect(200);
-      expect(after.body.mustChangePassword).toBe(false);
-      await login('new@batisso.test', 'Nouveau#2026').expect(200);
-      await login('new@batisso.test', TEST_PASSWORD).expect(401);
+      await login('awa@batisso.test', 'Nouveau#2026').expect(200);
+      await login('awa@batisso.test', TEST_PASSWORD).expect(401);
     });
 
     it('signs out the other sessions but keeps the current one', async () => {

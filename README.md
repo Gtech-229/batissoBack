@@ -35,9 +35,33 @@ Check it works:
 2. Log in with `POST /api/v1/admin/auth/login` (`{ "email", "password" }`), for
    example from Swagger UI. The session lives in httpOnly cookies, which the
    browser sends automatically.
-3. The super admin creates the other admins (`POST /api/v1/admin/admins`) with an
-   initial password and a role. A new admin must change the password
-   (`PATCH /api/v1/admin/auth/password`) before using anything else.
+3. The super admin creates the other admins (`POST /api/v1/admin/admins`) with a
+   role and no password. Each admin then chooses their own (see "Admin passwords
+   by email").
+
+### Admin passwords by email
+
+Nobody but the admin ever knows their password:
+
+- `POST /api/v1/admin/auth/forgot-password?mode=set` with `{ "email" }` emails a
+  link to choose a first password; `mode=reset` replaces a forgotten one. The
+  answer is always the same 202, whether the email has an account or not, and
+  at most one email a minute is sent per admin.
+- The link is `<ADMIN_WEB_URL>/password?mode=...&token=...`, valid 3 days and
+  once. `POST /api/v1/admin/auth/reset-password` with `{ "token", "password" }`
+  sets the password, ends every session of the admin, and clears the lockout.
+  An expired or used link answers `INVALID_PASSWORD_TOKEN`: ask for another.
+- A mistyped email: the super admin corrects it with
+  `PATCH /api/v1/admin/admins/:id` (`email`, `firstName`, `lastName`); the links
+  sent to the old address stop working, and the admin asks again.
+- No email provider exists yet: outside production, the console sender prints
+  each email in the API log (`[Email] To <address>: ...`), link included. In
+  production it only warns that nothing was sent.
+
+**Super admin who cannot receive email.** On the server, run `npm run build`,
+then `npm run admin:password-link -- <email>`. It prints a link for that super
+admin and nothing else (`set` without a password, `reset` otherwise) and exits
+with code 1 for any other email. Treat the link like a password.
 
 Security settings (max login attempts before a 15-minute lock, max sessions per
 admin, max wrong PINs before a mobile user is locked, where 0 means no limit) are
@@ -501,6 +525,7 @@ export is written to the store's activity log.
 | `PORT` | no | `3000` | |
 | `NODE_ENV` | no | `development` | `development`, `test`, or `production` (Swagger is off and cookies are `Secure` in production) |
 | `CORS_ORIGINS` | no | none | Comma-separated web admin origins allowed to send cookies, e.g. `http://localhost:5173` |
+| `ADMIN_WEB_URL` | yes | | The web admin's address, used in the password links emailed to admins, e.g. `http://localhost:5173` (`http` or `https`; trailing slashes are dropped) |
 | `JWT_ACCESS_SECRET` | yes | | At least 32 random characters; signs admin access tokens. The `.env.example` placeholder is deliberately too short, so the API refuses to start until you set a real one: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
 | `PIN_PEPPER` | yes | | At least 32 random characters, mixed into every PIN hash and never stored in the database, so a leaked database alone cannot reveal PINs. Generate it like `JWT_ACCESS_SECRET` (the `.env.example` placeholder is too short on purpose) and keep it safe: **changing it later invalidates every PIN** |
 | `ID_PHOTO_DIR` | no | `storage/id-photos` | Private directory of the customers' identity photos, relative to the working directory or absolute; created at startup. Never served statically; back it up with the database |

@@ -28,6 +28,7 @@ import { invalidAdminId } from './admins.errors.js';
 import { AdminsService } from './admins.service.js';
 import { AdminSummary } from './dto/admin-summary.js';
 import { CreateAdminDto } from './dto/create-admin.dto.js';
+import { UpdateAdminDto } from './dto/update-admin.dto.js';
 import { AssignRoleDto } from '../admin-roles/dto/role.dto.js';
 
 // French error for a malformed id instead of Nest's "Validation failed (uuid is expected)".
@@ -47,17 +48,17 @@ export class AdminsController {
   constructor(private readonly admins: AdminsService) {}
 
   /**
-   * @description Create an ADMIN account with an initial password
+   * @description Create an ADMIN account, without a password
    * @route POST /api/v1/admin/admins
    * @access Super admin
-   * @body CreateAdminDto (email, firstName, lastName, password, roleId)
-   * @returns 201 AdminSummary; the new admin must change the password at first login
+   * @body CreateAdminDto (email, firstName, lastName, roleId)
+   * @returns 201 AdminSummary (hasPassword false); the admin then asks for a set link
    */
   @Post()
   @ApiOperation({
     summary: 'Créer un administrateur',
     description:
-      'Crée un compte ADMIN avec un mot de passe initial. L’administrateur devra le changer à sa première connexion avant d’accéder au reste de l’API.',
+      'Crée un compte ADMIN sans mot de passe. L’administrateur choisit le sien depuis le lien qu’il demande avec `POST /admin/auth/forgot-password?mode=set` ; aucun email n’est envoyé à la création.',
   })
   @ApiCreatedResponse({
     description: 'Administrateur créé',
@@ -92,6 +93,42 @@ export class AdminsController {
   @ApiOkResponse({ description: 'Liste', type: [AdminSummary] })
   list(): Promise<AdminSummary[]> {
     return this.admins.list();
+  }
+
+  /**
+   * @description Correct an admin's email or names; a new email retires their unused password links
+   * @route PATCH /api/v1/admin/admins/:id
+   * @access Super admin
+   * @param id (UUID) admin id; not yourself, not a super admin
+   * @body UpdateAdminDto (email?, firstName?, lastName?)
+   * @returns AdminSummary; 409 EMAIL_ALREADY_USED
+   */
+  @Patch(':id')
+  @ApiOperation({
+    summary: 'Modifier un administrateur',
+    description:
+      'Corrige l’email, le prénom ou le nom ; seuls les champs envoyés changent. Avec un nouvel email, les liens de mot de passe non utilisés ne valent plus : l’administrateur en demande un nouveau, reçu à la nouvelle adresse. Impossible sur votre propre compte ou sur un super administrateur.',
+  })
+  @ApiParam({ name: 'id', description: 'Identifiant de l’administrateur' })
+  @ApiOkResponse({ description: 'Administrateur modifié', type: AdminSummary })
+  @ApiBadRequestResponse({
+    description: 'Identifiant ou données invalides (`details`)',
+    type: ErrorResponse,
+  })
+  @ApiNotFoundResponse({
+    description: 'Administrateur introuvable',
+    type: ErrorResponse,
+  })
+  @ApiConflictResponse({
+    description: 'Email déjà utilisé (`EMAIL_ALREADY_USED`)',
+    type: ErrorResponse,
+  })
+  update(
+    @Param('id', AdminIdPipe) id: string,
+    @Body() body: UpdateAdminDto,
+    @CurrentAdmin() current: AuthenticatedAdmin,
+  ): Promise<AdminSummary> {
+    return this.admins.update(id, body, current.adminId);
   }
 
   /**

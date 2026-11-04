@@ -37,27 +37,28 @@ model Admin {
   email               String    @unique
   firstName           String
   lastName            String
-  passwordHash        String
+  /// Null until the admin sets it from an emailed link (feature 22).
+  passwordHash        String?
   role                AdminRole
   /// The role of an ADMIN (feature 20). A SUPER_ADMIN has none and holds every
   /// permission; an ADMIN without one reaches only their own account.
   roleId              String?   @db.Uuid
   isActive            Boolean   @default(true)
-  mustChangePassword  Boolean   @default(true)
   failedLoginAttempts Int       @default(0)
   lockedUntil         DateTime?
   createdById         String?   @db.Uuid
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  accessRole           AccessRole?      @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  createdBy            Admin?           @relation("AdminCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAdmins        Admin[]          @relation("AdminCreatedBy")
+  accessRole           AccessRole?          @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  createdBy            Admin?               @relation("AdminCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAdmins        Admin[]              @relation("AdminCreatedBy")
   sessions             AdminSession[]
+  passwordTokens       AdminPasswordToken[]
   updatedSettings      SystemSettings[]
   // Feature 3: stores this admin registered, status changes, settings edits.
-  storesCreated        HardwareStore[]  @relation("StoreCreatedBy")
-  storeStatusChanges   HardwareStore[]  @relation("StoreStatusChangedBy")
+  storesCreated        HardwareStore[]      @relation("StoreCreatedBy")
+  storeStatusChanges   HardwareStore[]      @relation("StoreStatusChangedBy")
   storeSettingsUpdates StoreSettings[]
 
   @@map("admins")
@@ -78,6 +79,28 @@ model AdminSession {
 
   @@index([adminId, revokedAt])
   @@map("admin_sessions")
+}
+
+enum PasswordTokenMode {
+  SET
+  RESET
+}
+
+/// A link emailed to an admin to set (first time) or reset their password
+/// (feature 22). Only the SHA-256 of the token is stored; single use, 3 days.
+model AdminPasswordToken {
+  id        String            @id @default(uuid(7)) @db.Uuid
+  adminId   String            @db.Uuid
+  mode      PasswordTokenMode
+  tokenHash String            @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime          @default(now())
+
+  admin Admin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId, createdAt])
+  @@map("admin_password_tokens")
 }
 
 /// Platform-wide settings editable by admins. A single row (id = 1); until it

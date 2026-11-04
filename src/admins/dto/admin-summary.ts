@@ -37,7 +37,7 @@ export function toAdminSummary(admin: Admin): AdminSummary {
     firstName: profile.firstName,
     lastName: profile.lastName,
     role: profile.role,
-    mustChangePassword: profile.mustChangePassword,
+    hasPassword: profile.hasPassword,
     isActive: admin.isActive,
     roleId: admin.roleId,
     createdAt: admin.createdAt.toISOString(),

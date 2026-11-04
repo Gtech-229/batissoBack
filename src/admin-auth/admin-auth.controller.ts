@@ -6,11 +6,13 @@ import {
   HttpStatus,
   Patch,
   Post,
+  Query,
   Req,
   Res,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  ApiAcceptedResponse,
   ApiBadRequestResponse,
   ApiCookieAuth,
   ApiForbiddenResponse,
@@ -30,12 +32,22 @@ import { REFRESH_COOKIE } from './admin-auth.constants.js';
 import { AdminAuthService } from './admin-auth.service.js';
 import type { AuthenticatedAdmin } from './authenticated-admin.js';
 import { clearSessionCookies, setSessionCookies } from './cookies.js';
-import { AllowWhilePasswordChangeRequired } from './decorators/allow-while-password-change-required.decorator.js';
+import { OwnAccountRoute } from './decorators/own-account-route.decorator.js';
 import { CurrentAdmin } from './decorators/current-admin.decorator.js';
 import { Public } from './decorators/public.decorator.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { AdminProfile, MyAdminProfile } from './dto/admin-profile.js';
 import { LoginDto } from './dto/login.dto.js';
+import {
+  ForgotPasswordDto,
+  PasswordLinkQuery,
+  PasswordLinkRequested,
+  ResetPasswordDto,
+} from './dto/password-link.dto.js';
+import {
+  PASSWORD_LINK_REQUESTED,
+  PasswordLinksService,
+} from './password-links.service.js';
 
 @ApiTags('Administration - Authentification')
 @Controller('admin/auth')
@@ -45,6 +57,7 @@ export class AdminAuthController {
 
   constructor(
     private readonly auth: AdminAuthService,
+    private readonly links: PasswordLinksService,
     config: ConfigService<EnvironmentVariables, true>,
   ) {
     this.secureCookies =
@@ -154,19 +167,76 @@ export class AdminAuthController {
   }
 
   /**
+   * @description Ask for a password link by email: set a first password or reset a forgotten one
+   * @route POST /api/v1/admin/auth/forgot-password
+   * @access Public
+   * @query mode set | reset
+   * @body ForgotPasswordDto (email)
+   * @returns 202 PasswordLinkRequested, the same whatever the email
+   */
+  @Post('forgot-password')
+  @Public()
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Demander un lien de mot de passe',
+    description:
+      'Envoie par email un lien valable 3 jours, à usage unique : `mode=set` pour un administrateur qui n’a pas encore de mot de passe, `mode=reset` pour un mot de passe oublié. La réponse est toujours la même, que l’email ait un compte ou non : aucun email n’est envoyé si le compte n’existe pas, est désactivé, ne correspond pas au mode, ou a reçu un lien il y a moins d’une minute. Un nouveau lien remplace le précédent.',
+  })
+  @ApiAcceptedResponse({
+    description: 'Demande prise en compte',
+    type: PasswordLinkRequested,
+  })
+  @ApiBadRequestResponse({
+    description: 'Mode ou email invalide (`details`)',
+    type: ErrorResponse,
+  })
+  async forgotPassword(
+    @Query() query: PasswordLinkQuery,
+    @Body() body: ForgotPasswordDto,
+  ): Promise<PasswordLinkRequested> {
+    await this.links.request(query.mode, body.email);
+    return { message: PASSWORD_LINK_REQUESTED };
+  }
+
+  /**
+   * @description Choose a password with the token of an emailed link
+   * @route POST /api/v1/admin/auth/reset-password
+   * @access Public (needs the token of a valid link)
+   * @body ResetPasswordDto (token, password)
+   * @returns 204, every session of the admin ends and the lockout is cleared; 400 INVALID_PASSWORD_TOKEN
+   */
+  @Post('reset-password')
+  @Public()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Choisir mon mot de passe depuis un lien',
+    description:
+      'Utilise le jeton du lien reçu par email (`set` ou `reset`) pour enregistrer le mot de passe. Toutes les sessions de l’administrateur sont fermées et le blocage après erreurs est levé ; il se connecte ensuite avec le nouveau mot de passe.',
+  })
+  @ApiNoContentResponse({ description: 'Mot de passe enregistré' })
+  @ApiBadRequestResponse({
+    description:
+      'Lien invalide, expiré, déjà utilisé ou remplacé, ou compte désactivé (`INVALID_PASSWORD_TOKEN`) ; mot de passe non conforme (`details`)',
+    type: ErrorResponse,
+  })
+  resetPassword(@Body() body: ResetPasswordDto): Promise<void> {
+    return this.links.usePasswordToken(body.token, body.password);
+  }
+
+  /**
    * @description Profile of the logged-in admin
    * @route GET /api/v1/admin/auth/me
-   * @access Admin (allowed while a password change is required)
+   * @access Admin (own account, whatever the role)
    * @cookie batisso_admin_access
-   * @returns AdminProfile
+   * @returns MyAdminProfile
    */
   @Get('me')
-  @AllowWhilePasswordChangeRequired()
+  @OwnAccountRoute()
   @ApiCookieAuth()
   @ApiOperation({
     summary: 'Mon profil',
     description:
-      'Renvoie le profil de l’administrateur connecté. Accessible même si le mot de passe doit être changé (voir `mustChangePassword`).',
+      'Renvoie le profil de l’administrateur connecté et ses permissions. Ouvert à tout administrateur, quel que soit son rôle.',
   })
   @ApiOkResponse({ description: 'Profil', type: MyAdminProfile })
   @ApiUnauthorizedResponse({
@@ -182,22 +252,22 @@ export class AdminAuthController {
       firstName: profile.firstName,
       lastName: profile.lastName,
       role: profile.role,
-      mustChangePassword: profile.mustChangePassword,
+      hasPassword: profile.hasPassword,
       permissions: admin.permissions,
     };
   }
 
   /**
-   * @description Change my password; required on first login for new admins
+   * @description Change my password, knowing the current one
    * @route PATCH /api/v1/admin/auth/password
-   * @access Admin (allowed while a password change is required)
+   * @access Admin (own account, whatever the role)
    * @cookie batisso_admin_access
    * @body ChangePasswordDto (currentPassword, newPassword)
    * @returns 204, other sessions of this admin are signed out; 401 INVALID_CREDENTIALS; 403 ACCOUNT_LOCKED (shared login lockout)
    */
   @Patch('password')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @AllowWhilePasswordChangeRequired()
+  @OwnAccountRoute()
   @ApiCookieAuth()
   @ApiOperation({
     summary: 'Changer mon mot de passe',

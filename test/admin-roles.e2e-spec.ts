@@ -243,7 +243,6 @@ describe('Admin roles (e2e)', () => {
       email: 'awa@batisso.test',
       firstName: 'Awa',
       lastName: 'Diallo',
-      password: 'Initial#2026',
       roleId,
     });
 

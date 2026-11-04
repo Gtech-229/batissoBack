@@ -3,7 +3,6 @@ import {
   roleNotFound,
   superAdminHasNoRole,
 } from '../admin-roles/admin-roles.errors.js';
-import { hashPassword } from '../admin-auth/secrets.js';
 import { AdminRole, Prisma, type Admin } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
@@ -13,12 +12,16 @@ import {
 } from './admins.errors.js';
 import { toAdminSummary, type AdminSummary } from './dto/admin-summary.js';
 import type { CreateAdminDto } from './dto/create-admin.dto.js';
+import type { UpdateAdminDto } from './dto/update-admin.dto.js';
 
 @Injectable()
 export class AdminsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** New admins are always ADMIN and must change the initial password. */
+  /**
+   * New admins are always ADMIN, with no password: they set their own from a
+   * link they request (`forgot-password?mode=set`). No email is sent here.
+   */
   async create(
     data: CreateAdminDto,
     createdById: string,
@@ -29,10 +32,8 @@ export class AdminsService {
           email: data.email,
           firstName: data.firstName,
           lastName: data.lastName,
-          passwordHash: await hashPassword(data.password),
           role: AdminRole.ADMIN,
           roleId: data.roleId,
-          mustChangePassword: true,
           createdById,
         },
       });
@@ -88,6 +89,49 @@ export class AdminsService {
         error.code === 'P2003'
       ) {
         throw roleNotFound();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Corrects an ADMIN's email or names, for example a mistyped email. A new
+   * email retires their unused password links: a link sent to the wrong
+   * address must not work; the admin asks for another one.
+   */
+  async update(
+    id: string,
+    data: UpdateAdminDto,
+    currentAdminId: string,
+  ): Promise<AdminSummary> {
+    const current = await this.findManageable(id, currentAdminId);
+    const emailChanged =
+      data.email !== undefined && data.email !== current.email;
+    try {
+      const admin = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.admin.update({
+          where: { id },
+          data: {
+            email: data.email,
+            firstName: data.firstName,
+            lastName: data.lastName,
+          },
+        });
+        if (emailChanged) {
+          await tx.adminPasswordToken.updateMany({
+            where: { adminId: id, usedAt: null },
+            data: { usedAt: new Date() },
+          });
+        }
+        return updated;
+      });
+      return toAdminSummary(admin);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw emailAlreadyUsed();
       }
       throw error;
     }

@@ -52,8 +52,6 @@ export class SuperAdminBootstrapService implements OnApplicationBootstrap {
         lastName: 'Administrateur',
         passwordHash: await hashPassword(password),
         role: AdminRole.SUPER_ADMIN,
-        // The operator chose this password in the env; no forced change.
-        mustChangePassword: false,
       },
     });
     this.logger.log(`Super admin created: ${email}`);

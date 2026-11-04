@@ -38,10 +38,11 @@ export function forbidden(): ForbiddenException {
   return new ForbiddenException();
 }
 
-export function passwordChangeRequired(): ForbiddenException {
-  return new ForbiddenException({
-    message: 'Vous devez changer votre mot de passe',
-    error: 'PASSWORD_CHANGE_REQUIRED',
+/** Wrong, expired, used, or replaced password link, or an inactive admin. */
+export function invalidPasswordToken(): BadRequestException {
+  return new BadRequestException({
+    message: 'Ce lien n’est plus valable : demandez-en un nouveau',
+    error: 'INVALID_PASSWORD_TOKEN',
   });
 }
 

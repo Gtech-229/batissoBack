@@ -55,6 +55,20 @@ export class EnvironmentVariables {
   )
   CORS_ORIGINS: string[] = [];
 
+  /**
+   * The web admin's address, put in the password links emailed to admins
+   * (`<ADMIN_WEB_URL>/password?...`). Trailing slashes are dropped.
+   */
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().replace(/\/+$/, '') : value,
+  )
+  @IsUrl({
+    protocols: ['http', 'https'],
+    require_tld: false,
+    require_protocol: true,
+  })
+  ADMIN_WEB_URL: string;
+
   /** Signs the admin access tokens. Never logged. */
   @IsString()
   @MinLength(32)

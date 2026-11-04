@@ -48,6 +48,24 @@ describe('Swagger document (e2e)', () => {
     );
   });
 
+  it('documents the password link routes and the admin edit (feature 22)', () => {
+    const routes = operations.map(([route]) => route);
+
+    expect(routes).toEqual(
+      expect.arrayContaining([
+        'POST /api/v1/admin/auth/forgot-password',
+        'POST /api/v1/admin/auth/reset-password',
+        'PATCH /api/v1/admin/admins/{id}',
+      ]),
+    );
+    const forgot = operations.find(
+      ([route]) => route === 'POST /api/v1/admin/auth/forgot-password',
+    )?.[1];
+    expect(Object.keys(forgot?.responses ?? {})).toEqual(
+      expect.arrayContaining(['202', '400']),
+    );
+  });
+
   it('documents the country routes', () => {
     const routes = operations.map(([route]) => route);
 

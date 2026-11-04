@@ -49,7 +49,6 @@ export async function createAdmin(
       firstName: 'Awa',
       lastName: 'Diallo',
       passwordHash: await hashed,
-      mustChangePassword: false,
       ...fields,
       role,
       roleId: role === 'ADMIN' ? roleId : null,

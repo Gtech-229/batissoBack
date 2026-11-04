@@ -4,16 +4,21 @@ import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { AppModule } from '../../src/app.module.js';
 import { configureApp } from '../../src/configure-app.js';
+import {
+  EMAIL_SENDER,
+  type EmailSender,
+} from '../../src/email/email-sender.js';
 import { PUSH_SENDER, type PushSender } from '../../src/push/push-sender.js';
 import { SMS_SENDER, type SmsSender } from '../../src/sms/sms-sender.js';
 import { cookiesFrom, TEST_PASSWORD } from './admins.js';
 
 /**
- * The real app, configured like main.ts, against batisso_test. Pass `sms` or
- * `push` to replace the console senders (to read what a test receives).
+ * The real app, configured like main.ts, against batisso_test. Pass `sms`,
+ * `push` or `email` to replace the console senders (to read what a test
+ * receives).
  */
 export async function createTestApp(
-  options: { sms?: SmsSender; push?: PushSender } = {},
+  options: { sms?: SmsSender; push?: PushSender; email?: EmailSender } = {},
 ): Promise<INestApplication<App>> {
   let builder = Test.createTestingModule({ imports: [AppModule] });
   if (options.sms) {
@@ -21,6 +26,9 @@ export async function createTestApp(
   }
   if (options.push) {
     builder = builder.overrideProvider(PUSH_SENDER).useValue(options.push);
+  }
+  if (options.email) {
+    builder = builder.overrideProvider(EMAIL_SENDER).useValue(options.email);
   }
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<INestApplication<App>>();

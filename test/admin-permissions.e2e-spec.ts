@@ -3,7 +3,7 @@ import { PATH_METADATA } from '@nestjs/common/constants.js';
 import { MetadataScanner, ModulesContainer, Reflector } from '@nestjs/core';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
-import { AllowWhilePasswordChangeRequired } from '../src/admin-auth/decorators/allow-while-password-change-required.decorator.js';
+import { OwnAccountRoute } from '../src/admin-auth/decorators/own-account-route.decorator.js';
 import { Public } from '../src/admin-auth/decorators/public.decorator.js';
 import {
   RequirePermission,
@@ -54,7 +54,7 @@ function unmarkedAdminRoutes(controllers: ControllerClass[]) {
       const marked =
         reflector.getAllAndOverride(RequirePermission, targets) ||
         reflector.getAllAndOverride(SuperAdminOnly, targets) ||
-        reflector.getAllAndOverride(AllowWhilePasswordChangeRequired, targets);
+        reflector.getAllAndOverride(OwnAccountRoute, targets);
       if (!marked) {
         unmarked.push(
           `${controller.name}.${name} (${joined([prefix, joined(methodPath)])})`,

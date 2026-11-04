@@ -1,9 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsEmail, IsString, IsUUID, Length } from 'class-validator';
-import {
-  IsPassword,
-  PASSWORD_RULE_MESSAGE,
-} from '../../common/validation/password.js';
 import { Trim, TrimLowerCase } from '../../common/validation/trim.js';
 
 export class CreateAdminDto {
@@ -26,13 +22,6 @@ export class CreateAdminDto {
   @IsString({ message: 'Le nom est requis' })
   @Length(1, 100, { message: 'Le nom doit contenir 1 à 100 caractères' })
   lastName: string;
-
-  @ApiProperty({
-    description: `Mot de passe initial, à transmettre à l’administrateur : il devra le changer à sa première connexion. ${PASSWORD_RULE_MESSAGE}.`,
-    example: 'Initial#2026',
-  })
-  @IsPassword()
-  password: string;
 
   @ApiProperty({
     description:

@@ -65,7 +65,7 @@ describe('SuperAdminBootstrapService', () => {
     await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
   });
 
-  it('creates the super admin with a hashed password and no forced change', async () => {
+  it('creates the super admin with a hashed password', async () => {
     const { service, prisma } = setup();
 
     await service.onApplicationBootstrap();
@@ -79,7 +79,6 @@ describe('SuperAdminBootstrapService', () => {
       firstName: 'Super',
       lastName: 'Administrateur',
       role: 'SUPER_ADMIN',
-      mustChangePassword: false,
     });
     expect(data.passwordHash).not.toBe('Batisso#2026');
     await expect(

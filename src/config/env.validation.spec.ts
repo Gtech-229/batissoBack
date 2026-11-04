@@ -11,6 +11,7 @@ const BASE = {
   DATABASE_URL: VALID_URL,
   JWT_ACCESS_SECRET: SECRET,
   PIN_PEPPER: PEPPER,
+  ADMIN_WEB_URL: 'http://localhost:5173',
 };
 
 describe('validate (environment variables)', () => {
@@ -84,6 +85,31 @@ describe('validate (environment variables)', () => {
     ])('rejects %s', (_label, value) => {
       expect(() => validate({ ...BASE, CORS_ORIGINS: value })).toThrow(
         /CORS_ORIGINS/,
+      );
+    });
+  });
+
+  describe('ADMIN_WEB_URL', () => {
+    it('is required', () => {
+      const { ADMIN_WEB_URL: _omitted, ...withoutUrl } = BASE;
+
+      expect(() => validate(withoutUrl)).toThrow(/ADMIN_WEB_URL/);
+    });
+
+    it('drops trailing slashes', () => {
+      expect(
+        validate({ ...BASE, ADMIN_WEB_URL: 'https://admin.batisso.com//' })
+          .ADMIN_WEB_URL,
+      ).toBe('https://admin.batisso.com');
+    });
+
+    it.each([
+      ['a bare host', 'admin.batisso.com'],
+      ['another protocol', 'ftp://admin.batisso.com'],
+      ['an empty string', ''],
+    ])('rejects %s', (_label, value) => {
+      expect(() => validate({ ...BASE, ADMIN_WEB_URL: value })).toThrow(
+        /ADMIN_WEB_URL/,
       );
     });
   });

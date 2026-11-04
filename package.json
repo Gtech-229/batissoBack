@@ -15,6 +15,7 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
+    "admin:password-link": "node dist/cli/password-link.js",
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
     "lint": "oxlint --type-aware src/ test/",
