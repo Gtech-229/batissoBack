@@ -60,6 +60,23 @@ describe('Swagger document (e2e)', () => {
     ).toContain('registered');
   });
 
+  it('documents the admin alert routes (feature 17a)', () => {
+    const routes = operations.map(([route]) => route);
+
+    expect(routes).toEqual(
+      expect.arrayContaining([
+        'GET /api/v1/admin/alerts',
+        'PATCH /api/v1/admin/alerts/{id}/resolve',
+      ]),
+    );
+    expect(Object.keys(schemas.AdminAlertView.properties ?? {})).toEqual(
+      expect.arrayContaining(['type', 'store', 'account', 'difference']),
+    );
+    expect(Object.keys(schemas.AdminAlertView.properties ?? {})).not.toContain(
+      'balance',
+    );
+  });
+
   it('documents the store joining routes (feature 21c)', () => {
     const routes = operations.map(([route]) => route);
 

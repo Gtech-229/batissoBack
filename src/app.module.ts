@@ -1,6 +1,7 @@
 import { Module, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AccountsModule } from './accounts/accounts.module.js';
 import { ActivityLogModule } from './activity-log/activity-log.module.js';
 import { AdminAuthModule } from './admin-auth/admin-auth.module.js';
@@ -32,10 +33,13 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module.js';
 import { StatsModule } from './stats/stats.module.js';
 import { TransactionProofsModule } from './transaction-proofs/transaction-proofs.module.js';
 import { DisputesModule } from './disputes/disputes.module.js';
+import { AdminAlertsModule } from './admin-alerts/admin-alerts.module.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate }),
+    // Cron jobs (17a): one API instance in V1.
+    ScheduleModule.forRoot(),
     PrismaModule,
     HealthModule,
     SystemSettingsModule,
@@ -45,6 +49,7 @@ import { DisputesModule } from './disputes/disputes.module.js';
     CountriesModule,
     StoresModule,
     StoreDocumentsModule,
+    AdminAlertsModule,
     MobileAuthModule,
     StaffModule,
     ActivityLogModule,

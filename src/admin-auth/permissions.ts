@@ -21,6 +21,9 @@ export const PERMISSIONS = {
     'Lire les contestations en cours de toutes les quincailleries',
   'activity.read': 'Lire le journal d’activité de toutes les quincailleries',
   'stats.read': 'Voir les statistiques de la plateforme',
+  'alerts.read':
+    'Voir les alertes de la plateforme (écarts de solde trouvés la nuit)',
+  'alerts.manage': 'Marquer les alertes de la plateforme comme traitées',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

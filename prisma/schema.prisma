@@ -65,6 +65,7 @@ model Admin {
   subscriptionsUpdated Subscription[]       @relation("SubscriptionUpdatedBy")
   // Feature 16b: accounts this admin last suspended or reactivated.
   accountStatusChanges Account[]            @relation("AccountStatusChangedBy")
+  resolvedAlerts       AdminAlert[]
 
   @@map("admins")
 }
@@ -242,6 +243,7 @@ model HardwareStore {
   proofs          TransactionProof[]
   cashClosings    CashClosing[]
   subscriptions   Subscription[]
+  adminAlerts     AdminAlert[]
 
   @@index([status, createdAt])
   // Stores of a country (country store counts, filters by country).
@@ -544,6 +546,7 @@ model Account {
   materialOrders  MaterialOrder[]
   disputes        Dispute[]
   proofs          TransactionProof[]
+  adminAlerts     AdminAlert[]
 
   @@unique([customerId, storeId])
   // The store's accounts, newest first (staff list and search).
@@ -582,6 +585,7 @@ model Goal {
   movementsOut   GoalMovement[]  @relation("GoalMovementSource")
   movementsIn    GoalMovement[]  @relation("GoalMovementTarget")
   materialOrders MaterialOrder[]
+  adminAlerts    AdminAlert[]
 
   @@index([accountId])
   @@map("goals")
@@ -1160,4 +1164,39 @@ model CashClosingOperation {
 
   @@index([closingId])
   @@map("cash_closing_operations")
+}
+
+/// What an admin alert reports (17a; 17b adds its own type).
+enum AdminAlertType {
+  /// Account.balance differs from the sum of the account's operations.
+  ACCOUNT_BALANCE_GAP
+  /// A goal's balance differs from its operations and goal movements.
+  GOAL_BALANCE_GAP
+  /// The goals' balances do not add up to Account.balance.
+  GOAL_SUM_GAP
+}
+
+/// A problem found by a scheduled job, for admins to look into (17a). Never a
+/// balance: only the gap. One unresolved alert per type, account and goal (a
+/// partial unique index in the migration, as Prisma cannot declare it).
+model AdminAlert {
+  id           String         @id @default(uuid(7)) @db.Uuid
+  type         AdminAlertType
+  storeId      String         @db.Uuid
+  accountId    String         @db.Uuid
+  /// The goal, for GOAL_BALANCE_GAP only.
+  goalId       String?        @db.Uuid
+  /// Stored minus computed, in the smallest currency unit.
+  difference   BigInt
+  createdAt    DateTime       @default(now())
+  resolvedAt   DateTime?
+  resolvedById String?        @db.Uuid
+
+  store      HardwareStore @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  account    Account       @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  goal       Goal?         @relation(fields: [goalId], references: [id], onDelete: Restrict)
+  resolvedBy Admin?        @relation(fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([resolvedAt, createdAt])
+  @@map("admin_alerts")
 }

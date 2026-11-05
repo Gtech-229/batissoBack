@@ -600,6 +600,23 @@ Each report downloads as a file: add `/export` to the path and `format=pdf` or
 The customers file holds every customer of the filter, 5,000 rows at most. Each
 export is written to the store's activity log.
 
+## Nightly balance check and admin alerts
+
+Every night at 02:00 UTC the API recomputes each account's balance, and each
+goal's balance, from the ledger. A gap becomes an **admin alert**; the check never
+changes a balance (a manager fixes it with a correction). The run logs one line:
+`Balance check: N accounts checked, M alerts created`.
+
+- `GET /api/v1/admin/alerts` (`alerts.read`): `status=open` (default),
+  `resolved` or `all`, `type`, paginated. Each alert names the store, the
+  account and the gap (stored minus computed), never a balance.
+- `PATCH /api/v1/admin/alerts/:id/resolve` (`alerts.manage`): records who and
+  when. A gap still there the next night creates a new alert.
+
+The two permissions are not in the `Administrateur` role: the super admin grants
+them. There is no route to start a run by hand; to see one locally, keep the API
+running past 02:00 UTC.
+
 ## Common commands
 
 | Command | What it does |
