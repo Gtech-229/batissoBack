@@ -23,6 +23,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { QrCodesModule } from './qr-codes/qr-codes.module.js';
 import { StaffModule } from './staff/staff.module.js';
 import { StoresModule } from './stores/stores.module.js';
+import { StoreDocumentsModule } from './store-documents/store-documents.module.js';
 import { SystemSettingsModule } from './system-settings/system-settings.module.js';
 import { CountriesModule } from './countries/countries.module.js';
 import { SecurityQuestionsModule } from './security-questions/security-questions.module.js';
@@ -43,6 +44,7 @@ import { DisputesModule } from './disputes/disputes.module.js';
     AdminRolesModule,
     CountriesModule,
     StoresModule,
+    StoreDocumentsModule,
     MobileAuthModule,
     StaffModule,
     ActivityLogModule,

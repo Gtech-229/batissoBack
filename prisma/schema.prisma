@@ -196,29 +196,39 @@ model Country {
 
 /// A hardware store (quincaillerie) using Bâtisso.
 model HardwareStore {
-  id                String      @id @default(uuid(7)) @db.Uuid
-  countryCode       String      @db.VarChar(2)
-  name              String
-  address           String
-  city              String
-  phone             String /// E.164
-  tradeRegister     String
-  status            StoreStatus @default(PENDING)
-  verifiedAt        DateTime?
-  statusChangedAt   DateTime?
-  statusChangedById String?     @db.Uuid
-  statusReason      String?
+  id                     String            @id @default(uuid(7)) @db.Uuid
+  countryCode            String            @db.VarChar(2)
+  name                   String
+  address                String
+  city                   String
+  phone                  String /// E.164
+  tradeRegister          String
+  status                 StoreStatus       @default(PENDING)
+  verifiedAt             DateTime?
+  statusChangedAt        DateTime?
+  statusChangedById      String?           @db.Uuid
+  statusReason           String?
   /// The store's QR code (feature 23): a random opaque code customers scan to
   /// reach their account here. Created on first read; regenerating replaces it.
-  qrCode            String?     @unique @db.VarChar(32)
+  qrCode                 String?           @unique @db.VarChar(32)
   /// Null for a store that registered itself (feature 21).
-  createdById       String?     @db.Uuid
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
+  createdById            String?           @db.Uuid
+  /// The user who registered the store from the app (feature 21b); unique:
+  /// a user registers one store, ever. Null for a store an admin registered.
+  registeredById         String?           @unique @db.Uuid
+  /// The plan the registrant asked for, shown to admins (who record the
+  /// subscription by hand, 16a).
+  requestedPlan          SubscriptionPlan?
+  /// Generated file names in STORE_DOCUMENT_DIR (21b), never in a response.
+  managerIdPhotoPath     String?
+  tradeRegisterPhotoPath String?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
 
   country         Country            @relation(fields: [countryCode], references: [code], onDelete: Restrict)
   createdBy       Admin?             @relation("StoreCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   statusChangedBy Admin?             @relation("StoreStatusChangedBy", fields: [statusChangedById], references: [id], onDelete: SetNull)
+  registeredBy    User?              @relation("StoreRegisteredBy", fields: [registeredById], references: [id], onDelete: Restrict)
   settings        StoreSettings?
   members         StoreMember[]
   activityLogs    ActivityLog[]
@@ -309,6 +319,7 @@ model User {
   updatedAt              DateTime  @updatedAt
 
   memberships         StoreMember[]
+  registeredStore     HardwareStore?          @relation("StoreRegisteredBy")
   activityLogs        ActivityLog[]
   devices             UserDevice[]
   sessions            UserSession[]

@@ -164,6 +164,18 @@ describe('validate (environment variables)', () => {
     });
   });
 
+  describe('STORE_DOCUMENT_DIR', () => {
+    it('defaults to storage/store-documents', () => {
+      expect(validate(BASE).STORE_DOCUMENT_DIR).toBe('storage/store-documents');
+    });
+
+    it('refuses an empty value', () => {
+      expect(() => validate({ ...BASE, STORE_DOCUMENT_DIR: '' })).toThrow(
+        /STORE_DOCUMENT_DIR/,
+      );
+    });
+  });
+
   describe('PIN_PEPPER', () => {
     it('is required', () => {
       const { PIN_PEPPER: _omitted, ...withoutPepper } = BASE;

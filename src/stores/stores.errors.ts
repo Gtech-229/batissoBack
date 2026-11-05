@@ -55,3 +55,36 @@ export function invalidStatusTransition(
     error: 'INVALID_STATUS_TRANSITION',
   });
 }
+
+/** "One store ever" (21b): the user already registered one, whatever its status. */
+export function storeAlreadyRegistered(): ConflictException {
+  return new ConflictException({
+    message:
+      'Vous avez déjà inscrit une quincaillerie : chaque utilisateur ne peut en inscrire qu’une',
+    error: 'STORE_ALREADY_REGISTERED',
+  });
+}
+
+/** No country is active: nowhere to register a store from the app. */
+export function noActiveCountry(): ConflictException {
+  return new ConflictException({
+    message:
+      'Aucun pays n’est ouvert pour le moment : l’inscription d’une quincaillerie est impossible',
+    error: 'NO_ACTIVE_COUNTRY',
+  });
+}
+
+/** A self-registered store is verified once both of its documents are sent. */
+export function storeDocumentsMissing(documents: {
+  identity: boolean;
+  tradeRegister: boolean;
+}): ConflictException {
+  const missing = [
+    ...(documents.identity ? [] : ['la pièce d’identité du gérant']),
+    ...(documents.tradeRegister ? [] : ['le registre du commerce']),
+  ].join(' et ');
+  return new ConflictException({
+    message: `Impossible de vérifier cette quincaillerie : il manque ${missing}`,
+    error: 'STORE_DOCUMENTS_MISSING',
+  });
+}

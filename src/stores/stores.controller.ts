@@ -182,14 +182,14 @@ export class StoresController {
    * @route PATCH /api/v1/admin/stores/:id/verify
    * @access Admin
    * @param id (UUID) store id
-   * @returns 200 StoreDetail (VERIFIED, verifiedAt set); 409 INVALID_STATUS_TRANSITION
+   * @returns 200 StoreDetail (VERIFIED, verifiedAt set); 409 INVALID_STATUS_TRANSITION or STORE_DOCUMENTS_MISSING
    */
   @Patch(':id/verify')
   @RequirePermission('stores.manage')
   @ApiOperation({
     summary: 'Vérifier une quincaillerie',
     description:
-      'PENDING -> VERIFIED, après contrôle du registre du commerce et de l’identité du gérant.',
+      'PENDING -> VERIFIED, après contrôle du registre du commerce et de l’identité du gérant. Une quincaillerie inscrite depuis l’application exige ses deux documents (pièce d’identité du gérant et registre du commerce).',
   })
   @ApiParam({ name: 'id', description: 'Identifiant de la quincaillerie' })
   @ApiOkResponse({ description: 'Quincaillerie vérifiée', type: StoreDetail })
@@ -198,7 +198,8 @@ export class StoresController {
     type: ErrorResponse,
   })
   @ApiConflictResponse({
-    description: 'Statut actuel incompatible (`INVALID_STATUS_TRANSITION`)',
+    description:
+      'Statut actuel incompatible (`INVALID_STATUS_TRANSITION`) ; quincaillerie inscrite depuis l’application sans ses deux documents (`STORE_DOCUMENTS_MISSING`)',
     type: ErrorResponse,
   })
   verify(

@@ -96,6 +96,14 @@ export class EnvironmentVariables {
   @MinLength(1)
   PROOF_DIR: string = 'storage/proofs';
 
+  /**
+   * Private directory of the documents of self-registered stores (21b): the
+   * manager's identity photo and the trade register; never served statically.
+   */
+  @IsString()
+  @MinLength(1)
+  STORE_DOCUMENT_DIR: string = 'storage/store-documents';
+
   /** Used once, to create the super admin when none exists. */
   @IsOptional()
   @TrimLowerCase()

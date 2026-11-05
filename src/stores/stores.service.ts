@@ -16,6 +16,7 @@ import {
   Prisma,
   StoreMemberRole,
   StoreStatus,
+  type SubscriptionPlan,
 } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { subscriptionStateWhere } from '../subscriptions/store-subscription.js';
@@ -30,6 +31,13 @@ import {
   type StoreSummary,
 } from './dto/list-stores.dto.js';
 import type { RegisterStoreDto } from './dto/register-store.dto.js';
+import type { RegisterOwnStoreDto } from './dto/register-own-store.dto.js';
+import {
+  REGISTERED_STORE_INCLUDE,
+  toRegisteredStore,
+  type RegisteredStore,
+} from './dto/registered-store.js';
+import { toStoreDocuments } from './dto/store-documents.js';
 import {
   STORE_ACTION_LABELS,
   STORE_STATUS_LABELS,
@@ -46,9 +54,25 @@ import {
   MIN_DEPOSIT_ABOVE_MAX_BALANCE,
   PHONE_NOT_OF_COUNTRY,
   invalidStatusTransition,
+  noActiveCountry,
+  storeAlreadyRegistered,
   storeClosed,
+  storeDocumentsMissing,
   storeNotFound,
 } from './stores.errors.js';
+
+/** Stores a verification may apply to: admin-registered, or with both documents. */
+const VERIFIABLE: Prisma.HardwareStoreWhereInput[] = [
+  { registeredById: null },
+  { managerIdPhotoPath: { not: null }, tradeRegisterPhotoPath: { not: null } },
+];
+
+/** A store's money settings, parsed. */
+interface StoreAmounts {
+  maxBalance: bigint;
+  validationThreshold: bigint;
+  minDeposit: bigint;
+}
 
 @Injectable()
 export class StoresService {
@@ -72,7 +96,11 @@ export class StoresService {
         throw countryInactive(dto.countryCode);
       }
 
-      const { storePhone, managerPhone, amounts } = this.checkRegistration(dto);
+      const { storePhone, amounts, managerPhone } = this.checkRegistration(
+        dto.countryCode,
+        dto,
+        dto.manager.phone,
+      );
 
       // An existing person (same phone) becomes the manager; their names are
       // kept, since they may already be known elsewhere. createMany with
@@ -83,7 +111,7 @@ export class StoresService {
       await tx.user.createMany({
         data: [
           {
-            phone: managerPhone,
+            phone: managerPhone!,
             firstName: dto.manager.firstName,
             lastName: dto.manager.lastName,
           },
@@ -91,40 +119,140 @@ export class StoresService {
         skipDuplicates: true,
       });
       const manager = await tx.user.findUniqueOrThrow({
-        where: { phone: managerPhone },
+        where: { phone: managerPhone! },
       });
 
-      const store = await tx.hardwareStore.create({
-        data: {
-          countryCode: dto.countryCode,
-          name: dto.name,
-          address: dto.address,
-          city: dto.city,
+      const id = await this.createStore(tx, dto, {
+        countryCode: dto.countryCode,
+        phone: storePhone,
+        amounts,
+        managerId: manager.id,
+        createdById: adminId,
+      });
+      return toStoreDetail(
+        await tx.hardwareStore.findUniqueOrThrow({
+          where: { id },
+          include: STORE_DETAIL_INCLUDE,
+        }),
+      );
+    });
+  }
+
+  /**
+   * A signed-in user registers their own store (21b): PENDING, in the active
+   * country, the registrant its manager, with the plan they ask for. One store
+   * per user, ever: the unique registeredById refuses a second one, even when
+   * two registrations run at the same time.
+   */
+  async registerOwn(
+    dto: RegisterOwnStoreDto,
+    userId: string,
+  ): Promise<RegisteredStore> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // FOR SHARE, as for an admin registration: a concurrent deactivation
+        // waits for this one. One active country in V1.
+        const [country] = await tx.$queryRaw<{ code: string }[]>`
+          SELECT "code" FROM "countries" WHERE "active"
+          ORDER BY "code" LIMIT 1 FOR SHARE`;
+        if (!country) {
+          throw noActiveCountry();
+        }
+        const existing = await tx.hardwareStore.findUnique({
+          where: { registeredById: userId },
+          select: { id: true },
+        });
+        if (existing) {
+          throw storeAlreadyRegistered();
+        }
+        const { storePhone, amounts } = this.checkRegistration(
+          country.code,
+          dto,
+        );
+
+        const id = await this.createStore(tx, dto, {
+          countryCode: country.code,
           phone: storePhone,
-          tradeRegister: dto.tradeRegister,
-          status: StoreStatus.PENDING,
-          createdById: adminId,
-          settings: {
-            create: {
-              ...amounts,
-              terms: dto.settings.terms,
-              deliveryDelayDays: dto.settings.deliveryDelayDays,
-              updatedById: adminId,
-            },
-          },
-          members: {
-            create: { userId: manager.id, role: StoreMemberRole.MANAGER },
-          },
-          categories: {
-            createMany: {
-              data: DEFAULT_ARTICLE_CATEGORIES.map((name) => ({ name })),
-            },
+          amounts,
+          managerId: userId,
+          registeredById: userId,
+          requestedPlan: dto.requestedPlan,
+        });
+        return toRegisteredStore(
+          await tx.hardwareStore.findUniqueOrThrow({
+            where: { id },
+            include: REGISTERED_STORE_INCLUDE,
+          }),
+        );
+      });
+    } catch (error) {
+      // P2002: the only unique value a new store can repeat is registeredById
+      // (a parallel registration by the same user committed first).
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw storeAlreadyRegistered();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Writes a PENDING store with its settings, its first manager and the
+   * default article categories, inside the caller's transaction: either all
+   * exist afterwards, or none does. Admin registrations set createdById;
+   * self-registrations set registeredById and requestedPlan.
+   */
+  private async createStore(
+    tx: Prisma.TransactionClient,
+    fields: Pick<
+      RegisterStoreDto,
+      'name' | 'address' | 'city' | 'tradeRegister' | 'settings'
+    >,
+    store: {
+      countryCode: string;
+      phone: string;
+      amounts: StoreAmounts;
+      managerId: string;
+      createdById?: string;
+      registeredById?: string;
+      requestedPlan?: SubscriptionPlan;
+    },
+  ): Promise<string> {
+    const created = await tx.hardwareStore.create({
+      data: {
+        countryCode: store.countryCode,
+        name: fields.name,
+        address: fields.address,
+        city: fields.city,
+        phone: store.phone,
+        tradeRegister: fields.tradeRegister,
+        status: StoreStatus.PENDING,
+        createdById: store.createdById,
+        registeredById: store.registeredById,
+        requestedPlan: store.requestedPlan,
+        settings: {
+          create: {
+            ...store.amounts,
+            terms: fields.settings.terms,
+            deliveryDelayDays: fields.settings.deliveryDelayDays,
+            // The admin who set them; null when the registrant did.
+            updatedById: store.createdById,
           },
         },
-        include: STORE_DETAIL_INCLUDE,
-      });
-      return toStoreDetail(store);
+        members: {
+          create: { userId: store.managerId, role: StoreMemberRole.MANAGER },
+        },
+        categories: {
+          createMany: {
+            data: DEFAULT_ARTICLE_CATEGORIES.map((name) => ({ name })),
+          },
+        },
+      },
+      select: { id: true },
     });
+    return created.id;
   }
 
   /** Newest first; filters combine with AND. */
@@ -263,7 +391,13 @@ export class StoresService {
     const now = new Date();
 
     const { count } = await this.prisma.hardwareStore.updateMany({
-      where: { id, status: { in: [...transition.from] } },
+      where: {
+        id,
+        status: { in: [...transition.from] },
+        // A self-registered store is verified with both documents only. In the
+        // same UPDATE, so an upload (which locks the row) cannot interleave.
+        ...(action === 'verify' && { OR: [...VERIFIABLE] }),
+      },
       data: {
         status: transition.to,
         statusChangedAt: now,
@@ -277,10 +411,22 @@ export class StoresService {
     if (count === 0) {
       const current = await this.prisma.hardwareStore.findUnique({
         where: { id },
-        select: { status: true },
+        select: {
+          status: true,
+          registeredById: true,
+          managerIdPhotoPath: true,
+          tradeRegisterPhotoPath: true,
+        },
       });
       if (!current) {
         throw storeNotFound();
+      }
+      if (
+        action === 'verify' &&
+        transition.from.includes(current.status) &&
+        current.registeredById !== null
+      ) {
+        throw storeDocumentsMissing(toStoreDocuments(current));
       }
       throw invalidStatusTransition(
         STORE_ACTION_LABELS[action],
@@ -326,9 +472,12 @@ export class StoresService {
    * Rules that need the country or several fields at once. All problems are
    * reported together, in the same shape as DTO validation errors.
    */
-  private checkRegistration(dto: RegisterStoreDto) {
+  private checkRegistration(
+    code: string,
+    dto: Pick<RegisterStoreDto, 'phone' | 'settings'>,
+    managerPhoneInput?: string,
+  ): { storePhone: string; amounts: StoreAmounts; managerPhone?: string } {
     const details: ValidationErrorDetail[] = [];
-    const code = dto.countryCode;
     const phoneOf = (value: string, field: string) => {
       const phone = isPhoneCountry(code) ? normalizePhone(value, code) : null;
       if (!phone) {
@@ -338,7 +487,10 @@ export class StoresService {
     };
 
     const storePhone = phoneOf(dto.phone, 'phone');
-    const managerPhone = phoneOf(dto.manager.phone, 'manager.phone');
+    const managerPhone =
+      managerPhoneInput === undefined
+        ? undefined
+        : phoneOf(managerPhoneInput, 'manager.phone');
     const amounts = {
       maxBalance: parseAmount(dto.settings.maxBalance),
       validationThreshold: parseAmount(dto.settings.validationThreshold),
@@ -351,9 +503,9 @@ export class StoresService {
       });
     }
 
-    if (details.length > 0 || !storePhone || !managerPhone) {
+    if (details.length > 0 || !storePhone || managerPhone === null) {
       throw invalidFields(details);
     }
-    return { storePhone, managerPhone, amounts };
+    return { storePhone, amounts, managerPhone };
   }
 }

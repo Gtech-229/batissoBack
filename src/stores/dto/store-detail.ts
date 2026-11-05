@@ -14,7 +14,11 @@ import {
   SUBSCRIPTION_STATES,
   type SubscriptionState,
 } from '../../subscriptions/subscription-status.js';
-import { StoreStatus } from '../../generated/prisma/client.js';
+import {
+  StoreStatus,
+  SubscriptionPlan,
+} from '../../generated/prisma/client.js';
+import { StoreDocuments, toStoreDocuments } from './store-documents.js';
 
 export class StoreCountry {
   @ApiProperty({ example: 'ML' })
@@ -135,6 +139,25 @@ export class StoreDetail {
   })
   currentSubscription: SubscriptionView | null;
 
+  @ApiProperty({
+    description:
+      'Formule demandée à l’inscription depuis l’application, null pour une quincaillerie inscrite par un administrateur',
+    enum: SubscriptionPlan,
+    nullable: true,
+    example: null,
+  })
+  requestedPlan: SubscriptionPlan | null;
+
+  @ApiProperty({
+    description:
+      'Inscrite depuis l’application par son gérant : sa vérification exige les deux documents',
+    example: false,
+  })
+  selfRegistered: boolean;
+
+  @ApiProperty({ type: StoreDocuments })
+  documents: StoreDocuments;
+
   @ApiProperty({ example: '2026-10-06T09:00:00.000Z' })
   createdAt: string;
 }
@@ -175,23 +198,8 @@ export function toStoreDetail(store: StoreWithDetail): StoreDetail {
     status: store.status,
     verifiedAt: store.verifiedAt?.toISOString() ?? null,
     statusReason: store.statusReason,
-    country: {
-      code: store.country.code,
-      name: store.country.name,
-      currencyCode: store.country.currencyCode,
-      currencySymbol: store.country.currencySymbol,
-      decimals: store.country.decimals,
-    },
-    // BigInt cannot go through JSON.stringify: always format amounts.
-    settings: {
-      maxBalance: formatAmount(store.settings.maxBalance),
-      validationThreshold: formatAmount(store.settings.validationThreshold),
-      minDeposit: formatAmount(store.settings.minDeposit),
-      refundAllowed: store.settings.refundAllowed,
-      reservationEnabled: store.settings.reservationEnabled,
-      terms: store.settings.terms,
-      deliveryDelayDays: store.settings.deliveryDelayDays,
-    },
+    country: toStoreCountry(store.country),
+    settings: toStoreSettingsView(store.settings),
     managers: store.members.map((member) => ({
       userId: member.user.id,
       firstName: member.user.firstName,
@@ -199,6 +207,34 @@ export function toStoreDetail(store: StoreWithDetail): StoreDetail {
       phone: member.user.phone,
     })),
     ...toStoreSubscription(store.subscriptions),
+    requestedPlan: store.requestedPlan,
+    selfRegistered: store.registeredById !== null,
+    documents: toStoreDocuments(store),
     createdAt: store.createdAt.toISOString(),
+  };
+}
+
+export function toStoreCountry(country: Country): StoreCountry {
+  return {
+    code: country.code,
+    name: country.name,
+    currencyCode: country.currencyCode,
+    currencySymbol: country.currencySymbol,
+    decimals: country.decimals,
+  };
+}
+
+export function toStoreSettingsView(
+  settings: StoreSettings,
+): StoreSettingsView {
+  // BigInt cannot go through JSON.stringify: always format amounts.
+  return {
+    maxBalance: formatAmount(settings.maxBalance),
+    validationThreshold: formatAmount(settings.validationThreshold),
+    minDeposit: formatAmount(settings.minDeposit),
+    refundAllowed: settings.refundAllowed,
+    reservationEnabled: settings.reservationEnabled,
+    terms: settings.terms,
+    deliveryDelayDays: settings.deliveryDelayDays,
   };
 }

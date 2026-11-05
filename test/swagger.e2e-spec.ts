@@ -60,6 +60,29 @@ describe('Swagger document (e2e)', () => {
     ).toContain('registered');
   });
 
+  it('documents the store registration routes (feature 21b)', () => {
+    const routes = operations.map(([route]) => route);
+
+    expect(routes).toEqual(
+      expect.arrayContaining([
+        'POST /api/v1/stores',
+        'PUT /api/v1/stores/{storeId}/documents/identity',
+        'PUT /api/v1/stores/{storeId}/documents/trade-register',
+        'GET /api/v1/admin/stores/{id}/documents/identity',
+        'GET /api/v1/admin/stores/{id}/documents/trade-register',
+      ]),
+    );
+    expect(Object.keys(schemas.RegisterOwnStoreDto.properties ?? {})).toEqual(
+      expect.arrayContaining(['requestedPlan', 'settings']),
+    );
+    expect(
+      Object.keys(schemas.RegisterOwnStoreDto.properties ?? {}),
+    ).not.toContain('manager');
+    expect(Object.keys(schemas.StoreDetail.properties ?? {})).toEqual(
+      expect.arrayContaining(['requestedPlan', 'selfRegistered', 'documents']),
+    );
+  });
+
   it('documents the admin statistics route (feature 16d)', () => {
     const stats = operations.find(
       ([route]) => route === 'GET /api/v1/admin/stats',

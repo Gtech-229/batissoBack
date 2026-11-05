@@ -166,6 +166,29 @@ P-256 / SHA-256** over the challenge's UTF-8 bytes, the signature in DER, base64
 Y`): prefix it with these 26 bytes to get SPKI:
 `3059301306072a8648ce3d020106082a8648ce3d030107034200`.
 
+## Registering a store from the app
+
+A signed-in user (Bearer session, see "First mobile sign-in") registers their own
+store; they become its manager and it waits for an admin's verification.
+
+1. Register: `POST /api/v1/stores` with `name`, `address`, `city`, `phone`,
+   `tradeRegister`, `settings` (the same money rules as the admin form) and
+   `requestedPlan` (`TRIAL`, `STANDARD` or `PRO`). The store is `PENDING`
+   in the active country; no subscription is created (admins record it). A user
+   registers one store, ever (`409 STORE_ALREADY_REGISTERED`).
+2. Send the two photos (multipart, one JPEG or PNG of at most 5 MB in the field
+   `photo`, replaceable until the verification):
+   `PUT /api/v1/stores/:storeId/documents/identity` and
+   `PUT /api/v1/stores/:storeId/documents/trade-register`.
+3. An admin reads the store (`GET /api/v1/admin/stores/:id`: `requestedPlan`,
+   `selfRegistered`, `documents`), views the photos
+   (`GET /api/v1/admin/stores/:id/documents/identity` or `/trade-register`),
+   then verifies it. Verification answers `409 STORE_DOCUMENTS_MISSING` until
+   both photos are sent. No account and no deposit before that.
+
+Files live in the private `STORE_DOCUMENT_DIR`, which belongs in the backups next
+to `ID_PHOTO_DIR`.
+
 ## First seller
 
 Once a store is **verified**, its manager builds the team from the app (Bearer
@@ -594,6 +617,7 @@ export is written to the store's activity log.
 | `JWT_ACCESS_SECRET` | yes | | At least 32 random characters; signs admin access tokens. The `.env.example` placeholder is deliberately too short, so the API refuses to start until you set a real one: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
 | `PIN_PEPPER` | yes | | At least 32 random characters, mixed into every PIN hash and never stored in the database, so a leaked database alone cannot reveal PINs. Generate it like `JWT_ACCESS_SECRET` (the `.env.example` placeholder is too short on purpose) and keep it safe: **changing it later invalidates every PIN** |
 | `ID_PHOTO_DIR` | no | `storage/id-photos` | Private directory of the customers' identity photos, relative to the working directory or absolute; created at startup. Never served statically; back it up with the database |
+| `STORE_DOCUMENT_DIR` | no | `storage/store-documents` | Private directory of the documents sent with a store registration from the app (manager's identity, trade register); created at startup. Never served statically; back it up with the database |
 | `SUPER_ADMIN_EMAIL` | when no super admin exists | | Email of the super admin created at startup |
 | `SUPER_ADMIN_PASSWORD` | when no super admin exists | | 8 to 128 characters with an uppercase letter, a lowercase letter, a digit, and a special character. **Wrap it in quotes**: an unquoted `#` starts a comment. The `.env.example` placeholder breaks the rule on purpose, so the API refuses to start until you choose a real password. Once the super admin exists, both `SUPER_ADMIN_*` variables can be removed |
 
