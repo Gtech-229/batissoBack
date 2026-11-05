@@ -22,6 +22,13 @@ export class VerificationResponse {
 
   @ApiProperty({
     description:
+      '`false` : numéro sans compte Bâtisso ; l’application demande le prénom et le nom avec le PIN choisi, à envoyer à `POST /auth/pin` (inscription)',
+    example: true,
+  })
+  registered: boolean;
+
+  @ApiProperty({
+    description:
       '`false` : première connexion, l’utilisateur choisit son PIN ; `true` : il saisit son PIN actuel',
     example: false,
   })

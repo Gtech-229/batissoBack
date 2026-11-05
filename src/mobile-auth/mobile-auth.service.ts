@@ -10,7 +10,12 @@ import { TokensService } from '../admin-auth/tokens.service.js';
 import type { AuthenticatedUser } from './authenticated-user.js';
 import { minutesUntil } from '../common/minutes-until.js';
 import { isPhoneCountry, normalizePhone } from '../common/phone.js';
-import type { Prisma, User } from '../generated/prisma/client.js';
+import type {
+  PhoneVerification,
+  Prisma,
+  User,
+} from '../generated/prisma/client.js';
+import { invalidFields } from '../stores/stores.errors.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { SecurityAnswerDto } from '../security-questions/dto/security-answers.dto.js';
@@ -110,9 +115,10 @@ export class MobileAuthService {
   ) {}
 
   /**
-   * Sends a new code by SMS when the phone belongs to a user and the per-phone
-   * limits allow it. Returns nothing either way: the caller always answers the
-   * same, so this route cannot tell which phones have an account.
+   * Sends a new code by SMS when the per-phone limits allow it, to a phone with
+   * a user or without one (sign-up, 21a). Returns nothing either way: the caller
+   * always answers the same, so this route cannot tell which phones have an
+   * account.
    */
   async requestCode(rawPhone: string): Promise<void> {
     const phone = await this.normalizeForActiveCountry(rawPhone);
@@ -126,13 +132,7 @@ export class MobileAuthService {
       return;
     }
 
-    const user = await this.prisma.user.findUnique({
-      where: { phone },
-      select: { id: true },
-    });
-
-    // The same transaction for every valid phone, known or not (F-15): only a
-    // known phone within the limits writes, a residual of two quick writes.
+    // The same transaction for every valid phone, known or not (F-15).
     const created = await this.prisma.$transaction(async (tx) => {
       // One request per phone at a time: without it, two parallel requests
       // could both pass the cooldown and send two SMS.
@@ -154,7 +154,6 @@ export class MobileAuthService {
       ).length;
       // The daily cap bounds code guessing: at most 50 tries a day (F-14).
       if (
-        !user ||
         tooSoon ||
         lastHourCount >= CODES_PER_HOUR ||
         lastDay.length >= CODES_PER_DAY
@@ -211,6 +210,8 @@ export class MobileAuthService {
       throw invalidCode();
     }
 
+    // Told only now, the phone proven by its code: a new phone signs up at the
+    // PIN step with its names (21a).
     const user = await this.prisma.user.findUnique({
       where: { phone },
       select: {
@@ -218,14 +219,14 @@ export class MobileAuthService {
         _count: { select: { securityAnswers: true } },
       },
     });
-    if (!user) {
-      throw invalidCode();
-    }
     return {
       verificationToken: outcome.token,
-      pinSet: user.pinHash !== null,
+      registered: user !== null,
+      pinSet: user?.pinHash != null,
       securityQuestionsRequired:
-        user.pinHash === null && user._count.securityAnswers > 0,
+        user !== null &&
+        user.pinHash === null &&
+        user._count.securityAnswers > 0,
       expiresIn: VERIFICATION_TTL_MS / 1000,
     };
   }
@@ -242,10 +243,16 @@ export class MobileAuthService {
     pin: string,
     publicKey: string,
     deviceName: string | undefined,
+    names: { firstName?: string; lastName?: string } = {},
   ): Promise<MobileSession> {
     const now = new Date();
-    const { verification, deviceId, user } =
-      await this.liveVerification(verificationToken);
+    const found = await this.liveVerification(verificationToken, {
+      newPhone: true,
+    });
+    if (!found.user) {
+      return this.signUp(found, pin, publicKey, deviceName, names);
+    }
+    const { verification, deviceId, user } = found;
     // Fast path only: the decision that counts is taken again under the lock.
     if (user.pinHash && user.pinLockedUntil && user.pinLockedUntil > now) {
       throw pinLocked(minutesUntil(user.pinLockedUntil, now));
@@ -500,8 +507,110 @@ export class MobileAuthService {
     return this.toSession(user, outcome.sessionId, refresh.secret);
   }
 
-  /** The verification behind a token, or 401 INVALID_VERIFICATION. */
-  private async liveVerification(verificationToken: string) {
+  /**
+   * Sign-up at the PIN step (21a): the phone, proven by its code, has no user.
+   * The names are required. The user, their PIN, the trusted device and the
+   * session are written in one transaction; a parallel sign-up that created
+   * the user first makes this one INVALID_VERIFICATION, so a phone never gets
+   * two users or two PINs.
+   */
+  private async signUp(
+    {
+      verification,
+      deviceId,
+    }: { verification: { id: string; phone: string }; deviceId: string },
+    pin: string,
+    publicKey: string,
+    deviceName: string | undefined,
+    names: { firstName?: string; lastName?: string },
+  ): Promise<MobileSession> {
+    const missing = [
+      ...(names.firstName
+        ? []
+        : [{ field: 'firstName', errors: ['Le prénom est requis'] }]),
+      ...(names.lastName
+        ? []
+        : [{ field: 'lastName', errors: ['Le nom est requis'] }]),
+    ];
+    if (missing.length > 0) {
+      // A 400 before anything is written: the token stays usable.
+      throw invalidFields(missing);
+    }
+    // The slow scrypt work happens before the transaction.
+    const pinHash = await this.pinHasher.hash(pin);
+    const refresh = this.tokens.newRefreshSecret();
+
+    const outcome = await this.prisma.$transaction(async (tx) => {
+      const [token] = await tx.$queryRaw<
+        { consumedAt: Date | null; tokenExpiresAt: Date | null }[]
+      >`
+        SELECT "consumedAt", "tokenExpiresAt" FROM "phone_verifications"
+        WHERE "id" = ${verification.id}::uuid FOR UPDATE`;
+      const at = new Date();
+      if (
+        !token ||
+        token.consumedAt ||
+        !token.tokenExpiresAt ||
+        token.tokenExpiresAt <= at
+      ) {
+        return { kind: 'invalid-verification' as const };
+      }
+      // ON CONFLICT DO NOTHING on the unique phone: a user created meanwhile,
+      // by another sign-up or at a counter, makes this one create nothing.
+      const [created] = await tx.user.createManyAndReturn({
+        data: [
+          {
+            phone: verification.phone,
+            firstName: names.firstName!,
+            lastName: names.lastName!,
+            pinHash,
+          },
+        ],
+        skipDuplicates: true,
+      });
+      if (!created) {
+        return { kind: 'invalid-verification' as const };
+      }
+      await tx.phoneVerification.update({
+        where: { id: verification.id },
+        data: { consumedAt: at },
+      });
+      const sessionId = await this.openSession(
+        tx,
+        created.id,
+        deviceId,
+        { publicKey, name: deviceName },
+        refresh.hash,
+        at,
+      );
+      return { kind: 'opened' as const, user: created, sessionId };
+    });
+    if (outcome.kind !== 'opened') {
+      throw invalidVerification();
+    }
+    return this.toSession(outcome.user, outcome.sessionId, refresh.secret);
+  }
+
+  /**
+   * The verification behind a token, or 401 INVALID_VERIFICATION. With
+   * `newPhone`, a phone without a user is allowed (sign-up, 21a): `user` is
+   * then null.
+   */
+  private async liveVerification(
+    verificationToken: string,
+  ): Promise<{ verification: PhoneVerification; deviceId: string; user: User }>;
+  private async liveVerification(
+    verificationToken: string,
+    options: { newPhone: true },
+  ): Promise<{
+    verification: PhoneVerification;
+    deviceId: string;
+    user: User | null;
+  }>;
+  private async liveVerification(
+    verificationToken: string,
+    options: { newPhone?: boolean } = {},
+  ) {
     const verification = await this.prisma.phoneVerification.findUnique({
       where: { tokenHash: hashToken(verificationToken) },
     });
@@ -516,7 +625,7 @@ export class MobileAuthService {
     const user = await this.prisma.user.findUnique({
       where: { phone: verification.phone },
     });
-    if (!user) {
+    if (!user && !options.newPhone) {
       throw invalidVerification();
     }
     return { verification, deviceId: verification.deviceId, user };

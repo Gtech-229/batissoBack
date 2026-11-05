@@ -13,6 +13,7 @@ type Operation = {
 describe('Swagger document (e2e)', () => {
   let app: INestApplication<App>;
   let operations: [string, Operation][];
+  let schemas: Record<string, { properties?: Record<string, unknown> }>;
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -20,6 +21,7 @@ describe('Swagger document (e2e)', () => {
       app,
       new DocumentBuilder().build(),
     );
+    schemas = (document.components?.schemas ?? {}) as typeof schemas;
     operations = Object.entries(document.paths).flatMap(([path, item]) =>
       Object.entries(item as Record<string, Operation>).map(
         ([method, operation]): [string, Operation] => [
@@ -47,6 +49,15 @@ describe('Swagger document (e2e)', () => {
         'PATCH /api/v1/admin/admins/{id}/role',
       ]),
     );
+  });
+
+  it('documents the sign-up fields of the PIN step (feature 21a)', () => {
+    expect(Object.keys(schemas.SetPinDto.properties ?? {})).toEqual(
+      expect.arrayContaining(['firstName', 'lastName']),
+    );
+    expect(
+      Object.keys(schemas.VerificationResponse.properties ?? {}),
+    ).toContain('registered');
   });
 
   it('documents the admin statistics route (feature 16d)', () => {

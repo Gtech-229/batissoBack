@@ -128,21 +128,26 @@ billing, no limit per plan, nothing automatic when one ends.
 
 ## First mobile sign-in
 
-Mobile users (store staff now, customers later) sign in to the app with their
-phone. Only phones already known as a user can activate: a store's first manager,
-registered above, is the first one. There is no real SMS provider yet: in
-development, each code is printed in the API log (`[SMS] To +223...: ...`).
+Mobile users (store staff and customers) sign in to the app with their phone.
+A phone already known as a user (a store's first manager, registered above, or a
+customer whose account was opened at a counter) activates; a new phone signs up
+in the same steps. There is no real SMS provider yet: in development, each code
+is printed in the API log (`[SMS] To +223...: ...`).
 
 1. `POST /api/v1/auth/code` `{ "phone": "76 00 00 00" }`: sends a 6-digit code
-   (valid 10 minutes). The answer is the same for unknown phones.
+   (valid 10 minutes), to a known phone or a new one. The answer is always the
+   same, so it never tells which phones have an account.
 2. `POST /api/v1/auth/code/verify` `{ "phone", "code", "deviceId" }`: returns a
-   single-use `verificationToken` and `pinSet` (has the user chosen a PIN yet?).
+   single-use `verificationToken`, `registered` (does the phone have a user?)
+   and `pinSet` (has the user chosen a PIN yet?).
    `deviceId` is a random id the app creates once per installation.
 3. `POST /api/v1/auth/pin` `{ "verificationToken", "pin", "publicKey" }`: the
    first time, `pin` becomes the user's 6-digit PIN; on a new phone it must be
    the current one. `publicKey` belongs to a key pair the app creates in the
    phone's secure hardware (see below). Returns `accessToken`, `refreshToken`,
-   and the user.
+   and the user. **Sign-up:** when `registered` was `false`, also send
+   `firstName` and `lastName`; the user is created with that PIN, with no store
+   and no account yet (names sent for an existing user are ignored).
 4. Afterwards, on that phone: `POST /api/v1/auth/challenge` `{ "phone", "deviceId" }`,
    sign the returned `challenge` with the private key, then `POST /api/v1/auth/login`
    `{ "phone", "pin", "deviceId", "challenge", "signature" }`. No SMS needed.

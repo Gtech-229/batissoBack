@@ -80,12 +80,26 @@ describe('Mobile auth (e2e)', () => {
       },
     );
 
-    it('answers the same for an unknown phone and sends nothing', async () => {
-      const response = await requestCode('76 11 11 11').expect(202);
+    it('sends a code to a new phone too, with the same answer (sign-up, 21a)', async () => {
+      await createUser(prisma);
 
-      expect(response.body).toEqual({ message: CODE_REQUESTED_MESSAGE });
-      expect(sms.messages).toEqual([]);
-      expect(await prisma.phoneVerification.count()).toBe(0);
+      const known = await requestCode('76 00 00 00').expect(202);
+      const unknown = await requestCode('76 11 11 11').expect(202);
+
+      expect(unknown.body).toEqual(known.body);
+      expect(unknown.body).toEqual({ message: CODE_REQUESTED_MESSAGE });
+      expect(sms.messages.map((m) => m.phone).sort()).toEqual([
+        '+22376000000',
+        '+22376111111',
+      ]);
+      expect(await prisma.user.count()).toBe(1);
+    });
+
+    it('applies the per-phone cooldown to a new phone', async () => {
+      await requestCode('76 11 11 11').expect(202);
+      await requestCode('76 11 11 11').expect(202);
+
+      expect(sms.messages).toHaveLength(1);
     });
 
     it('sends nothing while no country is active', async () => {
@@ -239,6 +253,29 @@ describe('Mobile auth (e2e)', () => {
       return sms.lastCodeFor(phone);
     }
 
+    it('tells a new phone, once proven by its code, that it is not registered (21a)', async () => {
+      const code = await codeFor();
+
+      const response = await verifyCode({ code }).expect(200);
+
+      expect(response.body).toEqual({
+        verificationToken: expect.any(String),
+        registered: false,
+        pinSet: false,
+        securityQuestionsRequired: false,
+        expiresIn: 600,
+      });
+      expect(await prisma.user.count()).toBe(0);
+    });
+
+    it('still refuses a wrong code for a new phone like for a known one', async () => {
+      await codeFor();
+
+      const response = await verifyCode({ code: '123123' }).expect(401);
+
+      expect(response.body.error).toBe('INVALID_CODE');
+    });
+
     it('turns the right code into a single-use token for this device', async () => {
       await createUser(prisma);
       const code = await codeFor();
@@ -249,6 +286,7 @@ describe('Mobile auth (e2e)', () => {
 
       expect(response.body).toEqual({
         verificationToken: expect.any(String),
+        registered: true,
         pinSet: false,
         securityQuestionsRequired: false,
         expiresIn: 600,
@@ -404,6 +442,211 @@ describe('Mobile auth (e2e)', () => {
       }).expect(200);
       return response.body.verificationToken as string;
     }
+
+    describe('sign-up of a new phone (21a)', () => {
+      const NAMES = { firstName: '  Fanta ', lastName: 'Keita' };
+
+      it('creates the user with its names and PIN, trusts the device, opens a session', async () => {
+        const token = await verificationToken();
+
+        const response = await pinStep({
+          verificationToken: token,
+          pin: TEST_PIN,
+          ...NAMES,
+        }).expect(200);
+
+        const user = await prisma.user.findUniqueOrThrow({
+          where: { phone: TEST_PHONE },
+          include: { devices: true, sessions: true },
+        });
+        expect(response.body.user).toEqual({
+          id: user.id,
+          firstName: 'Fanta',
+          lastName: 'Keita',
+          phone: TEST_PHONE,
+        });
+        expect(user.pinHash).toMatch(/^scrypt\$/);
+        expect(user.pinHash).not.toContain(TEST_PIN);
+        expect(user.devices).toHaveLength(1);
+        expect(user.sessions).toHaveLength(1);
+
+        // Signed in, with no store and no account yet.
+        const authorization = `Bearer ${response.body.accessToken as string}`;
+        const accounts = await api()
+          .get('/api/v1/me/accounts')
+          .set('Authorization', authorization)
+          .expect(200);
+        expect(accounts.body).toEqual([]);
+        const me = await api()
+          .get('/api/v1/me')
+          .set('Authorization', authorization)
+          .expect(200);
+        expect(me.body).toMatchObject({ memberships: [] });
+
+        // A later sign-in with the PIN on the trusted device works.
+        const { challenge } = (
+          await api()
+            .post('/api/v1/auth/challenge')
+            .send({ phone: TEST_PHONE, deviceId: DEVICE })
+            .expect(200)
+        ).body as { challenge: string };
+        await api()
+          .post('/api/v1/auth/login')
+          .send({
+            phone: TEST_PHONE,
+            pin: TEST_PIN,
+            deviceId: DEVICE,
+            challenge,
+            signature: deviceKey.sign(challenge),
+          })
+          .expect(200);
+      });
+
+      it.each([
+        ['no names', {}, ['firstName', 'lastName']],
+        ['no last name', { firstName: 'Fanta' }, ['lastName']],
+        [
+          'a blank first name',
+          { firstName: '   ', lastName: 'Keita' },
+          ['firstName'],
+        ],
+        [
+          'null names',
+          { firstName: null, lastName: null },
+          ['firstName', 'lastName'],
+        ],
+        [
+          'a name too long',
+          { firstName: 'x'.repeat(101), lastName: 'Keita' },
+          ['firstName'],
+        ],
+      ])(
+        'refuses %s in French and keeps the token',
+        async (_label, names, fields) => {
+          const token = await verificationToken();
+
+          const refused = await pinStep({
+            verificationToken: token,
+            pin: TEST_PIN,
+            ...names,
+          }).expect(400);
+
+          expect(
+            (refused.body.details as { field: string }[]).map((d) => d.field),
+          ).toEqual(fields);
+          expect(await prisma.user.count()).toBe(0);
+          await pinStep({
+            verificationToken: token,
+            pin: TEST_PIN,
+            ...NAMES,
+          }).expect(200);
+        },
+      );
+
+      it('creates nothing when the phone gets a user while signing up (F-51)', async () => {
+        const token = await verificationToken();
+        // Another transaction (a counter opening, another sign-up) inserts a
+        // user for the same phone and holds it uncommitted: the sign-up's
+        // insert waits on that row, then sees it once it commits.
+        let release!: () => void;
+        const released = new Promise<void>((resolve) => (release = resolve));
+        const holding = prisma.$transaction(
+          async (tx) => {
+            await tx.user.create({
+              data: { phone: TEST_PHONE, firstName: 'Awa', lastName: 'Diallo' },
+            });
+            await released;
+          },
+          { timeout: 20_000 },
+        );
+        const signUp = pinStep({
+          verificationToken: token,
+          pin: TEST_PIN,
+          ...NAMES,
+        }).then((response) => response);
+
+        // Release only once the sign-up is really waiting on that row lock.
+        for (let i = 0; ; i++) {
+          const [{ waiting }] = await prisma.$queryRaw<{ waiting: bigint }[]>`
+            SELECT COUNT(*) AS "waiting" FROM pg_stat_activity
+            WHERE "wait_event_type" = 'Lock' AND "datname" = current_database()`;
+          if (waiting > 0n) {
+            break;
+          }
+          if (i > 200) {
+            throw new Error('The sign-up never waited on the held user');
+          }
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        release();
+        await holding;
+
+        const response = await signUp;
+        expect(response.status).toBe(401);
+        expect(response.body.error).toBe('INVALID_VERIFICATION');
+        const users = await prisma.user.findMany({
+          include: { devices: true, sessions: true },
+        });
+        expect(users).toHaveLength(1);
+        expect(users[0]).toMatchObject({
+          firstName: 'Awa',
+          pinHash: null,
+          failedPinAttempts: 0,
+          devices: [],
+          sessions: [],
+        });
+        // Nothing was used up: the same token now activates that user, who
+        // keeps their names.
+        const activated = await pinStep({
+          verificationToken: token,
+          pin: TEST_PIN,
+          ...NAMES,
+        }).expect(200);
+        expect(activated.body.user).toMatchObject({ firstName: 'Awa' });
+      });
+
+      it('refuses a new phone’s token on the recovery routes (F-52)', async () => {
+        const token = await verificationToken();
+
+        const questions = await api()
+          .post('/api/v1/auth/recovery/questions')
+          .send({ verificationToken: token })
+          .expect(401);
+        const recovery = await api()
+          .post('/api/v1/auth/recovery')
+          .send({
+            verificationToken: token,
+            answers: [1, 2, 3].map((n) => ({
+              questionId: `0192f0a4-7b1c-7c3e-9d2a-5e6f7a8b9c0${n}`,
+              answer: 'Réponse',
+            })),
+            newPin: TEST_PIN,
+            publicKey: deviceKey.publicKey,
+          })
+          .expect(401);
+
+        expect(questions.body.error).toBe('INVALID_VERIFICATION');
+        expect(recovery.body.error).toBe('INVALID_VERIFICATION');
+        expect(await prisma.user.count()).toBe(0);
+      });
+
+      it('ignores names sent for an existing user, who keeps theirs', async () => {
+        await createUser(prisma);
+        const token = await verificationToken();
+
+        const response = await pinStep({
+          verificationToken: token,
+          pin: TEST_PIN,
+          firstName: 'Autre',
+          lastName: 'Nom',
+        }).expect(200);
+
+        expect(response.body.user).toMatchObject({
+          firstName: 'Awa',
+          lastName: 'Diallo',
+        });
+      });
+    });
 
     it('activates the account: stores a PIN hash, trusts the device, opens a session', async () => {
       const user = await createUser(prisma);

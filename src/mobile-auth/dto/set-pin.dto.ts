@@ -1,8 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, Length } from 'class-validator';
+import { IsOptional, IsString, Length, ValidateIf } from 'class-validator';
 import { Trim } from '../../common/validation/trim.js';
 import { IsDevicePublicKey } from '../device-key.js';
 import { IsPin } from '../pin.js';
+
+// Not @IsOptional(): it lets null through (F-38); a new phone needs both.
+const sent = (_: object, value: unknown) => value !== undefined;
 
 export class SetPinDto {
   @ApiProperty({
@@ -43,4 +46,26 @@ export class SetPinDto {
     message: 'Le nom de l’appareil doit contenir 1 à 100 caractères',
   })
   deviceName?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Inscription (`registered: false` à la vérification) : le prénom, obligatoire. Ignoré pour un utilisateur existant, qui garde ses noms.',
+    example: 'Fanta',
+  })
+  @ValidateIf(sent)
+  @Trim()
+  @IsString({ message: 'Le prénom est requis' })
+  @Length(1, 100, { message: 'Le prénom doit contenir 1 à 100 caractères' })
+  firstName?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Inscription : le nom, obligatoire. Ignoré pour un utilisateur existant.',
+    example: 'Keita',
+  })
+  @ValidateIf(sent)
+  @Trim()
+  @IsString({ message: 'Le nom est requis' })
+  @Length(1, 100, { message: 'Le nom doit contenir 1 à 100 caractères' })
+  lastName?: string;
 }

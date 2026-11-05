@@ -44,7 +44,7 @@ export class MobileAuthController {
   constructor(private readonly auth: MobileAuthService) {}
 
   /**
-   * @description Ask for a one-time code by SMS (first sign-in or new device)
+   * @description Ask for a one-time code by SMS (sign-up, first sign-in or new device)
    * @route POST /api/v1/auth/code
    * @access Public
    * @body RequestCodeDto (phone)
@@ -56,7 +56,7 @@ export class MobileAuthController {
   @ApiOperation({
     summary: 'Demander un code par SMS',
     description:
-      'Envoie un code à 6 chiffres, valable 10 minutes, si le numéro appartient à un utilisateur. La réponse est toujours la même, pour ne pas révéler les comptes existants. Au plus un SMS par minute et 5 par heure pour un même numéro : au-delà, rien n’est envoyé.',
+      'Envoie un code à 6 chiffres, valable 10 minutes, à tout numéro du pays actif : un utilisateur existant ou un nouveau numéro qui s’inscrit. La réponse est toujours la même, pour ne pas révéler les comptes existants. Au plus un SMS par minute et 5 par heure pour un même numéro : au-delà, rien n’est envoyé.',
   })
   @ApiAcceptedResponse({
     description: 'Demande prise en compte',
@@ -138,6 +138,7 @@ export class MobileAuthController {
       body.pin,
       body.publicKey,
       body.deviceName,
+      { firstName: body.firstName, lastName: body.lastName },
     );
   }
 
