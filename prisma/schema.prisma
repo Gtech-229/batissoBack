@@ -525,7 +525,8 @@ model Account {
   statusReason      String?       @db.VarChar(500)
   statusChangedAt   DateTime?
   statusChangedById String?       @db.Uuid
-  /// When the customer accepted the store's terms, at the counter.
+  /// When the customer accepted the store's terms: at the counter, or in the
+  /// app when they joined the store themselves (21c).
   termsAcceptedAt   DateTime
   /// The staff member who opened the account.
   openedById        String        @db.Uuid

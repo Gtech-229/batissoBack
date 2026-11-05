@@ -60,6 +60,23 @@ describe('Swagger document (e2e)', () => {
     ).toContain('registered');
   });
 
+  it('documents the store joining routes (feature 21c)', () => {
+    const routes = operations.map(([route]) => route);
+
+    expect(routes).toEqual(
+      expect.arrayContaining([
+        'POST /api/v1/me/accounts/join/preview',
+        'POST /api/v1/me/accounts/join',
+      ]),
+    );
+    expect(Object.keys(schemas.JoinStoreDto.properties ?? {})).toEqual(
+      expect.arrayContaining(['code', 'termsAccepted', 'beneficiary']),
+    );
+    expect(Object.keys(schemas.StorePreview.properties ?? {})).toEqual(
+      expect.arrayContaining(['terms', 'minDeposit', 'maxBalance']),
+    );
+  });
+
   it('documents the store registration routes (feature 21b)', () => {
     const routes = operations.map(([route]) => route);
 

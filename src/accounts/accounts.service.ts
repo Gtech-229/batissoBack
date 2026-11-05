@@ -8,14 +8,22 @@ import {
   ONE_SNAPSHOT,
 } from '../common/pagination.js';
 import { isPhoneCountry, normalizePhone } from '../common/phone.js';
-import { ActivityAction, type Prisma } from '../generated/prisma/client.js';
+import {
+  ActivityAction,
+  StoreStatus,
+  type Prisma,
+} from '../generated/prisma/client.js';
 import type { AuthenticatedUser } from '../mobile-auth/authenticated-user.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CurrentStoreContext } from '../store-access/current-store.js';
-import { lockVerifiedStore } from '../store-access/verified-store.js';
+import {
+  lockVerifiedStore,
+  storeNotVerified,
+} from '../store-access/verified-store.js';
 import {
   invalidFields,
   PHONE_NOT_OF_COUNTRY,
+  storeNotFound,
 } from '../stores/stores.errors.js';
 import { formatAccountNumber } from './account-number.js';
 import {
@@ -23,6 +31,7 @@ import {
   accountNotFound,
   OPENING_REFUSAL,
   ownAccount,
+  phoneNotOfStoreCountry,
 } from './accounts.errors.js';
 import {
   ACCOUNT_DETAIL_INCLUDE,
@@ -35,7 +44,9 @@ import {
   type ListAccountsQueryDto,
 } from './dto/list-accounts.dto.js';
 import { toMyAccount, type MyAccount } from './dto/my-account.js';
+import type { JoinStoreDto } from './dto/join-store.dto.js';
 import type { OpenAccountDto } from './dto/open-account.dto.js';
+import { toStorePreview, type StorePreview } from './dto/store-preview.js';
 
 /** The label of every account's system goal (Unassigned). */
 export const UNASSIGNED_GOAL_LABEL = 'Non affecté';
@@ -113,51 +124,13 @@ export class AccountsService {
         throw ownAccount();
       }
 
-      // nextval is atomic: two openings never get the same value, and it never
-      // rolls back (a refused opening leaves a harmless gap).
-      const [{ value }] = await tx.$queryRaw<{ value: bigint }[]>`
-        SELECT nextval('account_number_seq') AS value
-      `;
-      const number = formatAccountNumber(value);
-
-      // Same pattern on the (customer, store) unique index: a parallel opening
-      // for the same customer waits here for the first one, then inserts
-      // nothing and is refused.
-      const { count } = await tx.account.createMany({
-        data: [
-          {
-            number,
-            customerId: customer.id,
-            storeId: store.storeId,
-            currencyCode,
-            beneficiaryName: dto.beneficiary?.name ?? null,
-            beneficiaryPhone,
-            termsAcceptedAt: new Date(),
-            openedById: actor.userId,
-          },
-        ],
-        skipDuplicates: true,
-      });
-      if (count === 0) {
-        throw accountExists();
-      }
-      const { id: accountId } = await tx.account.findUniqueOrThrow({
-        where: { number },
-        select: { id: true },
-      });
-
-      await tx.goal.create({
-        data: { accountId, label: UNASSIGNED_GOAL_LABEL, isSystem: true },
-      });
-
-      await tx.activityLog.create({
-        data: {
-          storeId: store.storeId,
-          userId: actor.userId,
-          action: ActivityAction.ACCOUNT_OPENED,
-          newValue: { accountId, number, customerId: customer.id },
-          device: actor.deviceId,
-        },
+      const accountId = await this.createAccount(tx, {
+        storeId: store.storeId,
+        customerId: customer.id,
+        currencyCode,
+        beneficiaryName: dto.beneficiary?.name ?? null,
+        beneficiaryPhone,
+        actor,
       });
 
       const account = await tx.account.findUniqueOrThrow({
@@ -166,6 +139,135 @@ export class AccountsService {
       });
       return toAccountDetail(account, actor.userId);
     });
+  }
+
+  /**
+   * The signed-in user joins the store whose QR code they scanned (21c): the
+   * account opens at once, they accepted the store's terms in the app, and the
+   * identity photo comes later at the counter. They are both the customer and
+   * the opener. Same transaction and rules as a counter opening.
+   */
+  async join(actor: AuthenticatedUser, dto: JoinStoreDto): Promise<MyAccount> {
+    return this.prisma.$transaction(async (tx) => {
+      const found = await tx.hardwareStore.findUnique({
+        where: { qrCode: dto.code },
+        select: { id: true },
+      });
+      if (!found) {
+        throw storeNotFound();
+      }
+      const { countryCode, currencyCode } = await lockVerifiedStore(
+        tx,
+        found.id,
+        OPENING_REFUSAL,
+      );
+
+      const user = await tx.user.findUniqueOrThrow({
+        where: { id: actor.userId },
+        select: { phone: true },
+      });
+      const phoneOk =
+        isPhoneCountry(countryCode) &&
+        normalizePhone(user.phone, countryCode) === user.phone;
+      if (!phoneOk) {
+        throw phoneNotOfStoreCountry();
+      }
+      let beneficiaryPhone: string | null = null;
+      // `== null`: as at the counter, `phone: null` means "no phone" (F-21).
+      if (dto.beneficiary?.phone != null) {
+        beneficiaryPhone = isPhoneCountry(countryCode)
+          ? normalizePhone(dto.beneficiary.phone, countryCode)
+          : null;
+        if (!beneficiaryPhone) {
+          throw invalidFields([
+            {
+              field: 'beneficiary.phone',
+              errors: [PHONE_NOT_OF_COUNTRY(countryCode)],
+            },
+          ]);
+        }
+      }
+
+      const accountId = await this.createAccount(tx, {
+        storeId: found.id,
+        customerId: actor.userId,
+        currencyCode,
+        beneficiaryName: dto.beneficiary?.name ?? null,
+        beneficiaryPhone,
+        actor,
+      });
+      return toMyAccount(
+        await tx.account.findUniqueOrThrow({
+          where: { id: accountId },
+          include: MY_ACCOUNT_INCLUDE,
+        }),
+      );
+    });
+  }
+
+  /**
+   * Writes a new account inside the caller's transaction: the next number, the
+   * account (terms accepted now, opened by the actor), its Unassigned goal and
+   * the activity log row. Shared by the counter opening and the app join.
+   */
+  private async createAccount(
+    tx: Prisma.TransactionClient,
+    data: {
+      storeId: string;
+      customerId: string;
+      currencyCode: string;
+      beneficiaryName: string | null;
+      beneficiaryPhone: string | null;
+      actor: AuthenticatedUser;
+    },
+  ): Promise<string> {
+    // nextval is atomic: two openings never get the same value, and it never
+    // rolls back (a refused opening leaves a harmless gap).
+    const [{ value }] = await tx.$queryRaw<{ value: bigint }[]>`
+      SELECT nextval('account_number_seq') AS value
+    `;
+    const number = formatAccountNumber(value);
+
+    // ON CONFLICT DO NOTHING on the (customer, store) unique index: a parallel
+    // opening for the same customer waits here for the first one, then
+    // inserts nothing and is refused.
+    const { count } = await tx.account.createMany({
+      data: [
+        {
+          number,
+          customerId: data.customerId,
+          storeId: data.storeId,
+          currencyCode: data.currencyCode,
+          beneficiaryName: data.beneficiaryName,
+          beneficiaryPhone: data.beneficiaryPhone,
+          termsAcceptedAt: new Date(),
+          openedById: data.actor.userId,
+        },
+      ],
+      skipDuplicates: true,
+    });
+    if (count === 0) {
+      throw accountExists();
+    }
+    const { id: accountId } = await tx.account.findUniqueOrThrow({
+      where: { number },
+      select: { id: true },
+    });
+
+    await tx.goal.create({
+      data: { accountId, label: UNASSIGNED_GOAL_LABEL, isSystem: true },
+    });
+
+    await tx.activityLog.create({
+      data: {
+        storeId: data.storeId,
+        userId: data.actor.userId,
+        action: ActivityAction.ACCOUNT_OPENED,
+        newValue: { accountId, number, customerId: data.customerId },
+        device: data.actor.deviceId,
+      },
+    });
+    return accountId;
   }
 
   /**
@@ -267,6 +369,26 @@ export class AccountsService {
       throw accountNotFound();
     }
     return toMyAccount(account);
+  }
+
+  /**
+   * The store behind a scanned code, before the user joins it (21c): its rules
+   * and terms. Read-only. Only a VERIFIED store can be joined, so another
+   * status answers the counter opening's 409.
+   */
+  async previewStore(code: string): Promise<StorePreview> {
+    const store = await this.prisma.hardwareStore.findUnique({
+      where: { qrCode: code },
+      include: { country: true, settings: true },
+    });
+    if (!store) {
+      // Unknown and regenerated codes look the same.
+      throw storeNotFound();
+    }
+    if (store.status !== StoreStatus.VERIFIED) {
+      throw storeNotVerified(store.status, OPENING_REFUSAL);
+    }
+    return toStorePreview(store);
   }
 
   private async searchConditions(

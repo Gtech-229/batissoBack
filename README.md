@@ -254,6 +254,25 @@ customer's other accounts and their sign-in stay untouched.
   their own account, who never sees the reason; the customer sees the
   status only and gets a notice (app and SMS) on each change, without the reason.
 
+## Joining a store from the app
+
+A signed-in user (see "First mobile sign-in") opens their own account in a
+**verified** store by scanning its QR code (the code a staff member reads with
+`GET /api/v1/stores/:storeId/qr-code`):
+
+1. Preview the store and its terms: `POST /api/v1/me/accounts/join/preview`
+   `{ "code": "<scanned code>" }` (name, city, terms, currency, minimum deposit,
+   maximum balance, delivery delay; nothing is written).
+2. Accept and join: `POST /api/v1/me/accounts/join`
+   `{ "code": "<scanned code>", "termsAccepted": true }`, with an optional
+   `beneficiary` as at the counter. The account opens at once (201), with the
+   customer as its opener; one account per customer and store
+   (`409 ACCOUNT_EXISTS`). The customer's phone must be a number of the store's
+   country (`409 PHONE_NOT_OF_STORE_COUNTRY`).
+
+The identity photo is taken later at the counter (next section). Deposits do not
+need it.
+
 ## Customer identity photo
 
 A seller or a manager attaches the photo of the customer's identity document to

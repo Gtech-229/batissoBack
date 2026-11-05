@@ -57,3 +57,12 @@ export function ownAccount(): ConflictException {
     error: 'OWN_ACCOUNT',
   });
 }
+
+/** Joining (21c): the user's phone is not a number of the store's country. */
+export function phoneNotOfStoreCountry(): ConflictException {
+  return new ConflictException({
+    message:
+      'Votre numéro n’est pas un numéro du pays de cette quincaillerie : vous ne pouvez pas y ouvrir de compte',
+    error: 'PHONE_NOT_OF_STORE_COUNTRY',
+  });
+}
