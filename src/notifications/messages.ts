@@ -235,6 +235,22 @@ export function accessResetMessage(reset: {
  * To the customer: an admin suspended or reactivated one of their accounts
  * (16b). Never the reason: it is for staff and admins only.
  */
+/**
+ * To the customer: no deposit on an account for a while (17c). No amount, and
+ * never "sécurisé" or "garanti" (plan rule): only that savings never decay.
+ */
+export function inactivityReminderMessage(reminder: {
+  accountNumber: string;
+  storeName: string;
+  days: number;
+}): NotificationMessage {
+  const days = reminder.days === 1 ? '1 jour' : `${reminder.days} jours`;
+  return {
+    title: 'Rappel : pensez à épargner',
+    body: `Vous n’avez fait aucun dépôt sur votre compte ${reminder.accountNumber} chez ${reminder.storeName} depuis ${days}. Votre épargne reste entière, elle ne diminue jamais. Passez déposer quand vous voulez.`,
+  };
+}
+
 export function accountStatusMessage(change: {
   suspended: boolean;
   accountNumber: string;

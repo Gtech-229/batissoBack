@@ -54,6 +54,7 @@ describe('Super admin bootstrap and system settings (e2e)', () => {
       maxPinAttempts: 5,
       deliveryAlertDays: 7,
       cancellationEscalationHours: 48,
+      inactivityReminderDays: 30,
     });
   });
 });

@@ -46,6 +46,7 @@ describe('System settings (e2e)', () => {
       maxPinAttempts: 5,
       deliveryAlertDays: 7,
       cancellationEscalationHours: 48,
+      inactivityReminderDays: 30,
     });
   });
 
@@ -70,6 +71,7 @@ describe('System settings (e2e)', () => {
       maxPinAttempts: 5,
       deliveryAlertDays: 7,
       cancellationEscalationHours: 48,
+      inactivityReminderDays: 30,
     });
     const read = await api()
       .get('/api/v1/admin/settings')
@@ -149,6 +151,51 @@ describe('System settings (e2e)', () => {
     expect(response.body.details[0].errors[0]).toContain(rule);
   });
 
+  it('lets the super admin change the inactivity reminder delay (17c)', async () => {
+    const response = await api()
+      .patch('/api/v1/admin/settings')
+      .set('Cookie', superCookie)
+      .send({ inactivityReminderDays: 45 })
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      inactivityReminderDays: 45,
+      deliveryAlertDays: 7,
+    });
+    const stored = await prisma.systemSettings.findUniqueOrThrow({
+      where: { id: 1 },
+    });
+    expect(stored.inactivityReminderDays).toBe(45);
+  });
+
+  it.each([0, 366, 7.5, '30', null])(
+    'rejects inactivityReminderDays %j in French',
+    async (value) => {
+      const response = await api()
+        .patch('/api/v1/admin/settings')
+        .set('Cookie', superCookie)
+        .send({ inactivityReminderDays: value })
+        .expect(400);
+
+      expect(response.body.details).toEqual([
+        {
+          field: 'inactivityReminderDays',
+          errors: [
+            'Le délai de rappel d’inactivité doit être un nombre entier de jours entre 1 et 365',
+          ],
+        },
+      ]);
+    },
+  );
+
+  it('refuses the reminder delay to an ADMIN without settings.manage', async () => {
+    await api()
+      .patch('/api/v1/admin/settings')
+      .set('Cookie', adminCookie)
+      .send({ inactivityReminderDays: 45 })
+      .expect(403);
+  });
+
   it('refuses the two delays to an ADMIN without settings.manage', async () => {
     await api()
       .patch('/api/v1/admin/settings')
@@ -172,6 +219,7 @@ describe('System settings (e2e)', () => {
         maxPinAttempts: value,
         deliveryAlertDays: 7,
         cancellationEscalationHours: 48,
+        inactivityReminderDays: 30,
       });
       const stored = await prisma.systemSettings.findUniqueOrThrow({
         where: { id: 1 },

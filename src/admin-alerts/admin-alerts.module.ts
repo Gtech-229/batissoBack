@@ -7,10 +7,13 @@ import { BalanceCheckJob } from './balance-check.job.js';
 import { BalanceCheckService } from './balance-check.service.js';
 import { DeliveryAlertsJob } from './delivery-alerts.job.js';
 import { DeliveryAlertsService } from './delivery-alerts.service.js';
+import { InactivityRemindersJob } from './inactivity-reminders.job.js';
+import { InactivityRemindersService } from './inactivity-reminders.service.js';
 
 /**
- * Scheduled jobs and what they find: the nightly balance check (17a) and the
- * delivery alerts (17b); admins list and resolve the alerts.
+ * Scheduled jobs and what they find: the nightly balance check (17a), the
+ * delivery alerts (17b) and the inactivity reminders (17c); admins list and
+ * resolve the alerts.
  */
 @Module({
   imports: [NotificationsModule, SystemSettingsModule],
@@ -21,6 +24,8 @@ import { DeliveryAlertsService } from './delivery-alerts.service.js';
     AdminAlertsService,
     DeliveryAlertsService,
     DeliveryAlertsJob,
+    InactivityRemindersService,
+    InactivityRemindersJob,
   ],
 })
 export class AdminAlertsModule {}

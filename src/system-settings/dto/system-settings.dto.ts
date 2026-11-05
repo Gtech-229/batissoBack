@@ -15,6 +15,8 @@ const PIN_MESSAGE = `Le nombre de tentatives de PIN doit être 0 (sans limite) o
 const SESSIONS_MESSAGE = `Le nombre de sessions doit être un entier entre ${SESSIONS.min} et ${SESSIONS.max}`;
 const ALERT_DAYS = LIMITS.deliveryAlertDays;
 const ALERT_DAYS_MESSAGE = `Le délai d’alerte de livraison doit être un nombre entier de jours entre ${ALERT_DAYS.min} et ${ALERT_DAYS.max}`;
+const REMINDER = LIMITS.inactivityReminderDays;
+const REMINDER_MESSAGE = `Le délai de rappel d’inactivité doit être un nombre entier de jours entre ${REMINDER.min} et ${REMINDER.max}`;
 const ESCALATION = LIMITS.cancellationEscalationHours;
 const ESCALATION_MESSAGE = `Le délai de réponse à une demande d’annulation doit être un nombre entier d’heures entre ${ESCALATION.min} et ${ESCALATION.max}`;
 
@@ -53,6 +55,13 @@ export class SystemSettingsResponse {
     example: 48,
   })
   cancellationEscalationHours: number;
+
+  @ApiProperty({
+    description:
+      'Jours sans dépôt sur un compte au-delà desquels le client reçoit un rappel (une fois par période sans dépôt)',
+    example: 30,
+  })
+  inactivityReminderDays: number;
 }
 
 /**
@@ -108,4 +117,14 @@ export class UpdateSystemSettingsDto {
   @Min(ESCALATION.min, { message: ESCALATION_MESSAGE })
   @Max(ESCALATION.max, { message: ESCALATION_MESSAGE })
   cancellationEscalationHours?: number;
+
+  @ApiPropertyOptional({
+    description: `Entre ${REMINDER.min} et ${REMINDER.max} jours`,
+    example: 30,
+  })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsInt({ message: REMINDER_MESSAGE })
+  @Min(REMINDER.min, { message: REMINDER_MESSAGE })
+  @Max(REMINDER.max, { message: REMINDER_MESSAGE })
+  inactivityReminderDays?: number;
 }

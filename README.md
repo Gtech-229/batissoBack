@@ -634,6 +634,16 @@ Both delays are platform settings: `GET` / `PATCH /api/v1/admin/settings`
 logs one line: `Delivery alerts: N orders alerted, M cancellation requests
 escalated`.
 
+## Inactivity reminders
+
+Every day at 09:00 UTC the API reminds customers whose account had no deposit
+for `inactivityReminderDays` (default 30, a platform setting, 1 to 365): one
+reminder per quiet period, by app, push and SMS, naming the account and the
+store and never an amount. The quiet period starts at the last deposit (or the
+opening); corrections and purchases do not restart it. Only active accounts in
+verified stores. Balances never change. The run logs
+`Inactivity reminders: N accounts reminded`.
+
 ## Common commands
 
 | Command | What it does |

@@ -27,6 +27,7 @@ import {
   accountStatusMessage,
   cancellationRequestedMessage,
   deliveryOverdueMessage,
+  inactivityReminderMessage,
   correctionMessage,
   disputeClosedMessage,
   disputeCustomerMessage,
@@ -391,6 +392,36 @@ export class NotificationsService {
         storeId: event.storeId,
         operationId: null,
         type: NotificationType.ACCESS_RESET,
+        title,
+        body,
+      },
+      { sms: true },
+    );
+  }
+
+  /**
+   * The rows reminding the customer that an account had no deposit for the
+   * delay (17c): in-app, push and SMS, so customers without the app are
+   * reached too (user decision, 2026-11-05).
+   */
+  async recordInactivityReminder(
+    tx: Prisma.TransactionClient,
+    event: {
+      customerId: string;
+      storeId: string;
+      storeName: string;
+      accountNumber: string;
+      days: number;
+    },
+  ): Promise<string[]> {
+    const { title, body } = inactivityReminderMessage(event);
+    return this.writeRows(
+      tx,
+      {
+        userId: event.customerId,
+        storeId: event.storeId,
+        operationId: null,
+        type: NotificationType.INACTIVITY_REMINDER,
         title,
         body,
       },

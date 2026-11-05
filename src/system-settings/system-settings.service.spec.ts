@@ -27,6 +27,7 @@ describe('SystemSettingsService', () => {
       maxPinAttempts: 5,
       deliveryAlertDays: 7,
       cancellationEscalationHours: 48,
+      inactivityReminderDays: 30,
     });
   });
 
@@ -47,6 +48,7 @@ describe('SystemSettingsService', () => {
       maxPinAttempts: 0,
       deliveryAlertDays: 7,
       cancellationEscalationHours: 48,
+      inactivityReminderDays: 30,
       updatedAt: new Date(),
       updatedById: 'admin-1',
     });
@@ -57,6 +59,7 @@ describe('SystemSettingsService', () => {
       maxPinAttempts: 0,
       deliveryAlertDays: 7,
       cancellationEscalationHours: 48,
+      inactivityReminderDays: 30,
     });
   });
 
@@ -74,6 +77,7 @@ describe('SystemSettingsService', () => {
         maxPinAttempts: 5,
         deliveryAlertDays: 7,
         cancellationEscalationHours: 48,
+        inactivityReminderDays: 30,
         updatedById: 'admin-1',
       },
       update: { maxLoginAttempts: 10, updatedById: 'admin-1' },
@@ -84,6 +88,7 @@ describe('SystemSettingsService', () => {
       maxPinAttempts: 5,
       deliveryAlertDays: 7,
       cancellationEscalationHours: 48,
+      inactivityReminderDays: 30,
     });
   });
 
@@ -107,6 +112,7 @@ describe('SystemSettingsService', () => {
       maxPinAttempts: 5,
       deliveryAlertDays: 7,
       cancellationEscalationHours: 48,
+      inactivityReminderDays: 30,
     });
   });
 });

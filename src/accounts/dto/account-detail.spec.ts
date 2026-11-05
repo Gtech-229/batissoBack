@@ -63,6 +63,7 @@ const account = (
   idPhotoPath: null,
   status: 'ACTIVE',
   statusReason: null,
+  inactivityRemindedAt: null,
   statusChangedAt: null,
   statusChangedById: null,
   termsAcceptedAt: new Date('2026-10-14T10:00:00.000Z'),

@@ -68,6 +68,7 @@ const operation: OperationWithReceipt = {
     idPhotoPath: '0192f0a4-7b1c-7c3e-9d2a-5e6f7a8b9c0d.jpg',
     status: 'ACTIVE',
     statusReason: null,
+    inactivityRemindedAt: null,
     statusChangedAt: null,
     statusChangedById: null,
     termsAcceptedAt: DATE,

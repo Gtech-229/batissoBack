@@ -60,6 +60,15 @@ describe('Swagger document (e2e)', () => {
     ).toContain('registered');
   });
 
+  it('documents the inactivity reminder setting (feature 17c)', () => {
+    expect(
+      Object.keys(schemas.SystemSettingsResponse.properties ?? {}),
+    ).toContain('inactivityReminderDays');
+    expect(
+      Object.keys(schemas.UpdateSystemSettingsDto.properties ?? {}),
+    ).toContain('inactivityReminderDays');
+  });
+
   it('documents the delivery alert settings and the order on alerts (feature 17b)', () => {
     expect(
       Object.keys(schemas.SystemSettingsResponse.properties ?? {}),

@@ -124,6 +124,8 @@ model SystemSettings {
   /// Hours a customer's cancellation request may stay unanswered before an
   /// admin alert (17b); 1 to 720 (CHECK).
   cancellationEscalationHours Int      @default(48)
+  /// Days without a deposit before a customer is reminded (17c); 1 to 365 (CHECK).
+  inactivityReminderDays      Int      @default(30)
   updatedAt                   DateTime @updatedAt
   updatedById                 String?  @db.Uuid
 
@@ -514,32 +516,35 @@ model ActivityLog {
 /// smallest currency unit. The balance is a projection: deposits and debits
 /// (feature 6) update it in the same transaction as the operation they record.
 model Account {
-  id                String        @id @default(uuid(7)) @db.Uuid
+  id                   String        @id @default(uuid(7)) @db.Uuid
   /// "C-" + at least 6 digits from the account_number_seq sequence. For display
   /// and staff search only: sequential, so never enough to reach an account.
-  number            String        @unique @db.VarChar(20)
-  customerId        String        @db.Uuid
-  storeId           String        @db.Uuid
+  number               String        @unique @db.VarChar(20)
+  customerId           String        @db.Uuid
+  storeId              String        @db.Uuid
   /// The store's country currency at opening (ISO 4217).
-  currencyCode      String        @db.VarChar(3)
-  balance           BigInt        @default(0)
-  beneficiaryName   String?       @db.VarChar(100)
-  beneficiaryPhone  String? /// E.164
+  currencyCode         String        @db.VarChar(3)
+  balance              BigInt        @default(0)
+  beneficiaryName      String?       @db.VarChar(100)
+  beneficiaryPhone     String? /// E.164
   /// The identity photo: a generated file name (uuid + .jpg or .png) in the
   /// private ID_PHOTO_DIR directory; null until uploaded. Never in a response.
-  idPhotoPath       String?       @db.VarChar(100)
-  status            AccountStatus @default(ACTIVE)
+  idPhotoPath          String?       @db.VarChar(100)
+  status               AccountStatus @default(ACTIVE)
   /// Why an admin suspended it (16b): for staff and admins, never the customer.
-  statusReason      String?       @db.VarChar(500)
-  statusChangedAt   DateTime?
-  statusChangedById String?       @db.Uuid
+  statusReason         String?       @db.VarChar(500)
+  /// When the customer was last reminded of a quiet period (17c): one reminder
+  /// per period without a deposit.
+  inactivityRemindedAt DateTime?
+  statusChangedAt      DateTime?
+  statusChangedById    String?       @db.Uuid
   /// When the customer accepted the store's terms: at the counter, or in the
   /// app when they joined the store themselves (21c).
-  termsAcceptedAt   DateTime
+  termsAcceptedAt      DateTime
   /// The staff member who opened the account.
-  openedById        String        @db.Uuid
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  openedById           String        @db.Uuid
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
 
   customer        User               @relation("AccountCustomer", fields: [customerId], references: [id], onDelete: Restrict)
   statusChangedBy Admin?             @relation("AccountStatusChangedBy", fields: [statusChangedById], references: [id], onDelete: SetNull)
@@ -1000,6 +1005,8 @@ enum NotificationType {
   DISPUTE_STORE_REPLY
   /// The customer closed a dispute (accepted or withdrew): sent to the managers (12).
   DISPUTE_CLOSED
+  /// No deposit for the delay: a reminder to the customer (17c).
+  INACTIVITY_REMINDER
   /// A paid order is still undelivered after the delay: to the managers (17b).
   ORDER_DELIVERY_OVERDUE
   /// A manager reset the user's access: sent to that user (14a).
