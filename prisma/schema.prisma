@@ -112,14 +112,20 @@ model AdminPasswordToken {
 /// Platform-wide settings editable by admins. A single row (id = 1); until it
 /// exists, the code uses its defaults.
 model SystemSettings {
-  id               Int      @id @default(1)
-  maxLoginAttempts Int
-  maxAdminSessions Int
+  id                          Int      @id @default(1)
+  maxLoginAttempts            Int
+  maxAdminSessions            Int
   /// Wrong PINs before a mobile user is locked for 15 minutes; 0 = no limit.
   /// The database default keeps an existing row valid.
-  maxPinAttempts   Int      @default(5)
-  updatedAt        DateTime @updatedAt
-  updatedById      String?  @db.Uuid
+  maxPinAttempts              Int      @default(5)
+  /// Days a confirmed order may stay undelivered before the managers are
+  /// alerted (17b); 1 to 365 (CHECK).
+  deliveryAlertDays           Int      @default(7)
+  /// Hours a customer's cancellation request may stay unanswered before an
+  /// admin alert (17b); 1 to 720 (CHECK).
+  cancellationEscalationHours Int      @default(48)
+  updatedAt                   DateTime @updatedAt
+  updatedById                 String?  @db.Uuid
 
   updatedBy Admin? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
 
@@ -763,6 +769,10 @@ model MaterialOrder {
   /// The customer asked to cancel it, undelivered after the store's delivery
   /// delay (11c): set once, never cleared; the order stays CONFIRMED.
   cancellationRequestedAt   DateTime?
+  /// When the managers were alerted that it was still undelivered (17b, once).
+  deliveryAlertedAt         DateTime?
+  /// When an unanswered cancellation request became an admin alert (17b, once).
+  cancellationEscalatedAt   DateTime?
   cancellationRequestReason String?                   @db.VarChar(500)
   createdAt                 DateTime                  @default(now())
   updatedAt                 DateTime                  @updatedAt
@@ -782,7 +792,8 @@ model MaterialOrder {
   goalMovements     GoalMovement[]
 
   // The store's orders and an account's orders, newest first.
-  proofs TransactionProof[]
+  proofs      TransactionProof[]
+  adminAlerts AdminAlert[]
 
   @@index([storeId, createdAt])
   @@index([accountId, createdAt])
@@ -989,6 +1000,8 @@ enum NotificationType {
   DISPUTE_STORE_REPLY
   /// The customer closed a dispute (accepted or withdrew): sent to the managers (12).
   DISPUTE_CLOSED
+  /// A paid order is still undelivered after the delay: to the managers (17b).
+  ORDER_DELIVERY_OVERDUE
   /// A manager reset the user's access: sent to that user (14a).
   ACCESS_RESET
   /// The user recovered their access with their security answers (14b).
@@ -1174,11 +1187,13 @@ enum AdminAlertType {
   GOAL_BALANCE_GAP
   /// The goals' balances do not add up to Account.balance.
   GOAL_SUM_GAP
+  /// A cancellation request left unanswered past the delay (17b).
+  ORDER_CANCELLATION_UNANSWERED
 }
 
 /// A problem found by a scheduled job, for admins to look into (17a). Never a
-/// balance: only the gap. One unresolved alert per type, account and goal (a
-/// partial unique index in the migration, as Prisma cannot declare it).
+/// balance: only the gap. One unresolved alert per type, account, goal and
+/// order (a partial unique index in the migration, as Prisma cannot declare it).
 model AdminAlert {
   id           String         @id @default(uuid(7)) @db.Uuid
   type         AdminAlertType
@@ -1186,16 +1201,19 @@ model AdminAlert {
   accountId    String         @db.Uuid
   /// The goal, for GOAL_BALANCE_GAP only.
   goalId       String?        @db.Uuid
-  /// Stored minus computed, in the smallest currency unit.
-  difference   BigInt
+  /// The order, for ORDER_CANCELLATION_UNANSWERED only.
+  orderId      String?        @db.Uuid
+  /// Stored minus computed, in the smallest currency unit; balance gaps only.
+  difference   BigInt?
   createdAt    DateTime       @default(now())
   resolvedAt   DateTime?
   resolvedById String?        @db.Uuid
 
-  store      HardwareStore @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  account    Account       @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  goal       Goal?         @relation(fields: [goalId], references: [id], onDelete: Restrict)
-  resolvedBy Admin?        @relation(fields: [resolvedById], references: [id], onDelete: SetNull)
+  store      HardwareStore  @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  account    Account        @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  goal       Goal?          @relation(fields: [goalId], references: [id], onDelete: Restrict)
+  order      MaterialOrder? @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  resolvedBy Admin?         @relation(fields: [resolvedById], references: [id], onDelete: SetNull)
 
   @@index([resolvedAt, createdAt])
   @@map("admin_alerts")

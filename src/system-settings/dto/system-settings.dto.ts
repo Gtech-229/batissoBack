@@ -13,6 +13,10 @@ const PIN_ATTEMPT_VALUES = [
 ];
 const PIN_MESSAGE = `Le nombre de tentatives de PIN doit être 0 (sans limite) ou un entier entre ${PIN.min} et ${PIN.max}`;
 const SESSIONS_MESSAGE = `Le nombre de sessions doit être un entier entre ${SESSIONS.min} et ${SESSIONS.max}`;
+const ALERT_DAYS = LIMITS.deliveryAlertDays;
+const ALERT_DAYS_MESSAGE = `Le délai d’alerte de livraison doit être un nombre entier de jours entre ${ALERT_DAYS.min} et ${ALERT_DAYS.max}`;
+const ESCALATION = LIMITS.cancellationEscalationHours;
+const ESCALATION_MESSAGE = `Le délai de réponse à une demande d’annulation doit être un nombre entier d’heures entre ${ESCALATION.min} et ${ESCALATION.max}`;
 
 export class SystemSettingsResponse {
   @ApiProperty({
@@ -35,6 +39,20 @@ export class SystemSettingsResponse {
     example: 5,
   })
   maxPinAttempts: number;
+
+  @ApiProperty({
+    description:
+      'Jours après la confirmation d’un bon payé au-delà desquels, s’il n’est pas livré, les gérants de la quincaillerie sont alertés (une fois)',
+    example: 7,
+  })
+  deliveryAlertDays: number;
+
+  @ApiProperty({
+    description:
+      'Heures laissées au gérant pour répondre à une demande d’annulation d’un client (livrer ou annuler) ; au-delà, une alerte est créée pour les administrateurs',
+    example: 48,
+  })
+  cancellationEscalationHours: number;
 }
 
 /**
@@ -70,4 +88,24 @@ export class UpdateSystemSettingsDto {
   @ValidateIf((_object, value) => value !== undefined)
   @IsIn(PIN_ATTEMPT_VALUES, { message: PIN_MESSAGE })
   maxPinAttempts?: number;
+
+  @ApiPropertyOptional({
+    description: `Entre ${ALERT_DAYS.min} et ${ALERT_DAYS.max} jours`,
+    example: 7,
+  })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsInt({ message: ALERT_DAYS_MESSAGE })
+  @Min(ALERT_DAYS.min, { message: ALERT_DAYS_MESSAGE })
+  @Max(ALERT_DAYS.max, { message: ALERT_DAYS_MESSAGE })
+  deliveryAlertDays?: number;
+
+  @ApiPropertyOptional({
+    description: `Entre ${ESCALATION.min} et ${ESCALATION.max} heures`,
+    example: 48,
+  })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsInt({ message: ESCALATION_MESSAGE })
+  @Min(ESCALATION.min, { message: ESCALATION_MESSAGE })
+  @Max(ESCALATION.max, { message: ESCALATION_MESSAGE })
+  cancellationEscalationHours?: number;
 }

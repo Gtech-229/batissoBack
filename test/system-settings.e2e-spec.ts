@@ -44,6 +44,8 @@ describe('System settings (e2e)', () => {
       maxLoginAttempts: 5,
       maxAdminSessions: 3,
       maxPinAttempts: 5,
+      deliveryAlertDays: 7,
+      cancellationEscalationHours: 48,
     });
   });
 
@@ -66,6 +68,8 @@ describe('System settings (e2e)', () => {
       maxLoginAttempts: 5,
       maxAdminSessions: 1,
       maxPinAttempts: 5,
+      deliveryAlertDays: 7,
+      cancellationEscalationHours: 48,
     });
     const read = await api()
       .get('/api/v1/admin/settings')
@@ -93,6 +97,66 @@ describe('System settings (e2e)', () => {
     expect(response.body.details[0].errors[0]).toMatch(/doit être un entier/);
   });
 
+  it('lets the super admin change the two delivery alert delays (17b)', async () => {
+    const response = await api()
+      .patch('/api/v1/admin/settings')
+      .set('Cookie', superCookie)
+      .send({ deliveryAlertDays: 10, cancellationEscalationHours: 72 })
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      deliveryAlertDays: 10,
+      cancellationEscalationHours: 72,
+      maxLoginAttempts: 5,
+    });
+    const stored = await prisma.systemSettings.findUniqueOrThrow({
+      where: { id: 1 },
+    });
+    expect(stored).toMatchObject({
+      deliveryAlertDays: 10,
+      cancellationEscalationHours: 72,
+    });
+  });
+
+  it.each([
+    [{ deliveryAlertDays: 0 }, 'deliveryAlertDays', 'jours entre 1 et 365'],
+    [{ deliveryAlertDays: 366 }, 'deliveryAlertDays', 'jours entre 1 et 365'],
+    [{ deliveryAlertDays: 2.5 }, 'deliveryAlertDays', 'jours entre 1 et 365'],
+    [{ deliveryAlertDays: null }, 'deliveryAlertDays', 'jours entre 1 et 365'],
+    [
+      { cancellationEscalationHours: 0 },
+      'cancellationEscalationHours',
+      'heures entre 1 et 720',
+    ],
+    [
+      { cancellationEscalationHours: 721 },
+      'cancellationEscalationHours',
+      'heures entre 1 et 720',
+    ],
+    [
+      { cancellationEscalationHours: '48' },
+      'cancellationEscalationHours',
+      'heures entre 1 et 720',
+    ],
+  ])('rejects %o in French', async (body, field, rule) => {
+    const response = await api()
+      .patch('/api/v1/admin/settings')
+      .set('Cookie', superCookie)
+      .send(body)
+      .expect(400);
+
+    expect(response.body.details[0].field).toBe(field);
+    expect(response.body.details[0].errors[0]).toContain(rule);
+  });
+
+  it('refuses the two delays to an ADMIN without settings.manage', async () => {
+    await api()
+      .patch('/api/v1/admin/settings')
+      .set('Cookie', adminCookie)
+      .send({ deliveryAlertDays: 10 })
+      .expect(403);
+  });
+
   it.each([7, 0])(
     'lets the super admin set maxPinAttempts to %i (0 = no limit)',
     async (value) => {
@@ -106,6 +170,8 @@ describe('System settings (e2e)', () => {
         maxLoginAttempts: 5,
         maxAdminSessions: 3,
         maxPinAttempts: value,
+        deliveryAlertDays: 7,
+        cancellationEscalationHours: 48,
       });
       const stored = await prisma.systemSettings.findUniqueOrThrow({
         where: { id: 1 },

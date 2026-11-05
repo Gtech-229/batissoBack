@@ -105,6 +105,7 @@ describe('Admin alerts (e2e)', () => {
           store: { id: storeId, name: 'Quincaillerie du Carrefour' },
           account: { id: accountId, number: 'C-000123' },
           goal: null,
+          order: null,
           difference: '300',
           createdAt: '2026-11-05T02:00:00.000Z',
           resolvedAt: null,

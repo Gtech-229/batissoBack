@@ -7,6 +7,10 @@ export interface SystemSettingsValues {
   maxAdminSessions: number;
   /** Wrong PINs before a mobile user is locked; 0 = no limit. */
   maxPinAttempts: number;
+  /** Days a confirmed order may stay undelivered before the managers' alert (17b). */
+  deliveryAlertDays: number;
+  /** Hours a cancellation request may stay unanswered before an admin alert (17b). */
+  cancellationEscalationHours: number;
 }
 
 /** Used until an admin saves settings for the first time (no seed data). */
@@ -14,6 +18,8 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettingsValues = {
   maxLoginAttempts: 5,
   maxAdminSessions: 3,
   maxPinAttempts: 5,
+  deliveryAlertDays: 7,
+  cancellationEscalationHours: 48,
 };
 
 /** Allowed range of each setting, enforced by the update DTO. */
@@ -22,6 +28,9 @@ export const SYSTEM_SETTINGS_LIMITS = {
   maxAdminSessions: { min: 1, max: 20 },
   // 0 is also allowed for maxPinAttempts: it disables the PIN lock.
   maxPinAttempts: { min: 3, max: 10 },
+  // Also CHECK constraints in the database (17b).
+  deliveryAlertDays: { min: 1, max: 365 },
+  cancellationEscalationHours: { min: 1, max: 720 },
 } as const;
 
 // The settings table holds a single row.
@@ -67,5 +76,7 @@ function toValues(row: SystemSettingsValues): SystemSettingsValues {
     maxLoginAttempts: row.maxLoginAttempts,
     maxAdminSessions: row.maxAdminSessions,
     maxPinAttempts: row.maxPinAttempts,
+    deliveryAlertDays: row.deliveryAlertDays,
+    cancellationEscalationHours: row.cancellationEscalationHours,
   };
 }

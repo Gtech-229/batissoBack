@@ -617,6 +617,23 @@ The two permissions are not in the `Administrateur` role: the super admin grants
 them. There is no route to start a run by hand; to see one locally, keep the API
 running past 02:00 UTC.
 
+## Delivery alerts
+
+Every hour (minute 0, UTC) the API checks paid orders:
+
+- A confirmed order still undelivered after `deliveryAlertDays` (default 7)
+  alerts the store's active managers once, in the app and by push (no SMS). A
+  closed store is skipped.
+- A customer's cancellation request (11c) still unanswered after
+  `cancellationEscalationHours` (default 48), the order neither delivered nor
+  cancelled, becomes one `ORDER_CANCELLATION_UNANSWERED` admin alert, listed by
+  `GET /api/v1/admin/alerts` with its order.
+
+Both delays are platform settings: `GET` / `PATCH /api/v1/admin/settings`
+(`settings.read` / `settings.manage`; 1 to 365 days, 1 to 720 hours). The run
+logs one line: `Delivery alerts: N orders alerted, M cancellation requests
+escalated`.
+
 ## Common commands
 
 | Command | What it does |

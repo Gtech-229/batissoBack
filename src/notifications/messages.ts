@@ -146,6 +146,21 @@ export function paidOrderCancelledMessage(cancellation: {
   };
 }
 
+/** To the store's managers: a paid order is still undelivered after the delay (17b). */
+export function deliveryOverdueMessage(order: {
+  accountNumber: string;
+  orderReference: string;
+  total: bigint;
+  currencyCode: string;
+  days: number;
+}): NotificationMessage {
+  const days = order.days === 1 ? '1 jour' : `${order.days} jours`;
+  return {
+    title: 'Bon payé toujours pas livré',
+    body: `Le bon ${order.orderReference} de ${groupThousands(order.total)} ${order.currencyCode} (compte ${order.accountNumber}) est payé depuis ${days} et n’est toujours pas livré. Livrez-le au client.`,
+  };
+}
+
 /** To the store's managers: a customer asks to cancel an undelivered order (11c). */
 export function cancellationRequestedMessage(order: {
   accountNumber: string;

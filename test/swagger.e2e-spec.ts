@@ -60,6 +60,28 @@ describe('Swagger document (e2e)', () => {
     ).toContain('registered');
   });
 
+  it('documents the delivery alert settings and the order on alerts (feature 17b)', () => {
+    expect(
+      Object.keys(schemas.SystemSettingsResponse.properties ?? {}),
+    ).toEqual(
+      expect.arrayContaining([
+        'deliveryAlertDays',
+        'cancellationEscalationHours',
+      ]),
+    );
+    expect(
+      Object.keys(schemas.UpdateSystemSettingsDto.properties ?? {}),
+    ).toEqual(
+      expect.arrayContaining([
+        'deliveryAlertDays',
+        'cancellationEscalationHours',
+      ]),
+    );
+    expect(Object.keys(schemas.AdminAlertView.properties ?? {})).toContain(
+      'order',
+    );
+  });
+
   it('documents the admin alert routes (feature 17a)', () => {
     const routes = operations.map(([route]) => route);
 

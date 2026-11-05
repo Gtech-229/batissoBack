@@ -26,6 +26,7 @@ import {
   accessResetMessage,
   accountStatusMessage,
   cancellationRequestedMessage,
+  deliveryOverdueMessage,
   correctionMessage,
   disputeClosedMessage,
   disputeCustomerMessage,
@@ -95,6 +96,17 @@ export interface CancellationRequestedEvent {
   total: bigint;
   currencyCode: string;
   reason: string | null;
+}
+
+/** A paid order still undelivered after the delay (17b). */
+export interface DeliveryOverdueEvent {
+  storeId: string;
+  accountNumber: string;
+  orderReference: string;
+  total: bigint;
+  currencyCode: string;
+  /** Whole days since the customer confirmed it. */
+  days: number;
 }
 
 /** A paid order the manager cancelled, and its re-credit (11b). */
@@ -449,6 +461,23 @@ export class NotificationsService {
       event.storeId,
       NotificationType.ORDER_CANCELLATION_REQUESTED,
       cancellationRequestedMessage(event),
+      null,
+    );
+  }
+
+  /**
+   * The rows alerting each active manager that a paid order is still
+   * undelivered (17b): in-app and push, no SMS, as for a cancellation request.
+   */
+  async recordDeliveryOverdue(
+    tx: Prisma.TransactionClient,
+    event: DeliveryOverdueEvent,
+  ): Promise<string[]> {
+    return this.writeToManagers(
+      tx,
+      event.storeId,
+      NotificationType.ORDER_DELIVERY_OVERDUE,
+      deliveryOverdueMessage(event),
       null,
     );
   }
