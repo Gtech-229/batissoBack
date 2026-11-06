@@ -644,6 +644,46 @@ opening); corrections and purchases do not restart it. Only active accounts in
 verified stores. Balances never change. The run logs
 `Inactivity reminders: N accounts reminded`.
 
+## Production on a VPS
+
+The API and PostgreSQL run from `docker-compose.prod.yml`; the dev
+`docker-compose.yml` is separate. On the VPS (Docker with Compose installed):
+
+1. Write the two env files (both git-ignored):
+   - `.env.db.production` from `.env.db.production.example`: set
+     `POSTGRES_PASSWORD` to a long random password (letters and digits). Do it
+     **before the first start**: PostgreSQL reads the password only when it
+     creates the `pgdata-prod` volume, so a later edit does not change it. Left
+     empty, the database refuses to start.
+   - `.env.production` from `.env.production.example`: the same password in
+     `DATABASE_URL`, then `JWT_ACCESS_SECRET`, `PIN_PEPPER`, `CORS_ORIGINS`,
+     `ADMIN_WEB_URL`, `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD`. The
+     placeholders fail the startup validation on purpose.
+2. Start: `docker compose -f docker-compose.prod.yml up -d --build`. The API
+   applies pending migrations (`prisma migrate deploy`) before it serves; if a
+   migration fails, it does not start and the data stays as it was. The first
+   start creates the super admin (`Super admin created` in the log); remove the
+   two `SUPER_ADMIN_*` lines afterwards.
+3. Check: `curl http://127.0.0.1:3000/api/v1/health` answers
+   `{"status":"ok","database":"up"}`. Swagger is off in production.
+
+Day to day:
+
+- Logs: `docker compose -f docker-compose.prod.yml logs -f api`
+- Update: `git pull`, then `docker compose -f docker-compose.prod.yml up -d --build`
+- Password link for a super admin who cannot receive email:
+  `docker compose -f docker-compose.prod.yml exec api node dist/cli/password-link.js <email>`
+- Stop: `docker compose -f docker-compose.prod.yml down` keeps the data
+  (`pgdata-prod` and `app-storage` volumes). `down -v` deletes it: never run it
+  on the VPS except to wipe everything on purpose.
+
+The API listens on `127.0.0.1:3000` only, so nothing reaches it from outside
+yet: the HTTPS reverse proxy comes with 18b and the daily backups with 18c.
+
+The project `.npmrc` sets `legacy-peer-deps=true`: the lockfile is written
+without Prisma Studio's React peers, and every install (local or in the image)
+must resolve it the same way.
+
 ## Common commands
 
 | Command | What it does |

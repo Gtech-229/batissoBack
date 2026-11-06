@@ -1,0 +1,28 @@
+# Only what the image needs reaches the build context (feature 18a).
+node_modules
+dist
+coverage
+storage
+src/generated
+*.tsbuildinfo
+
+# Secrets and local settings: never in an image.
+.env
+.env.*
+
+# Not needed to run the API.
+test
+blueprint
+docker
+docker-compose*.yml
+.git
+.github
+.claude
+.agents
+.vscode
+.idea
+AGENTS.md
+CLAUDE.md
+README.md
+skills-lock.json
+*.log

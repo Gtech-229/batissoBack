@@ -1,0 +1,52 @@
+# Production on the VPS (feature 18a): the API and PostgreSQL. Settings and
+# secrets come from two git-ignored files: .env.production for the API and
+# .env.db.production for the database (start from their .example files). The
+# dev docker-compose.yml is separate.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# `down` keeps both volumes; only `down -v` deletes the data (never by mistake).
+name: batisso-prod
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    # POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB only: the database never
+    # sees the API's secrets.
+    env_file: .env.db.production
+    volumes:
+      - pgdata-prod:/var/lib/postgresql/data
+    # No published port: only the API reaches the database, on the Compose
+    # network (host `db`).
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    image: batisso-api
+    restart: unless-stopped
+    env_file: .env.production
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # The private identity photos, proofs and store documents.
+      - app-storage:/app/storage
+    # Reachable from the VPS itself only, until the HTTPS proxy (18b).
+    ports:
+      - '127.0.0.1:3000:3000'
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/api/v1/health']
+      interval: 30s
+      timeout: 5s
+      # Room for the migrations that run before the server starts.
+      start_period: 60s
+      retries: 3
+
+volumes:
+  pgdata-prod:
+  app-storage:
