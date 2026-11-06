@@ -646,10 +646,12 @@ verified stores. Balances never change. The run logs
 
 ## Production on a VPS
 
-The API and PostgreSQL run from `docker-compose.prod.yml`; the dev
-`docker-compose.yml` is separate. On the VPS (Docker with Compose installed):
+The API and PostgreSQL run from `docker-compose.prod.yml`, behind Nginx with a
+Let's Encrypt certificate; the dev `docker-compose.yml` is separate. Before you
+start: Docker with Compose on the VPS, ports 80 and 443 open, and a DNS A record
+for the API's domain (e.g. `api.example.com`) pointing at the VPS.
 
-1. Write the two env files (both git-ignored):
+1. Write the three env files (all git-ignored):
    - `.env.db.production` from `.env.db.production.example`: set
      `POSTGRES_PASSWORD` to a long random password (letters and digits). Do it
      **before the first start**: PostgreSQL reads the password only when it
@@ -659,13 +661,53 @@ The API and PostgreSQL run from `docker-compose.prod.yml`; the dev
      `DATABASE_URL`, then `JWT_ACCESS_SECRET`, `PIN_PEPPER`, `CORS_ORIGINS`,
      `ADMIN_WEB_URL`, `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD`. The
      placeholders fail the startup validation on purpose.
-2. Start: `docker compose -f docker-compose.prod.yml up -d --build`. The API
+   - `.env.proxy.production` from `.env.proxy.production.example`:
+     `API_DOMAIN` (the domain above) and `LETSENCRYPT_EMAIL` (the Let's Encrypt
+     account contact).
+2. Start the database and the API, get the first certificate (once, while
+   Nginx is not running, so port 80 is free), then start everything:
+
+   ```
+   docker compose -f docker-compose.prod.yml up -d --build db api
+   docker compose -f docker-compose.prod.yml run --rm -p 80:80 --entrypoint sh certbot \
+     -c 'certbot certonly --standalone -d "$API_DOMAIN" -m "$LETSENCRYPT_EMAIL" --agree-tos --no-eff-email'
+   docker compose -f docker-compose.prod.yml up -d
+   ```
+
+   The two variables are read inside the container, from
+   `.env.proxy.production`. The API
    applies pending migrations (`prisma migrate deploy`) before it serves; if a
    migration fails, it does not start and the data stays as it was. The first
    start creates the super admin (`Super admin created` in the log); remove the
    two `SUPER_ADMIN_*` lines afterwards.
-3. Check: `curl http://127.0.0.1:3000/api/v1/health` answers
-   `{"status":"ok","database":"up"}`. Swagger is off in production.
+3. Check: `curl https://<API_DOMAIN>/api/v1/health` answers
+   `{"status":"ok","database":"up"}`, `http://` redirects to `https://`, and
+   `docker compose -f docker-compose.prod.yml run --rm --entrypoint certbot certbot renew --dry-run --webroot -w /var/www/certbot`
+   simulates a renewal. Swagger is off in production. On the VPS itself the
+   API is also on `http://127.0.0.1:3000`.
+
+HTTPS details:
+
+- **Renewal is automatic:** the `certbot` container tries every 12 hours and
+  renews a certificate due within 30 days through port 80; Nginx reloads every
+  6 hours to pick it up. Let's Encrypt **no longer emails** before a
+  certificate expires, so check it yourself every week. This prints
+  the end date of the certificate Nginx serves (a renewed one is about 90 days
+  out):
+
+  ```
+  docker compose -f docker-compose.prod.yml run --rm --entrypoint sh certbot \
+    -c 'openssl x509 -enddate -noout -in "/etc/letsencrypt/live/$API_DOMAIN/fullchain.pem"'
+  ```
+
+  Under 30 days left means renewal is failing: read
+  `docker compose -f docker-compose.prod.yml logs certbot` and fix it before
+  expiry, since with HSTS an expired certificate locks browsers out.
+- **HSTS for 6 months:** every HTTPS answer tells browsers to use only HTTPS for
+  this domain for 180 days. Once a browser has seen it, plain HTTP on that
+  domain is refused there until it expires, so keep HTTPS working.
+- Nginx accepts request bodies up to 6 MB (photo uploads are up to 5 MB) and
+  forwards `Host`, `X-Forwarded-For` and `X-Forwarded-Proto` to the API.
 
 Day to day:
 
@@ -674,11 +716,11 @@ Day to day:
 - Password link for a super admin who cannot receive email:
   `docker compose -f docker-compose.prod.yml exec api node dist/cli/password-link.js <email>`
 - Stop: `docker compose -f docker-compose.prod.yml down` keeps the data
-  (`pgdata-prod` and `app-storage` volumes). `down -v` deletes it: never run it
+  (`pgdata-prod`, `app-storage` and the certificate volumes). `down -v` deletes it: never run it
   on the VPS except to wipe everything on purpose.
 
-The API listens on `127.0.0.1:3000` only, so nothing reaches it from outside
-yet: the HTTPS reverse proxy comes with 18b and the daily backups with 18c.
+From outside, only Nginx's ports 80 and 443 are open; the daily backups come
+with 18c.
 
 The project `.npmrc` sets `legacy-peer-deps=true`: the lockfile is written
 without Prisma Studio's React peers, and every install (local or in the image)

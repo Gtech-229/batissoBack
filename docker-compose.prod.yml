@@ -1,11 +1,15 @@
-# Production on the VPS (feature 18a): the API and PostgreSQL. Settings and
-# secrets come from two git-ignored files: .env.production for the API and
-# .env.db.production for the database (start from their .example files). The
+# Production on the VPS: the API and PostgreSQL (18a) behind Nginx with HTTPS
+# (18b). Settings and secrets come from three git-ignored files, each read only
+# by its own services: .env.production (API), .env.db.production (database) and
+# .env.proxy.production (Nginx, certbot); start from their .example files. The
 # dev docker-compose.yml is separate.
 #
-#   docker compose -f docker-compose.prod.yml up -d --build
+# First deploy: follow README "Production on a VPS" (database and API, then the
+# first certificate, then everything): Nginx cannot start before a certificate
+# exists. Afterwards: docker compose -f docker-compose.prod.yml up -d --build
 #
-# `down` keeps both volumes; only `down -v` deletes the data (never by mistake).
+# `down` keeps the four volumes (database, private files, certificates and
+# challenges); only `down -v` deletes them (never by mistake).
 name: batisso-prod
 
 services:
@@ -36,7 +40,8 @@ services:
     volumes:
       # The private identity photos, proofs and store documents.
       - app-storage:/app/storage
-    # Reachable from the VPS itself only, until the HTTPS proxy (18b).
+    # From the VPS itself only, for the operator's checks; from outside, the
+    # API is reached through Nginx.
     ports:
       - '127.0.0.1:3000:3000'
     healthcheck:
@@ -47,6 +52,50 @@ services:
       start_period: 60s
       retries: 3
 
+  nginx:
+    image: nginx:1.30-alpine
+    restart: unless-stopped
+    # The image's own start (it fills the templates), plus a reload every 6 hours
+    # so a certificate renewed by certbot is picked up without a restart.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - (while :; do sleep 6h; nginx -s reload; done) & exec /docker-entrypoint.sh nginx -g 'daemon off;'
+    # API_DOMAIN (and LETSENCRYPT_EMAIL, shared with certbot): the proxy never
+    # sees the API's or the database's secrets.
+    env_file: .env.proxy.production
+    depends_on:
+      - api
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      # default.conf.template becomes /etc/nginx/conf.d/default.conf at start,
+      # replacing the image's welcome-page server.
+      - ./docker/nginx/templates:/etc/nginx/templates:ro
+      - certbot-etc:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+
+  certbot:
+    image: certbot/certbot:v5.8.0
+    restart: unless-stopped
+    # LETSENCRYPT_EMAIL: the account contact, used by the first certificate's
+    # command (see README).
+    env_file: .env.proxy.production
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    # Every 12 hours, renews any certificate due within 30 days through the
+    # webroot Nginx serves on port 80; nothing to do otherwise.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --no-random-sleep-on-renew; sleep 12h & wait $${!}; done
+
 volumes:
   pgdata-prod:
   app-storage:
+  # Let's Encrypt certificates and account (18b).
+  certbot-etc:
+  # The challenge files certbot writes and Nginx serves on port 80.
+  certbot-www:

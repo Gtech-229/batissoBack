@@ -1,0 +1,57 @@
+# The API behind HTTPS (feature 18b). The nginx image fills ${API_DOMAIN} from
+# the environment when it starts (only defined variables are replaced, so
+# Nginx's own $host and friends stay as they are).
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${API_DOMAIN};
+    server_tokens off;
+
+    # Let's Encrypt challenges for the certificate renewals (certbot's webroot).
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name ${API_DOMAIN};
+    server_tokens off;
+
+    ssl_certificate /etc/letsencrypt/live/${API_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${API_DOMAIN}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+
+    # Browsers use HTTPS only for this domain for 6 months (user decision,
+    # 2026-11-06); `always`, so error answers carry it too.
+    add_header Strict-Transport-Security "max-age=15552000" always;
+
+    # Photo uploads are up to 5 MB; Nginx refuses more than 1 MB by default.
+    client_max_body_size 6m;
+
+    # Docker's internal DNS, asked again every 10 seconds: when the API
+    # container is recreated (an update, a crash restart) and gets a new
+    # address, Nginx follows it instead of keeping the old one (F-69).
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
+    location / {
+        # A variable makes Nginx resolve the name per request, through the
+        # resolver above; with a literal host it would resolve once at start.
+        set $api_upstream http://api:3000;
+        proxy_pass $api_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
