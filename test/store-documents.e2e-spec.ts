@@ -397,6 +397,27 @@ describe('Store registration documents (e2e)', () => {
       await upload('identity', PNG).expect(409);
     });
 
+    it('verifies when the last document arrives just before the refusal is explained (F-55)', async () => {
+      const cookie = await signedInAdmin(['stores.read', 'stores.manage']);
+      await upload('identity').expect(200);
+      await upload('trade-register').expect(200);
+      // The first verify UPDATE misses, as when the last upload commits right
+      // after it: the re-read then finds both documents.
+      const update = vi
+        .spyOn(prisma.hardwareStore, 'updateMany')
+        .mockResolvedValueOnce({ count: 0 });
+
+      try {
+        const response = await verify(cookie).expect(200);
+
+        expect(response.body).toMatchObject({ status: 'VERIFIED' });
+        expect(update).toHaveBeenCalledTimes(2);
+      } finally {
+        update.mockRestore();
+      }
+      expect(await status()).toBe('VERIFIED');
+    });
+
     it('verifies an admin-registered store without documents, as before', async () => {
       const cookie = await signedInAdmin(['stores.read', 'stores.manage']);
       const other = await createStoreRecord(prisma);

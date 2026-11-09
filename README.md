@@ -132,7 +132,11 @@ Mobile users (store staff and customers) sign in to the app with their phone.
 A phone already known as a user (a store's first manager, registered above, or a
 customer whose account was opened at a counter) activates; a new phone signs up
 in the same steps. There is no real SMS provider yet: in development, each code
-is printed in the API log (`[SMS] To +223...: ...`).
+is printed in the API log (`[SMS] To +223...: ...`). Codes go to any number of
+the active country, limited per phone only (1 a minute, 5 an hour, 10 a day):
+before connecting a paid SMS provider, add a global or per-IP limit, or the
+provider's fraud controls, so no client can make the platform pay for SMS
+across a whole number range.
 
 1. `POST /api/v1/auth/code` `{ "phone": "76 00 00 00" }`: sends a 6-digit code
    (valid 10 minutes), to a known phone or a new one. The answer is always the
@@ -329,8 +333,9 @@ Every deposit notifies the customer three ways: an item in the app's list, a
 push to each of their phones that registered a token, and an SMS. No real SMS or
 push provider is configured yet: in development the API log shows each message
 (`[SMS] To +223...: Dépôt de ...` and `[Push] Dépôt reçu: ...`); in production
-it only warns that nothing was sent. Each send is recorded in the `notifications`
-table with its status (`PENDING`, `SENT`, `FAILED`).
+it warns that nothing was sent, and the SMS and push rows end `FAILED` with
+`lastError` `NoProviderConfiguredError`. Each send is recorded in the
+`notifications` table with its status (`PENDING`, `SENT`, `FAILED`).
 
 1. Register the phone for push (as the customer, Bearer session):
    `PUT /api/v1/me/devices/push-token` with `{ "token": "<FCM token>" }`

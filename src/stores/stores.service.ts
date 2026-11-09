@@ -390,24 +390,27 @@ export class StoresService {
     const transition = STORE_TRANSITIONS[action];
     const now = new Date();
 
-    const { count } = await this.prisma.hardwareStore.updateMany({
-      where: {
-        id,
-        status: { in: [...transition.from] },
-        // A self-registered store is verified with both documents only. In the
-        // same UPDATE, so an upload (which locks the row) cannot interleave.
-        ...(action === 'verify' && { OR: [...VERIFIABLE] }),
-      },
-      data: {
-        status: transition.to,
-        statusChangedAt: now,
-        statusChangedById: adminId,
-        // Verify and reactivate clear the previous suspension reason.
-        statusReason: transition.needsReason ? reason : null,
-        ...(action === 'verify' && { verifiedAt: now }),
-      },
-    });
+    const apply = () =>
+      this.prisma.hardwareStore.updateMany({
+        where: {
+          id,
+          status: { in: [...transition.from] },
+          // A self-registered store is verified with both documents only. In
+          // the same UPDATE, so an upload (which locks the row) cannot
+          // interleave.
+          ...(action === 'verify' && { OR: [...VERIFIABLE] }),
+        },
+        data: {
+          status: transition.to,
+          statusChangedAt: now,
+          statusChangedById: adminId,
+          // Verify and reactivate clear the previous suspension reason.
+          statusReason: transition.needsReason ? reason : null,
+          ...(action === 'verify' && { verifiedAt: now }),
+        },
+      });
 
+    const { count } = await apply();
     if (count === 0) {
       const current = await this.prisma.hardwareStore.findUnique({
         where: { id },
@@ -426,7 +429,15 @@ export class StoresService {
         transition.from.includes(current.status) &&
         current.registeredById !== null
       ) {
-        throw storeDocumentsMissing(toStoreDocuments(current));
+        const documents = toStoreDocuments(current);
+        if (!documents.identity || !documents.tradeRegister) {
+          throw storeDocumentsMissing(documents);
+        }
+        // Both are there now: the last upload committed between the UPDATE
+        // and this read (F-55). One more try, then the usual refusal.
+        if ((await apply()).count > 0) {
+          return this.findOne(id);
+        }
       }
       throw invalidStatusTransition(
         STORE_ACTION_LABELS[action],

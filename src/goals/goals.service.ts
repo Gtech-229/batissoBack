@@ -112,17 +112,18 @@ export class GoalsService {
     try {
       const { result, toNotify } = await this.prisma.$transaction(
         async (tx) => {
-          await this.ownAccount(tx, actor.userId, accountId, { lock: true });
+          // Read under the lock, as a suspension also locks the row (16b).
+          const { status } = await this.ownAccount(
+            tx,
+            actor.userId,
+            accountId,
+            { lock: true },
+          );
           // Asked again under the lock: a parallel retry waited here.
           const parallel = await this.replay(tx, idempotencyKey, request);
           if (parallel) {
             return { result: parallel, toNotify: [] };
           }
-          // The row is locked, as a suspension also locks it (16b).
-          const { status } = await tx.account.findUniqueOrThrow({
-            where: { id: accountId },
-            select: { status: true },
-          });
           if (status === AccountStatus.SUSPENDED) {
             throw accountSuspended();
           }
@@ -411,28 +412,29 @@ export class GoalsService {
   }
 
   /**
-   * The session user's own account, or 404. With `lock`, the row is read
-   * `FOR UPDATE`: changes to goal balances wait for each other (and for
-   * deposits), so no two of them work from the same stale balances.
+   * The session user's own account and its status, or 404. With `lock`, the
+   * row is read `FOR UPDATE`: changes to goal balances wait for each other
+   * (and for deposits), so no two of them work from the same stale balances.
    */
   async ownAccount(
     client: Tx,
     userId: string,
     accountId: string,
     options: { lock?: boolean } = {},
-  ): Promise<void> {
+  ): Promise<{ status: AccountStatus }> {
     const rows = options.lock
-      ? await client.$queryRaw<{ id: string }[]>`
-          SELECT "id" FROM "accounts"
+      ? await client.$queryRaw<{ status: AccountStatus }[]>`
+          SELECT "status" FROM "accounts"
           WHERE "id" = ${accountId}::uuid AND "customerId" = ${userId}::uuid
           FOR UPDATE`
       : await client.account.findMany({
           where: { id: accountId, customerId: userId },
-          select: { id: true },
+          select: { status: true },
         });
     if (rows.length === 0) {
       throw accountNotFound();
     }
+    return rows[0];
   }
 
   /**

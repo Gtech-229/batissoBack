@@ -6,14 +6,10 @@ import {
   toSkipTake,
   type Paginated,
 } from '../common/pagination.js';
-import {
-  AccountStatus,
-  StoreStatus,
-  type Prisma,
-} from '../generated/prisma/client.js';
+import { AccountStatus, type Prisma } from '../generated/prisma/client.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { storeClosed } from '../stores/stores.errors.js';
+import { lockStoreNotClosed } from '../store-access/verified-store.js';
 import {
   accountNotFound,
   invalidAccountTransition,
@@ -105,11 +101,7 @@ export class AdminAccountsService {
     const transition = TRANSITIONS[action];
     const { account, notificationIds } = await this.prisma.$transaction(
       async (tx) => {
-        const [store] = await tx.$queryRaw<{ status: StoreStatus }[]>`
-        SELECT "status" FROM "hardware_stores" WHERE "id" = ${found.storeId}::uuid FOR SHARE`;
-        if (store?.status === StoreStatus.CLOSED) {
-          throw storeClosed();
-        }
+        await lockStoreNotClosed(tx, found.storeId);
         const [current] = await tx.$queryRaw<{ status: AccountStatus }[]>`
         SELECT "status" FROM "accounts" WHERE "id" = ${id}::uuid FOR UPDATE`;
         if (current?.status !== transition.from) {

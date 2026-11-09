@@ -10,6 +10,7 @@ import {
 } from '../store-reports/period-range.js';
 import { invalidFields } from '../stores/stores.errors.js';
 import { subscriptionStateWhere } from '../subscriptions/store-subscription.js';
+import { today } from '../subscriptions/subscription-status.js';
 import {
   SUBSCRIPTION_STATES,
   type SubscriptionState,
@@ -128,8 +129,11 @@ export class StatsService {
       }
     }
 
+    // One day for the four states (F-50): a request crossing midnight UTC
+    // never counts a store in two states, or in none.
+    const day = today();
     for (const state of SUBSCRIPTION_STATES) {
-      await this.countSubscriptionState(tx, state, of);
+      await this.countSubscriptionState(tx, state, day, of);
     }
 
     for (const row of await tx.hardwareStore.groupBy({
@@ -249,11 +253,12 @@ export class StatsService {
   private async countSubscriptionState(
     tx: Tx,
     state: SubscriptionState,
+    day: string,
     of: (code: string) => CountryFigures | undefined,
   ): Promise<void> {
     for (const row of await tx.hardwareStore.groupBy({
       by: ['countryCode'],
-      where: subscriptionStateWhere(state),
+      where: subscriptionStateWhere(state, day),
       _count: { _all: true },
     })) {
       const country = of(row.countryCode);
