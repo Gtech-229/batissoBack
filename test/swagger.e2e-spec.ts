@@ -419,6 +419,16 @@ describe('Swagger document (e2e)', () => {
     expect(Object.keys(changePassword?.responses ?? {})).toContain('403');
   });
 
+  it('documents the manager-only 403 of the proof removal (F-24)', () => {
+    const remove = operations.find(
+      ([route]) => route === 'DELETE /api/v1/stores/{storeId}/proofs/{proofId}',
+    )?.[1];
+
+    const forbidden = JSON.stringify(remove?.responses?.['403']);
+    expect(forbidden).toContain('qui n’en est pas le gérant');
+    expect(forbidden).not.toContain('vendeur');
+  });
+
   it('documents the 400 for a malformed store id on every store route (F-20)', () => {
     const storeRoutes = operations.filter(([route]) =>
       route.includes('/stores/{storeId}'),

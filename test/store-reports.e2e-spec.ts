@@ -618,6 +618,30 @@ describe('Store reports (e2e)', () => {
       ]);
     });
 
+    it.each([
+      ['an accented name', 'Émile', 'Zoé'],
+      ['a lowercase name', 'adama', 'Ba'],
+    ])(
+      'orders %s as French readers expect (F-26)',
+      async (_case, first, second) => {
+        await prisma.user.update({
+          where: { id: manager.userId },
+          data: { lastName: first },
+        });
+        await prisma.user.update({
+          where: { id: seller.userId },
+          data: { lastName: second },
+        });
+
+        const { staff } = await sellers();
+
+        expect(staff.map((row) => row.userId)).toEqual([
+          manager.userId,
+          seller.userId,
+        ]);
+      },
+    );
+
     it('holds no phone, refuses bad dates, and is for the manager only', async () => {
       const res = await report('sellers', DAY).expect(200);
 

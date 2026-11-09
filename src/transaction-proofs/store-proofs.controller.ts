@@ -261,6 +261,12 @@ export class StoreProofsController {
     description: 'Identifiant invalide ; motif absent ou invalide (`details`)',
     type: ErrorResponse,
   })
+  // Manager only: replaces the class-level 403, which lets sellers in (F-24).
+  @ApiForbiddenResponse({
+    description:
+      'Membre de la quincaillerie qui n’en est pas le gérant (`STORE_ROLE_REQUIRED`)',
+    type: ErrorResponse,
+  })
   remove(
     @CurrentStore() store: CurrentStoreContext,
     @CurrentUser() actor: AuthenticatedUser,

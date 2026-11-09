@@ -703,10 +703,6 @@ enum OrderConfirmationChannel {
   SMS_CODE
 }
 
-/// A material order ("bon de sortie"): articles a customer takes from the
-/// store, paid from one goal of their account (then Unassigned). Unit prices,
-/// names, and units are frozen on its lines at preparation. No money moves
-/// until the customer confirms (10b). The row records who did each step.
 /// A photo of the paper behind a deposit or a material order (24): a receipt, or
 /// a contract the customer signed by hand. It never changes what it is attached
 /// to. Removing one deletes the file and keeps the row. Exactly one target, and
@@ -738,6 +734,10 @@ model TransactionProof {
   @@map("transaction_proofs")
 }
 
+/// A material order ("bon de sortie"): articles a customer takes from the
+/// store, paid from one goal of their account (then Unassigned). Unit prices,
+/// names, and units are frozen on its lines at preparation. No money moves
+/// until the customer confirms (10b). The row records who did each step.
 model MaterialOrder {
   id                        String                    @id @default(uuid(7)) @db.Uuid
   /// Human reference: "B-" and at least 5 digits (B-00042), one platform-wide
@@ -795,11 +795,10 @@ model MaterialOrder {
   lines             MaterialOrderLine[]
   confirmationCodes OrderConfirmationCode[]
   goalMovements     GoalMovement[]
+  proofs            TransactionProof[]
+  adminAlerts       AdminAlert[]
 
   // The store's orders and an account's orders, newest first.
-  proofs      TransactionProof[]
-  adminAlerts AdminAlert[]
-
   @@index([storeId, createdAt])
   @@index([accountId, createdAt])
   @@map("material_orders")

@@ -38,6 +38,9 @@ import {
 } from './report-table.js';
 import { EXPORT_MAX_ROWS, exportTooLarge } from './store-reports.errors.js';
 
+/** Compares names as a French reader sorts them (accents, case). */
+const FRENCH = new Intl.Collator('fr');
+
 type Tx = Prisma.TransactionClient;
 
 /** With a deposit in these last days, or newer than that, a customer is active. */
@@ -276,11 +279,6 @@ export class StoreReportsService {
           include: {
             user: { select: { firstName: true, lastName: true } },
           },
-          orderBy: [
-            { user: { lastName: 'asc' } },
-            { user: { firstName: 'asc' } },
-            { userId: 'asc' },
-          ],
         }),
         deposits: await tx.operation.groupBy({
           by: ['authorId'],
@@ -356,6 +354,15 @@ export class StoreReportsService {
         correctionsOnDeposits: correctionsBy.get(userId) ?? 0,
       };
     });
+    // By last name, then first name, in French order (F-26): the database's
+    // default compares bytes, putting `Émile` after `Zoé`. The user id only
+    // keeps equal names in a stable order.
+    staff.sort(
+      (a, b) =>
+        FRENCH.compare(a.lastName, b.lastName) ||
+        FRENCH.compare(a.firstName, b.firstName) ||
+        (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0),
+    );
 
     return {
       from: period.from,
