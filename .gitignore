@@ -49,6 +49,10 @@ lerna-debug.log*
 .env.production
 .env.db.production
 .env.proxy.production
+.env.backup.production
+
+# Encrypted production backups (18c), never committed
+/backups
 .env.local
 
 # temp directory

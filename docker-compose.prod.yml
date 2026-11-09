@@ -1,8 +1,9 @@
 # Production on the VPS: the API and PostgreSQL (18a) behind Nginx with HTTPS
-# (18b). Settings and secrets come from three git-ignored files, each read only
-# by its own services: .env.production (API), .env.db.production (database) and
-# .env.proxy.production (Nginx, certbot); start from their .example files. The
-# dev docker-compose.yml is separate.
+# (18b), and the nightly encrypted backups (18c). Settings and secrets come from
+# four git-ignored files, each read only by its own services: .env.production
+# (API), .env.db.production (database, backups), .env.proxy.production (Nginx,
+# certbot) and .env.backup.production (backups); start from their .example
+# files. The dev docker-compose.yml is separate.
 #
 # First deploy: follow README "Production on a VPS" (database and API, then the
 # first certificate, then everything): Nginx cannot start before a certificate
@@ -14,13 +15,13 @@ name: batisso-prod
 
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     # POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB only: the database never
     # sees the API's secrets.
     env_file: .env.db.production
     volumes:
-      - pgdata-prod:/var/lib/postgresql/data
+      - pgdata-prod:/var/lib/postgresql
     # No published port: only the API reaches the database, on the Compose
     # network (host `db`).
     healthcheck:
@@ -91,6 +92,25 @@ services:
       - /bin/sh
       - -c
       - trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --no-random-sleep-on-renew; sleep 12h & wait $${!}; done
+
+  backup:
+    build: ./docker/backup
+    image: batisso-backup
+    restart: unless-stopped
+    # POSTGRES_* to connect, BACKUP_PASSPHRASE to encrypt: none of the API's
+    # secrets.
+    env_file:
+      - .env.db.production
+      - .env.backup.production
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - app-storage:/app/storage:ro
+      # The encrypted backups, on the VPS next to this file (git-ignored).
+      - ./backups:/backups
+    # Every day at 01:00 UTC; on demand: run --rm backup backup.sh once
+    command: ['backup.sh', 'schedule']
 
 volumes:
   pgdata-prod:

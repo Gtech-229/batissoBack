@@ -4,7 +4,7 @@ Backend for Bâtisso, a savings-for-construction platform for hardware stores:
 customers save step by step at their store, follow their construction goals, and
 buy materials with every movement recorded in a trustworthy register.
 
-Built with NestJS 12, PostgreSQL 17 (Docker), Prisma 7, and Swagger.
+Built with NestJS 12, PostgreSQL 18 (Docker), Prisma 7, and Swagger.
 
 ## Requirements
 
@@ -651,7 +651,7 @@ Let's Encrypt certificate; the dev `docker-compose.yml` is separate. Before you
 start: Docker with Compose on the VPS, ports 80 and 443 open, and a DNS A record
 for the API's domain (e.g. `api.example.com`) pointing at the VPS.
 
-1. Write the three env files (all git-ignored):
+1. Write the four env files (all git-ignored):
    - `.env.db.production` from `.env.db.production.example`: set
      `POSTGRES_PASSWORD` to a long random password (letters and digits). Do it
      **before the first start**: PostgreSQL reads the password only when it
@@ -664,6 +664,10 @@ for the API's domain (e.g. `api.example.com`) pointing at the VPS.
    - `.env.proxy.production` from `.env.proxy.production.example`:
      `API_DOMAIN` (the domain above) and `LETSENCRYPT_EMAIL` (the Let's Encrypt
      account contact).
+   - `.env.backup.production` from `.env.backup.production.example`:
+     `BACKUP_PASSPHRASE`, 20+ random characters. Every backup is encrypted with
+     it: store a copy in a password manager, **not** with the backups, or they
+     cannot be restored.
 2. Start the database and the API, get the first certificate (once, while
    Nginx is not running, so port 80 is free), then start everything:
 
@@ -709,6 +713,45 @@ HTTPS details:
 - Nginx accepts request bodies up to 6 MB (photo uploads are up to 5 MB) and
   forwards `Host`, `X-Forwarded-For` and `X-Forwarded-Proto` to the API.
 
+Backups:
+
+- **Every day at 01:00 UTC** the `backup` container writes two encrypted files
+  to `./backups` (next to `docker-compose.prod.yml`, owner-only):
+  `batisso-db-<YYYYMMDD-HHMM>.dump.enc` (the database) and
+  `batisso-files-<YYYYMMDD-HHMM>.tar.gz.enc` (identity photos, proofs, store
+  documents). It keeps 14 days and deletes older backup files; nothing else in
+  the folder is touched. Its log: `docker compose -f docker-compose.prod.yml logs backup`.
+- **On demand:** `docker compose -f docker-compose.prod.yml run --rm backup backup.sh once` (for example before
+  an update).
+- **Copy them off-server** regularly, from another machine, for example
+  `rsync -a root@<vps>:/path/to/backend/backups/ ./batisso-backups/`
+  (the files are root-owned and readable by root only). Without `--delete`, on
+  purpose: if the VPS folder is lost, the next copy must not empty yours too;
+  prune old copies there yourself. They are encrypted, but keep the copy private
+  anyway. The certificates and the env files are not in
+  the backups: Let's Encrypt reissues certificates (step 2), and you keep the
+  env files and the passphrase yourself.
+- **Restore**, after copying the two files of one run back into `./backups`:
+
+  ```
+  docker compose -f docker-compose.prod.yml stop api nginx
+  docker compose -f docker-compose.prod.yml run --rm backup backup.sh restore-db <stamp>
+  docker compose -f docker-compose.prod.yml run --rm -v batisso-prod_app-storage:/restore backup sh -c 'openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:BACKUP_PASSPHRASE -in /backups/batisso-files-<stamp>.tar.gz.enc | tar -xzf - -C /restore'
+  docker compose -f docker-compose.prod.yml up -d
+  ```
+
+  `<stamp>` is the `YYYYMMDD-HHMM` part of the file names. `restore-db`
+  restores into a new database first; only when that has fully succeeded does
+  it swap the two, so the backup comes back exactly, even onto a database that
+  has migrated since. The previous database is kept as
+  `batisso_before_<date>` (the log names it); once the API works again, drop
+  it with
+  `docker compose -f docker-compose.prod.yml exec db psql -U batisso -d postgres -c 'DROP DATABASE "batisso_before_<date>"'`.
+  If the restore fails (a wrong `BACKUP_PASSPHRASE`, a damaged file) or the
+  API is still running, nothing changes. The files restore adds the backup's
+  files to the private folders (existing ones with the same name are
+  overwritten).
+
 Day to day:
 
 - Logs: `docker compose -f docker-compose.prod.yml logs -f api`
@@ -716,11 +759,11 @@ Day to day:
 - Password link for a super admin who cannot receive email:
   `docker compose -f docker-compose.prod.yml exec api node dist/cli/password-link.js <email>`
 - Stop: `docker compose -f docker-compose.prod.yml down` keeps the data
-  (`pgdata-prod`, `app-storage` and the certificate volumes). `down -v` deletes it: never run it
+  (`pgdata-prod`, `app-storage` and the certificate volumes; the backups are in
+  `./backups`). `down -v` deletes the volumes: never run it
   on the VPS except to wipe everything on purpose.
 
-From outside, only Nginx's ports 80 and 443 are open; the daily backups come
-with 18c.
+From outside, only Nginx's ports 80 and 443 are open.
 
 The project `.npmrc` sets `legacy-peer-deps=true`: the lockfile is written
 without Prisma Studio's React peers, and every install (local or in the image)
