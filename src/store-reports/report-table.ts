@@ -95,8 +95,9 @@ export function sellersTable(report: SellersReport): ReportTable {
     title: 'Activité par vendeur',
     subtitle: `${periodLabel(report.from, report.to)}, montants en ${report.currencyCode}`,
     columns: [
-      { label: 'Membre', kind: 'text', weight: 3 },
-      { label: 'Rôle', kind: 'text', weight: 2 },
+      // A usual full name needs about 150 pt; the role, 77 pt (F-31).
+      { label: 'Membre', kind: 'text', weight: 2 },
+      { label: 'Rôle', kind: 'text', weight: 1 },
       { label: 'Dépôts', kind: 'count' },
       { label: 'Montant', kind: 'amount' },
       { label: 'Bons préparés', kind: 'count' },

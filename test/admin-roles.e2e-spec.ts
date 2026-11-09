@@ -182,6 +182,37 @@ describe('Admin roles (e2e)', () => {
         .expect(400);
     });
 
+    it('refuses null for the name or the permissions (F-33)', async () => {
+      const role = await createRole('Support', ['stores.read']);
+
+      const name = await superAdmin()
+        .patch(`/api/v1/admin/roles/${role.id}`, { name: null })
+        .expect(400);
+      const permissions = await superAdmin()
+        .patch(`/api/v1/admin/roles/${role.id}`, { permissions: null })
+        .expect(400);
+
+      expect(name.body.details).toEqual([
+        {
+          field: 'name',
+          errors: expect.arrayContaining([
+            'Le nom du rôle doit contenir 1 à 60 caractères',
+          ]),
+        },
+      ]);
+      expect(permissions.body.details).toEqual([
+        {
+          field: 'permissions',
+          errors: expect.arrayContaining([
+            'Les permissions doivent être une liste',
+          ]),
+        },
+      ]);
+      expect(
+        await prisma.accessRole.findUniqueOrThrow({ where: { id: role.id } }),
+      ).toMatchObject({ name: 'Support', permissions: ['stores.read'] });
+    });
+
     it('deletes an unused role, and refuses one still held', async () => {
       const unused = await createRole('Audit');
       const held = await createRole('Support');

@@ -3,10 +3,10 @@ import {
   ArrayUnique,
   IsArray,
   IsIn,
-  IsOptional,
   IsString,
   IsUUID,
   Length,
+  ValidateIf,
 } from 'class-validator';
 import {
   PERMISSION_NAMES,
@@ -39,7 +39,9 @@ export class CreateRoleDto {
 
 export class UpdateRoleDto {
   @ApiPropertyOptional({ description: 'Nouveau nom', example: 'Support' })
-  @IsOptional()
+  // Optional when omitted, but null is refused (F-33): @IsOptional() would let
+  // null through to Prisma, which answers 500.
+  @ValidateIf((_object, value) => value !== undefined)
   @Trim()
   @IsString({ message: NAME_MESSAGE })
   @Length(1, 60, { message: NAME_MESSAGE })
@@ -51,7 +53,9 @@ export class UpdateRoleDto {
     enum: PERMISSION_NAMES,
     isArray: true,
   })
-  @IsOptional()
+  // Optional when omitted, but null is refused (F-33): @IsOptional() would let
+  // null through to Prisma, which answers 500.
+  @ValidateIf((_object, value) => value !== undefined)
   @IsArray({ message: PERMISSIONS_MESSAGE })
   @ArrayUnique({ message: 'Une permission figure deux fois' })
   @IsIn(PERMISSION_NAMES, { each: true, message: UNKNOWN_PERMISSION })

@@ -17,8 +17,12 @@ const MARGIN = 40;
 const ROW_HEIGHT = 18;
 const TITLE_SIZE = 16;
 const BODY_SIZE = 9;
-/** Width of a number column: a text column takes what remains. */
-const NUMBER_COLUMN_WIDTH = 90;
+/** Widths of the number columns: the text columns share what remains. */
+const AMOUNT_COLUMN_WIDTH = 90;
+/** Room for the widest count label, `Bons préparés` (73.3 pt in bold, F-31). */
+const COUNT_COLUMN_WIDTH = 80;
+/** The space a cell keeps free on its right, so neighbours never touch. */
+export const CELL_PADDING = 6;
 /** More columns than this need a page on its side. */
 const PORTRAIT_MAX_COLUMNS = 5;
 
@@ -35,7 +39,11 @@ export function pdfCellText(value: ReportCell, column: ReportColumn): string {
 /** The left edge and width of each column, on a page of this usable width. */
 export function columnLayout(columns: ReportColumn[], usableWidth: number) {
   const texts = columns.filter((column) => column.kind === 'text');
-  const numbersWidth = (columns.length - texts.length) * NUMBER_COLUMN_WIDTH;
+  const numberWidth = (column: ReportColumn) =>
+    column.kind === 'amount' ? AMOUNT_COLUMN_WIDTH : COUNT_COLUMN_WIDTH;
+  const numbersWidth = columns
+    .filter((column) => column.kind !== 'text')
+    .reduce((sum, column) => sum + numberWidth(column), 0);
   const totalWeight = texts.reduce(
     (sum, column) => sum + (column.weight ?? 1),
     0,
@@ -47,7 +55,7 @@ export function columnLayout(columns: ReportColumn[], usableWidth: number) {
     const width =
       column.kind === 'text'
         ? (column.weight ?? 1) * widthPerWeight
-        : NUMBER_COLUMN_WIDTH;
+        : numberWidth(column);
     const position = { x, width };
     x += width;
     return position;
@@ -79,7 +87,7 @@ export function renderPdf(table: ReportTable): Promise<Buffer> {
       cells.forEach((text, index) => {
         const { x, width } = layout[index];
         doc.text(text, x, y, {
-          width: width - 6,
+          width: width - CELL_PADDING,
           height: ROW_HEIGHT,
           lineBreak: false,
           ellipsis: true,

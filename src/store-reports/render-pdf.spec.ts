@@ -1,6 +1,13 @@
+import { fileURLToPath } from 'node:url';
 import { inflateSync } from 'node:zlib';
-import { columnLayout, pdfCellText, renderPdf } from './render-pdf.js';
-import { customersTable } from './report-table.js';
+import PDFDocument from 'pdfkit';
+import {
+  CELL_PADDING,
+  columnLayout,
+  pdfCellText,
+  renderPdf,
+} from './render-pdf.js';
+import { customersTable, sellersTable } from './report-table.js';
 import type { ReportColumn, ReportTable } from './report-table.js';
 
 const TEXT: ReportColumn = { label: 'Nom', kind: 'text' };
@@ -81,6 +88,46 @@ describe('columnLayout', () => {
     const needed = 'Mamadou Lamine Coulibaly'.length * 5.5;
 
     expect(columnLayout(columns, PAGE)[1].width).toBeGreaterThan(needed);
+  });
+
+  describe('sellers, measured in the embedded font (F-31)', () => {
+    const doc = new PDFDocument({
+      size: 'A4',
+      layout: 'landscape',
+      margin: 40,
+    });
+    const LANDSCAPE = doc.page.width - 2 * 40;
+    const font = (name: string) =>
+      fileURLToPath(new URL(`./fonts/${name}`, import.meta.url));
+    const widthOf = (text: string, bold = false) =>
+      doc
+        .font(font(bold ? 'DejaVuSans-Bold.ttf' : 'DejaVuSans.ttf'))
+        .fontSize(9)
+        .widthOfString(text);
+    const { columns } = sellersTable({
+      from: '2026-10-01',
+      to: '2026-10-31',
+      currencyCode: 'XOF',
+      staff: [],
+    });
+    const layout = columnLayout(columns, LANDSCAPE);
+    const room = (index: number) => layout[index].width - CELL_PADDING;
+
+    it('prints a usual full name and the longest role whole', () => {
+      expect(widthOf('Aminata Oumou Traoré-Coulibaly')).toBeLessThan(room(0));
+      expect(widthOf('Vendeur (ancien)')).toBeLessThan(room(1));
+    });
+
+    it('prints every header whole', () => {
+      columns.forEach((column, index) => {
+        expect(widthOf(column.label, true)).toBeLessThan(room(index));
+      });
+    });
+
+    it('fills the landscape page', () => {
+      const last = layout[layout.length - 1];
+      expect(last.x + last.width - layout[0].x).toBeCloseTo(LANDSCAPE);
+    });
   });
 });
 
