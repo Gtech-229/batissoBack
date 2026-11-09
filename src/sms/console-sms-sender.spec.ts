@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import type { EnvironmentVariables } from '../config/env.validation.js';
+import { NoProviderConfiguredError } from '../common/errors/no-provider-configured.error.js';
 import { ConsoleSmsSender } from './console-sms-sender.js';
 
 const TEXT = 'Bâtisso : votre code de connexion est 482915.';
@@ -35,8 +36,14 @@ describe('ConsoleSmsSender', () => {
     },
   );
 
-  it('never logs the text or the phone in production, only a warning', async () => {
-    await senderFor('production').send('+22376000000', TEXT);
+  it('fails in production after a warning without the text or the phone (F-01)', async () => {
+    const error: unknown = await senderFor('production')
+      .send('+22376000000', TEXT)
+      .catch((failure: unknown) => failure);
+
+    expect(error).toBeInstanceOf(NoProviderConfiguredError);
+    // The kind the send log keeps in lastError.
+    expect(error).toHaveProperty('name', 'NoProviderConfiguredError');
 
     expect(log).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledTimes(1);

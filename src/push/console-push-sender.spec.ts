@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import type { EnvironmentVariables } from '../config/env.validation.js';
+import { NoProviderConfiguredError } from '../common/errors/no-provider-configured.error.js';
 import { ConsolePushSender } from './console-push-sender.js';
 
 const TOKEN = 'fcm-token-of-the-phone-0123456789';
@@ -37,8 +38,14 @@ describe('ConsolePushSender', () => {
     },
   );
 
-  it('only warns in production, with neither the message nor the token', async () => {
-    await senderFor('production').send(TOKEN, MESSAGE);
+  it('fails in production after a warning without the message or the token (F-01)', async () => {
+    const error: unknown = await senderFor('production')
+      .send(TOKEN, MESSAGE)
+      .catch((failure: unknown) => failure);
+
+    expect(error).toBeInstanceOf(NoProviderConfiguredError);
+    // The kind the send log keeps in lastError.
+    expect(error).toHaveProperty('name', 'NoProviderConfiguredError');
 
     expect(log).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledTimes(1);

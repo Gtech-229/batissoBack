@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { NoProviderConfiguredError } from '../common/errors/no-provider-configured.error.js';
 import {
   Environment,
   type EnvironmentVariables,
@@ -8,8 +9,9 @@ import type { SmsSender } from './sms-sender.js';
 
 /**
  * Fake provider: writes each SMS to the logs so a developer can read the code.
- * In production it never logs the text (it may hold a one-time code); it only
- * warns that no SMS was sent, since no real provider exists yet.
+ * In production it never logs the text (it may hold a one-time code): it warns
+ * that no SMS was sent, since no real provider exists yet, and fails with
+ * NoProviderConfiguredError so the send log never records it as SENT (F-01).
  */
 @Injectable()
 export class ConsoleSmsSender implements SmsSender {
@@ -24,9 +26,9 @@ export class ConsoleSmsSender implements SmsSender {
   send(phone: string, text: string): Promise<void> {
     if (this.production) {
       this.logger.warn('No SMS provider is configured: the SMS was not sent');
-    } else {
-      this.logger.log(`To ${phone}: ${text}`);
+      return Promise.reject(new NoProviderConfiguredError('SMS'));
     }
+    this.logger.log(`To ${phone}: ${text}`);
     return Promise.resolve();
   }
 }

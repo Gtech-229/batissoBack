@@ -312,6 +312,21 @@ describe('Notifications (e2e)', () => {
       expect(await tokenOf(customer.deviceId)).toBe('shared-phone');
     });
 
+    it('takes no token off another device for an untrusted device (F-22)', async () => {
+      await putToken(seller, { token: 'shared-phone' }).expect(204);
+      // A reset untrusted the customer's device after its access token was
+      // issued: the token still authenticates, the device is no longer trusted.
+      await prisma.userDevice.updateMany({
+        where: { userId: customer.userId, deviceId: customer.deviceId },
+        data: { publicKey: null },
+      });
+
+      await putToken(customer, { token: 'shared-phone' }).expect(204);
+
+      expect(await tokenOf(seller.deviceId)).toBe('shared-phone');
+      expect(await tokenOf(customer.deviceId)).toBeNull();
+    });
+
     it('keeps one owner when two users claim a token at the same time', async () => {
       await Promise.all([
         putToken(seller, { token: 'contested' }).expect(204),

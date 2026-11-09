@@ -732,6 +732,18 @@ export class NotificationsService {
     const write = () =>
       this.prisma.$transaction(async (tx) => {
         if (token !== null) {
+          // Trusted first, and locked (F-22): a device a reset has untrusted
+          // takes no token off another device, and a reset committing now
+          // waits for this write. Raw SQL because Prisma has no row lock.
+          const trusted = await tx.$queryRaw<unknown[]>`
+            SELECT 1 FROM "user_devices"
+            WHERE "userId" = ${actor.userId}::uuid
+              AND "deviceId" = ${actor.deviceId}
+              AND "publicKey" IS NOT NULL
+            FOR UPDATE`;
+          if (trusted.length === 0) {
+            return;
+          }
           await tx.userDevice.updateMany({
             where: {
               pushToken: token,
