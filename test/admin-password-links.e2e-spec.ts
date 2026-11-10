@@ -193,6 +193,98 @@ describe('Admin password links (e2e)', () => {
       expect(await prisma.adminPasswordToken.count()).toBe(1);
     });
 
+    it('uses a link without deadlocking a new request for the same admin (F-77)', async () => {
+      const admin = await createAdmin(prisma, { email: EMAIL });
+      const token = await tokenFor('reset');
+      // A new forgot-password request, held: it has locked the admin row and
+      // will then retire the admin's unused links, as `request` does.
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => (release = resolve));
+      const requesting = prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`
+            SELECT "id" FROM "admins" WHERE "id" = ${admin.id}::uuid FOR UPDATE`;
+          await released;
+          await tx.adminPasswordToken.updateMany({
+            where: { adminId: admin.id, usedAt: null },
+            data: { usedAt: new Date() },
+          });
+        },
+        { timeout: 20_000 },
+      );
+      const using = usePassword(token).then((response) => response);
+
+      // Release only once the link's use really waits on a lock.
+      for (let i = 0; ; i++) {
+        const [{ waiting }] = await prisma.$queryRaw<{ waiting: bigint }[]>`
+          SELECT COUNT(*) AS "waiting" FROM pg_stat_activity
+          WHERE "wait_event_type" = 'Lock' AND "datname" = current_database()`;
+        if (waiting > 0n) {
+          break;
+        }
+        if (i > 200) {
+          throw new Error('The link use never waited on the admin row');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      release();
+      await requesting;
+
+      // The request retired the link first: it is refused as spent, not 500.
+      const response = await using;
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('INVALID_PASSWORD_TOKEN');
+    });
+
+    it('issues no link to the old address while the email is changing (F-39)', async () => {
+      const admin = await createAdmin(prisma, { email: EMAIL });
+      // The super admin's edit, held uncommitted: the new email, and the
+      // unused links retired, as AdminsService.update does.
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => (release = resolve));
+      const editing = prisma.$transaction(
+        async (tx) => {
+          await tx.admin.update({
+            where: { id: admin.id },
+            data: { email: 'awa.new@batisso.test' },
+          });
+          await tx.adminPasswordToken.updateMany({
+            where: { adminId: admin.id, usedAt: null },
+            data: { usedAt: new Date() },
+          });
+          await released;
+        },
+        { timeout: 20_000 },
+      );
+      const asking = askLink('reset').then((response) => response);
+
+      // Release only once the request really waits on the admin row.
+      for (let i = 0; ; i++) {
+        const [{ waiting }] = await prisma.$queryRaw<{ waiting: bigint }[]>`
+          SELECT COUNT(*) AS "waiting" FROM pg_stat_activity
+          WHERE "wait_event_type" = 'Lock' AND "datname" = current_database()`;
+        if (waiting > 0n) {
+          break;
+        }
+        if (i > 200) {
+          throw new Error('The request never waited on the admin row');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      release();
+      await editing;
+
+      const response = await asking;
+      expect(response.status).toBe(202);
+      expect(response.body).toEqual({ message: PASSWORD_LINK_REQUESTED });
+      expect(
+        await prisma.adminPasswordToken.count({
+          where: { adminId: admin.id, usedAt: null },
+        }),
+      ).toBe(0);
+      expect(emails.sentTo(EMAIL)).toHaveLength(0);
+    });
+
     it('finds the admin whatever the case of the email', async () => {
       await createAdmin(prisma, { email: EMAIL });
 

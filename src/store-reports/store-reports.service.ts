@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ONE_SNAPSHOT, toSkipTake } from '../common/pagination.js';
+import { ONE_SNAPSHOT, paginated, toSkipTake } from '../common/pagination.js';
 import { formatAmount } from '../common/money.js';
 import {
   ActivityAction,
@@ -12,7 +12,8 @@ import {
 } from '../generated/prisma/client.js';
 import type { AuthenticatedUser } from '../mobile-auth/authenticated-user.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { invalidFields, storeNotFound } from '../stores/stores.errors.js';
+import { storeCurrencyCode } from '../store-access/verified-store.js';
+import { invalidFields } from '../stores/stores.errors.js';
 import type {
   ExportCustomersDto,
   ExportFormat,
@@ -40,8 +41,6 @@ import { EXPORT_MAX_ROWS, exportTooLarge } from './store-reports.errors.js';
 
 /** Compares names as a French reader sorts them (accents, case). */
 const FRENCH = new Intl.Collator('fr');
-
-type Tx = Prisma.TransactionClient;
 
 /** With a deposit in these last days, or newer than that, a customer is active. */
 const ACTIVE_WINDOW_DAYS = 30;
@@ -123,7 +122,7 @@ export class StoreReportsService {
             _count: { _all: true },
             _sum: { amount: true },
           }),
-          await this.currencyOf(tx, storeId),
+          await storeCurrencyCode(tx, storeId),
         ] as const,
       ONE_SNAPSHOT,
     );
@@ -168,14 +167,7 @@ export class StoreReportsService {
   ): Promise<CustomersReport> {
     const { items, activeCount, inactiveCount, total } =
       await this.readCustomers(storeId, query.status, toSkipTake(query));
-    return {
-      items,
-      total,
-      page: query.page,
-      pageSize: query.pageSize,
-      activeCount,
-      inactiveCount,
-    };
+    return { ...paginated(items, total, query), activeCount, inactiveCount };
   }
 
   /**
@@ -273,7 +265,7 @@ export class StoreReportsService {
     const createdAt = { gte: start, lt: end };
     const data = await this.prisma.$transaction(
       async (tx) => ({
-        currencyCode: await this.currencyOf(tx, storeId),
+        currencyCode: await storeCurrencyCode(tx, storeId),
         members: await tx.storeMember.findMany({
           where: { storeId },
           include: {
@@ -400,7 +392,7 @@ export class StoreReportsService {
   ): Promise<ReportFile> {
     const { items } = await this.readCustomers(storeId, status, 'all');
     const today = new Date().toISOString().slice(0, 10);
-    const currencyCode = await this.currencyOf(this.prisma, storeId);
+    const currencyCode = await storeCurrencyCode(this.prisma, storeId);
     const table = customersTable(items, status, today, currencyCode);
     return this.toFile(storeId, actor, table, {
       name: `rapport-clients-${today}`,
@@ -473,19 +465,5 @@ export class StoreReportsService {
       ]);
     }
     return range;
-  }
-
-  private async currencyOf(
-    client: Tx | PrismaService,
-    storeId: string,
-  ): Promise<string> {
-    const store = await client.hardwareStore.findUnique({
-      where: { id: storeId },
-      select: { country: { select: { currencyCode: true } } },
-    });
-    if (!store) {
-      throw storeNotFound();
-    }
-    return store.country.currencyCode;
   }
 }

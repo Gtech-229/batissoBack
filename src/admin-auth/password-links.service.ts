@@ -58,16 +58,21 @@ export class PasswordLinksService {
       // One request per email at a time, so two parallel requests cannot both
       // pass the cooldown and send two emails.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('admin-password-link:' || ${email}))`;
-      const found = await tx.admin.findUnique({
-        where: { email },
-        select: {
-          id: true,
-          email: true,
-          firstName: true,
-          isActive: true,
-          passwordHash: true,
-        },
-      });
+      // Locked (F-39): an email change (which updates this row) either commits
+      // first, and the old address finds no admin, or waits for this link and
+      // then retires it. Raw SQL because Prisma has no row lock.
+      const [found] = await tx.$queryRaw<
+        {
+          id: string;
+          email: string;
+          firstName: string;
+          isActive: boolean;
+          passwordHash: string | null;
+        }[]
+      >`
+        SELECT "id", "email", "firstName", "isActive", "passwordHash"
+        FROM "admins" WHERE "email" = ${email}
+        FOR UPDATE`;
       const last = await tx.adminPasswordToken.findFirst({
         where: { admin: { email } },
         orderBy: { createdAt: 'desc' },
@@ -136,6 +141,11 @@ export class PasswordLinksService {
     tokenHash: string,
     now: number,
   ): Promise<void> {
+    // The admin row before the tokens, as every other path takes them (F-78):
+    // the server command would otherwise lock in the reverse order and could
+    // deadlock a request or a link's use. A no-op in `request`, which holds it.
+    await tx.$queryRaw`
+      SELECT 1 FROM "admins" WHERE "id" = ${adminId}::uuid FOR UPDATE`;
     await tx.adminPasswordToken.updateMany({
       where: { adminId, usedAt: null },
       data: { usedAt: new Date(now) },
@@ -180,6 +190,10 @@ export class PasswordLinksService {
     const passwordHash = await hashPassword(password);
 
     const ok = await this.prisma.$transaction(async (tx) => {
+      // The admin row first, as `request` and the email change lock it before
+      // the tokens: the opposite order could deadlock (F-77).
+      await tx.$queryRaw`
+        SELECT 1 FROM "admins" WHERE "id" = ${stored.adminId}::uuid FOR UPDATE`;
       const now = new Date();
       const consumed = await tx.adminPasswordToken.updateMany({
         where: { id: stored.id, usedAt: null, expiresAt: { gt: now } },

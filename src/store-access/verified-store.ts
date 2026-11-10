@@ -11,6 +11,24 @@ export interface VerifiedStore {
 }
 
 /**
+ * The store's currency (ISO 4217), from its country; 404 STORE_NOT_FOUND when
+ * the store does not exist. Shared by the cash closings and the reports (F-27).
+ */
+export async function storeCurrencyCode(
+  client: Prisma.TransactionClient,
+  storeId: string,
+): Promise<string> {
+  const store = await client.hardwareStore.findUnique({
+    where: { id: storeId },
+    select: { country: { select: { currencyCode: true } } },
+  });
+  if (!store) {
+    throw storeNotFound();
+  }
+  return store.country.currencyCode;
+}
+
+/**
  * 409 for a change refused because the store is not verified. `refusal` ends
  * the message: what cannot happen until it is, e.g. "son équipe ne peut être
  * modifiée qu’une fois vérifiée".

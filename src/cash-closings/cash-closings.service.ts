@@ -17,6 +17,7 @@ import {
 import type { AuthenticatedUser } from '../mobile-auth/authenticated-user.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CurrentStoreContext } from '../store-access/current-store.js';
+import { storeCurrencyCode } from '../store-access/verified-store.js';
 import { storeNotFound } from '../stores/stores.errors.js';
 import {
   closingKeyReused,
@@ -71,7 +72,7 @@ export class CashClosingsService {
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             select: { createdAt: true },
           }),
-          await this.currencyOf(tx, storeId),
+          await storeCurrencyCode(tx, storeId),
         ] as const,
       ONE_SNAPSHOT,
     );
@@ -131,7 +132,7 @@ export class CashClosingsService {
         const operations = await this.uncounted(tx, store.storeId);
         const totals = closingTotals(operations);
         const discrepancy = countedTotal - totals.expectedTotal;
-        const currencyCode = await this.currencyOf(tx, store.storeId);
+        const currencyCode = await storeCurrencyCode(tx, store.storeId);
         if (discrepancy !== 0n && dto.justification === undefined) {
           throw justificationRequired(
             formatAmount(totals.expectedTotal),
@@ -237,18 +238,6 @@ export class CashClosingsService {
       },
       select: { id: true, type: true, amount: true },
     });
-  }
-
-  /** The currency of the store's country. */
-  private async currencyOf(client: Tx, storeId: string): Promise<string> {
-    const store = await client.hardwareStore.findUnique({
-      where: { id: storeId },
-      select: { country: { select: { currencyCode: true } } },
-    });
-    if (!store) {
-      throw storeNotFound();
-    }
-    return store.country.currencyCode;
   }
 
   /**

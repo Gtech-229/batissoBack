@@ -17,7 +17,6 @@ enum AdminRole {
   ADMIN
 }
 
-/// A member of the Bâtisso team using the web admin (email + password).
 /// A named set of permissions the super admin gives to admins (feature 20).
 /// `permissions` holds names from the code's list (`src/admin-auth/permissions.ts`).
 model AccessRole {
@@ -32,6 +31,7 @@ model AccessRole {
   @@map("admin_roles")
 }
 
+/// A member of the Bâtisso team using the web admin (email + password).
 model Admin {
   id                  String    @id @default(uuid(7)) @db.Uuid
   email               String    @unique
