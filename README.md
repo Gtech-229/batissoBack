@@ -758,10 +758,37 @@ Backups:
   files to the private folders (existing ones with the same name are
   overwritten).
 
+PostgreSQL settings (the `db` service's `command:` in `docker-compose.prod.yml`;
+dev and tests keep the defaults):
+
+- **Sized for a 4 GB, 2-CPU VPS** that also runs the API, Nginx and other
+  work: `shared_buffers=512MB`, `effective_cache_size=2GB`, `work_mem=8MB`,
+  `maintenance_work_mem=128MB`, `max_connections=50` (the API's pool is 10),
+  `max_parallel_workers_per_gather=1`, and `shm_size: 256mb`. On another
+  machine, scale with its RAM: `shared_buffers` about 1/8 to 1/4 of it,
+  `effective_cache_size` about half. Change the values, then
+  `docker compose -f docker-compose.prod.yml up -d db` restarts the database
+  with them (the API reconnects); `SHOW shared_buffers;` in `psql` confirms.
+- **Slow queries:** every statement over 500 ms is logged, without its values
+  (no phone or name reaches the log):
+  `docker compose -f docker-compose.prod.yml logs db | grep duration`.
+- **Where the time goes:** `pg_stat_statements` sums up every query. The ten
+  costliest:
+
+  ```
+  docker compose -f docker-compose.prod.yml exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT calls, round(total_exec_time) AS total_ms, round(mean_exec_time, 1) AS mean_ms, left(query, 80) AS query FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 10"'
+  ```
+
+  The view is created when the `pgdata-prod` volume is first created
+  (`docker/postgres-prod/pg_stat_statements.sql`). On a volume made before it,
+  create it once with
+  `docker compose -f docker-compose.prod.yml exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements"'`.
+
 Day to day:
 
 - Logs: `docker compose -f docker-compose.prod.yml logs -f api`
 - Update: `git pull`, then `docker compose -f docker-compose.prod.yml up -d --build`
+  (or the Deploy button, see "Deploys from GitHub" below)
 - Password link for a super admin who cannot receive email:
   `docker compose -f docker-compose.prod.yml exec api node dist/cli/password-link.js <email>`
 - Stop: `docker compose -f docker-compose.prod.yml down` keeps the data
@@ -769,7 +796,77 @@ Day to day:
   `./backups`). `down -v` deletes the volumes: never run it
   on the VPS except to wipe everything on purpose.
 
-From outside, only Nginx's ports 80 and 443 are open.
+From outside, only Nginx's ports 80 and 443 are open. Inside, the services sit
+on two networks: `edge` (Nginx, certbot, the API) reaches the internet, and
+`data` (the API, PostgreSQL, the backups) is internal, with no route out. Only
+the API is on both, so Nginx cannot reach the database, and neither the
+database nor the backups can reach the internet.
+
+### Deploys from GitHub
+
+After the first deploy above, updates can start from GitHub: **Actions >
+Deploy > Run workflow** on `main`. The workflow
+(`.github/workflows/deploy.yml`) deploys that commit only once its CI run
+passed: over SSH it checks the VPS checkout, takes a backup
+(`backup.sh once`), fast-forwards the checkout to the commit, then runs
+`up -d --build --wait`. It fails, and the job turns red, when:
+
+- it was started from another branch, or CI has not passed for the commit;
+- the VPS checkout is not on `main`, has local changes, or is already past
+  the commit (deploying an older commit is refused);
+- the checkout cannot fast-forward (a commit made on the VPS);
+- the backup fails. Nothing has changed yet: the checkout and the running
+  containers stay as they were. Read
+  `docker compose -f docker-compose.prod.yml logs backup`, fix it, run again;
+- a service is not healthy within 5 minutes. The new containers stay: read
+  `docker compose -f docker-compose.prod.yml logs api`, then deploy a fix. A
+  migration is not undone by redeploying: restore the backup the run took
+  first (Restore above).
+
+One-time setup (SSH on port 22; replace `<...>`):
+
+1. **The deploy user** owns the checkout, at an absolute path made of letters,
+   digits, `.`, `_`, `/` and `-`, and runs Docker without `sudo`:
+   `sudo usermod -aG docker <user>`, then log in again. The `docker` group is
+   as powerful as root on the VPS: give it to this user only.
+2. **The VPS reads the private repo** with a read-only deploy key. On the VPS:
+   `ssh-keygen -t ed25519 -f ~/.ssh/batisso_github -N ''`; add
+   `~/.ssh/batisso_github.pub` in GitHub under the repo's **Settings > Deploy
+   keys**, without write access; add to `~/.ssh/config`:
+
+   ```
+   Host github.com
+     IdentityFile ~/.ssh/batisso_github
+     IdentitiesOnly yes
+   ```
+
+   and clone (or set the remote) with
+   `git@github.com:Gtech-229/batissoBack.git`.
+3. **A key for Actions**, made on your own machine:
+   `ssh-keygen -t ed25519 -f batisso_deploy -N '' -C github-actions-deploy`.
+   Append `batisso_deploy.pub` to the deploy user's `~/.ssh/authorized_keys`
+   on the VPS. The private file `batisso_deploy` becomes a secret (step 5);
+   delete your local copy afterwards.
+4. **The VPS's host key, pinned:** on your machine,
+   `ssh-keyscan -t ed25519 <vps-host>` prints one line. Check that its key
+   matches the VPS's own, from an SSH session you already trust:
+   `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` there against
+   `ssh-keyscan -t ed25519 <vps-host> | ssh-keygen -lf -` here (the same
+   `SHA256:` fingerprint). The line is the `DEPLOY_KNOWN_HOSTS` secret. If the
+   VPS is ever reinstalled, its key changes and deploys stop until you update
+   it.
+5. **In GitHub**, **Settings > Environments > New environment** `production`:
+   - **Required: Deployment branches and tags > Selected branches and tags,
+     with `main` only.** A run uses the workflow file of the branch it is
+     started from, so a branch with an edited `deploy.yml` would skip the
+     workflow's own "main only" check and still receive the SSH key, which
+     is as powerful as root on the VPS. This rule is the one GitHub enforces:
+     it gives the secrets to runs from `main` only.
+   - Optional: yourself as required reviewer, so each run waits for your
+     approval.
+   - Five secrets: `DEPLOY_HOST` (the VPS's address), `DEPLOY_USER`,
+     `DEPLOY_PATH` (the checkout), `DEPLOY_SSH_KEY` (the whole private file
+     from step 3) and `DEPLOY_KNOWN_HOSTS` (step 4).
 
 The project `.npmrc` sets `legacy-peer-deps=true`: the lockfile is written
 without Prisma Studio's React peers, and every install (local or in the image)

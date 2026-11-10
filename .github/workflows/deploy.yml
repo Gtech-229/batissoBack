@@ -1,0 +1,88 @@
+# Production deploy, started by hand: Actions > Deploy > Run workflow, on main.
+# Deploys the selected main commit only once its CI run passed, over SSH, with
+# the same steps as README "Production on a VPS" (git, then compose up --build).
+# One-time setup: README "Deploys from GitHub".
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # To read the CI run of the commit.
+  actions: read
+
+# One deploy at a time; a second one waits, never cancels the first.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Holds the DEPLOY_* secrets.
+    environment: production
+    steps:
+      # A second guard only: a run uses this file from the branch it starts
+      # on, so an edited copy could drop this step. The boundary is the
+      # production environment's rule, main only (README step 5).
+      - name: Refuse anything but main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Deploys run from main only."
+          exit 1
+
+      - name: Require a passed CI run for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          passed=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml \
+            --commit "$SHA" --status success --limit 1 --json databaseId --jq length)
+          if [ "$passed" != 1 ]; then
+            echo "::error::CI has not passed for $SHA: wait for it, or fix it first."
+            exit 1
+          fi
+
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          (umask 077
+            printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts)
+
+      - name: Deploy on the VPS
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          SHA: ${{ github.sha }}
+        run: |
+          # Both go into the remote command line: only safe characters.
+          case "$DEPLOY_PATH" in
+            /*) ;;
+            *) echo "::error::DEPLOY_PATH must be an absolute path."; exit 1 ;;
+          esac
+          if printf '%s' "$DEPLOY_PATH" | grep -q '[^A-Za-z0-9._/-]'; then
+            echo "::error::DEPLOY_PATH may hold only letters, digits, . _ / -"
+            exit 1
+          fi
+          # The host key is pinned: an unknown or changed one stops the deploy.
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "$DEPLOY_USER@$DEPLOY_HOST" sh -s -- "$DEPLOY_PATH" "$SHA" \
+            < .github/scripts/deploy-remote.sh
+
+      - name: Remove the SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
