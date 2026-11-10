@@ -151,7 +151,8 @@ export class MyGoalsController {
    * @access Mobile session (Bearer), the account's customer only
    * @param accountId one of the user's accounts
    * @param goalId the goal
-   * @returns 200 GoalView (CLOSED, balance 0); 409 SYSTEM_GOAL or GOAL_CLOSED
+   * @returns 200 GoalView (CLOSED, balance 0); 409 SYSTEM_GOAL, GOAL_CLOSED or
+   * ACCOUNT_SUSPENDED
    */
   @Post('goals/:goalId/close')
   @HttpCode(HttpStatus.OK)
@@ -168,7 +169,7 @@ export class MyGoalsController {
   })
   @ApiConflictResponse({
     description:
-      'Objectif « Non affecté » (`SYSTEM_GOAL`) ; objectif déjà fermé (`GOAL_CLOSED`)',
+      'Objectif « Non affecté » (`SYSTEM_GOAL`) ; objectif déjà fermé (`GOAL_CLOSED`) ; compte suspendu (`ACCOUNT_SUSPENDED`)',
     type: ErrorResponse,
   })
   closeGoal(

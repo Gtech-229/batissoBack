@@ -290,6 +290,7 @@ describe('Admin accounts (e2e)', () => {
     it.each([
       ['no reason', {}],
       ['a blank reason', { reason: '   ' }],
+      ['a reason of 2 characters (F-45)', { reason: 'ab' }],
       ['a reason too long', { reason: 'x'.repeat(501) }],
       ['null', { reason: null }],
     ])('refuses %s', async (_label, body) => {

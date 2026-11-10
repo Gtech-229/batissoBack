@@ -287,6 +287,50 @@ describe('Inactivity reminders (e2e)', () => {
       );
     });
 
+    it.each([
+      ['a deposit', () => deposit().then(() => undefined)],
+      [
+        'a store suspension',
+        () =>
+          prisma.hardwareStore
+            .update({ where: { id: storeId }, data: { status: 'SUSPENDED' } })
+            .then(() => undefined),
+      ],
+    ])(
+      'does not remind after %s made between the selection and the claim (F-61)',
+      async (_label, meanwhile) => {
+        await deposit();
+        const start = await startOf();
+        // The selection runs for real, then the change lands before the claim.
+        let selectedCount = 0;
+        const original = prisma.$queryRaw.bind(prisma);
+        const selection = vi
+          .spyOn(prisma, '$queryRaw')
+          .mockImplementationOnce((async (
+            ...args: Parameters<typeof original>
+          ) => {
+            const selected = await original(...args);
+            selectedCount = (selected as unknown[]).length;
+            await meanwhile();
+            return selected;
+          }) as typeof original);
+
+        try {
+          expect(
+            await reminders.remindQuietAccounts(daysAfter(start, 31)),
+          ).toEqual({ accountsReminded: 0 });
+        } finally {
+          selection.mockRestore();
+        }
+        expect(selectedCount).toBe(1);
+        expect(await reminderRows()).toEqual([]);
+        expect(
+          (await prisma.account.findUniqueOrThrow({ where: { id: accountId } }))
+            .inactivityRemindedAt,
+        ).toBeNull();
+      },
+    );
+
     it.each(['PENDING', 'SUSPENDED', 'CLOSED'] as const)(
       'does not remind in a %s store',
       async (status) => {

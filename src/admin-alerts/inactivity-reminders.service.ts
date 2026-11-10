@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AccountStatus } from '../generated/prisma/client.js';
+import {
+  AccountStatus,
+  OperationStatus,
+  OperationType,
+  StoreStatus,
+} from '../generated/prisma/client.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SystemSettingsService } from '../system-settings/system-settings.service.js';
@@ -62,11 +67,21 @@ export class InactivityRemindersService {
       try {
         const ids = await this.prisma.$transaction(async (tx) => {
           // The claim: only an account still ACTIVE and not yet reminded for
-          // this period matches, so a parallel run makes it a no-op.
+          // this period matches, so a parallel run makes it a no-op. The
+          // selection is rechecked here (F-61): a deposit or a store suspension
+          // since then means no reminder, and the marker stays.
           const { count } = await tx.account.updateMany({
             where: {
               id: account.id,
               status: AccountStatus.ACTIVE,
+              store: { status: StoreStatus.VERIFIED },
+              operations: {
+                none: {
+                  type: OperationType.DEPOSIT,
+                  status: OperationStatus.CONFIRMED,
+                  createdAt: { gt: account.start },
+                },
+              },
               OR: [
                 { inactivityRemindedAt: null },
                 { inactivityRemindedAt: { lt: account.start } },

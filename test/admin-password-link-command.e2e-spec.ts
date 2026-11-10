@@ -108,19 +108,25 @@ describe('Password link command (e2e)', () => {
     const command = run(EMAIL);
 
     // Release only once the command really waits on a lock.
-    for (let i = 0; ; i++) {
-      const [{ waiting }] = await prisma.$queryRaw<{ waiting: bigint }[]>`
-        SELECT COUNT(*) AS "waiting" FROM pg_stat_activity
-        WHERE "wait_event_type" = 'Lock' AND "datname" = current_database()`;
-      if (waiting > 0n) {
-        break;
+    try {
+      for (let i = 0; ; i++) {
+        const [{ waiting }] = await prisma.$queryRaw<{ waiting: bigint }[]>`
+          SELECT COUNT(*) AS "waiting" FROM pg_stat_activity
+          WHERE "wait_event_type" = 'Lock' AND "datname" = current_database()`;
+        if (waiting > 0n) {
+          break;
+        }
+        if (i > 200) {
+          throw new Error('The command never waited on the admin row');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
       }
-      if (i > 200) {
-        throw new Error('The command never waited on the admin row');
-      }
-      await new Promise((resolve) => setTimeout(resolve, 25));
+    } finally {
+      // Released even when the wait fails, so the held transaction ends here
+      // and no rejection goes unobserved (F-79).
+      release();
+      await Promise.allSettled([requesting, command]);
     }
-    release();
     await requesting;
 
     const { code, log } = await command;

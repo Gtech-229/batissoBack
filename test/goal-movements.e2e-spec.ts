@@ -359,6 +359,33 @@ describe('Moving money between goals (e2e)', () => {
       expect(await balanceOf(cement)).toBe(1000n);
     });
 
+    it('refuses to close a goal, its money staying where it is (F-44)', async () => {
+      const cement = await createGoal('Ciment', '200000');
+      await move(unassignedId, cement, '1000').expect(201);
+      await prisma.account.update({
+        where: { id: accountId },
+        data: { status: 'SUSPENDED', statusReason: 'Fraude suspectée' },
+      });
+      const close = () =>
+        api()
+          .post(`/api/v1/me/accounts/${accountId}/goals/${cement}/close`)
+          .set('Authorization', customer.authorization);
+
+      const refused = await close().expect(409);
+      expect(refused.body.error).toBe('ACCOUNT_SUSPENDED');
+      expect(
+        await prisma.goal.findUniqueOrThrow({ where: { id: cement } }),
+      ).toMatchObject({ status: 'IN_PROGRESS', balance: 1000n });
+      expect(await balanceOf(unassignedId)).toBe(49000n);
+      expect(await prisma.goalMovement.count()).toBe(1);
+
+      await prisma.account.update({
+        where: { id: accountId },
+        data: { status: 'ACTIVE', statusReason: null },
+      });
+      await close().expect(200);
+    });
+
     it('still lets the customer create a goal and read the account, with its status but no reason', async () => {
       await prisma.account.update({
         where: { id: accountId },

@@ -372,6 +372,7 @@ export class GoalsService {
   /**
    * Closes a goal (user decision, 2026-10-22): what it holds goes back to the
    * Unassigned goal, recorded as a GOAL_CLOSED movement, in one transaction.
+   * A move like any other: a suspended account cannot close a goal (F-44).
    */
   async closeGoal(
     actor: AuthenticatedUser,
@@ -379,7 +380,12 @@ export class GoalsService {
     goalId: string,
   ): Promise<GoalView> {
     return this.prisma.$transaction(async (tx) => {
-      await this.ownAccount(tx, actor.userId, accountId, { lock: true });
+      const { status } = await this.ownAccount(tx, actor.userId, accountId, {
+        lock: true,
+      });
+      if (status === AccountStatus.SUSPENDED) {
+        throw accountSuspended();
+      }
       const goal = await this.editableGoal(tx, accountId, goalId);
       if (goal.balance > 0n) {
         const unassigned = await tx.goal.findFirstOrThrow({

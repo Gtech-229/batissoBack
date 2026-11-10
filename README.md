@@ -251,7 +251,8 @@ customer's other accounts and their sign-in stay untouched.
 - `PATCH /api/v1/admin/accounts/:id/suspend` with `{ "reason": "..." }` (3 to 500
   characters) and `PATCH /api/v1/admin/accounts/:id/reactivate`
   (`accounts.manage`). A closed store's accounts cannot change.
-- A suspended account refuses deposits and goal moves (`ACCOUNT_SUSPENDED`).
+- A suspended account refuses deposits, goal moves, and goal closes
+  (`ACCOUNT_SUSPENDED`).
   Purchases, deliveries, cancellations with their re-credit, corrections, and
   every read still work.
 - Staff see `status` and `statusReason` on the account, except a staff member on

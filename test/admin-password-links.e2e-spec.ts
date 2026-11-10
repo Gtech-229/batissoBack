@@ -215,19 +215,25 @@ describe('Admin password links (e2e)', () => {
       const using = usePassword(token).then((response) => response);
 
       // Release only once the link's use really waits on a lock.
-      for (let i = 0; ; i++) {
-        const [{ waiting }] = await prisma.$queryRaw<{ waiting: bigint }[]>`
-          SELECT COUNT(*) AS "waiting" FROM pg_stat_activity
-          WHERE "wait_event_type" = 'Lock' AND "datname" = current_database()`;
-        if (waiting > 0n) {
-          break;
+      try {
+        for (let i = 0; ; i++) {
+          const [{ waiting }] = await prisma.$queryRaw<{ waiting: bigint }[]>`
+            SELECT COUNT(*) AS "waiting" FROM pg_stat_activity
+            WHERE "wait_event_type" = 'Lock' AND "datname" = current_database()`;
+          if (waiting > 0n) {
+            break;
+          }
+          if (i > 200) {
+            throw new Error('The link use never waited on the admin row');
+          }
+          await new Promise((resolve) => setTimeout(resolve, 25));
         }
-        if (i > 200) {
-          throw new Error('The link use never waited on the admin row');
-        }
-        await new Promise((resolve) => setTimeout(resolve, 25));
+      } finally {
+        // Released even when the wait fails, so the held transaction ends
+        // here and no rejection goes unobserved (F-79).
+        release();
+        await Promise.allSettled([requesting, using]);
       }
-      release();
       await requesting;
 
       // The request retired the link first: it is refused as spent, not 500.
@@ -259,19 +265,25 @@ describe('Admin password links (e2e)', () => {
       const asking = askLink('reset').then((response) => response);
 
       // Release only once the request really waits on the admin row.
-      for (let i = 0; ; i++) {
-        const [{ waiting }] = await prisma.$queryRaw<{ waiting: bigint }[]>`
-          SELECT COUNT(*) AS "waiting" FROM pg_stat_activity
-          WHERE "wait_event_type" = 'Lock' AND "datname" = current_database()`;
-        if (waiting > 0n) {
-          break;
+      try {
+        for (let i = 0; ; i++) {
+          const [{ waiting }] = await prisma.$queryRaw<{ waiting: bigint }[]>`
+            SELECT COUNT(*) AS "waiting" FROM pg_stat_activity
+            WHERE "wait_event_type" = 'Lock' AND "datname" = current_database()`;
+          if (waiting > 0n) {
+            break;
+          }
+          if (i > 200) {
+            throw new Error('The request never waited on the admin row');
+          }
+          await new Promise((resolve) => setTimeout(resolve, 25));
         }
-        if (i > 200) {
-          throw new Error('The request never waited on the admin row');
-        }
-        await new Promise((resolve) => setTimeout(resolve, 25));
+      } finally {
+        // Released even when the wait fails, so the held transaction ends
+        // here and no rejection goes unobserved (F-79).
+        release();
+        await Promise.allSettled([editing, asking]);
       }
-      release();
       await editing;
 
       const response = await asking;
