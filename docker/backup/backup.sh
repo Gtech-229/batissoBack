@@ -124,7 +124,7 @@ restore_db() {
   # Docker's DNS answers for the api service only while its container runs; an
   # idle API holds no database connection, so the rename alone cannot tell.
   if getent hosts api >/dev/null 2>&1; then
-    log "refused: the API is running; stop it first (stop api nginx); $POSTGRES_DB is unchanged"
+    log "refused: the API is running; stop it first (stop api, and nginx if it runs); $POSTGRES_DB is unchanged"
     return 1
   fi
   target="${POSTGRES_DB}_restore"

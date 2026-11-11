@@ -5,9 +5,16 @@
 # certbot) and .env.backup.production (backups); start from their .example
 # files. The dev docker-compose.yml is separate.
 #
-# First deploy: follow README "Production on a VPS" (database and API, then the
-# first certificate, then everything): Nginx cannot start before a certificate
-# exists. Afterwards: docker compose -f docker-compose.prod.yml up -d --build
+# Two ways to run, chosen by the `proxy` profile:
+# - Our own Nginx and certbot (ports 80 and 443): put COMPOSE_PROFILES=proxy in
+#   a `.env` file next to this one (Compose reads it by itself; it never reaches
+#   the image). First deploy: README "Production on a VPS" (database and API,
+#   then the first certificate, then everything): Nginx cannot start before a
+#   certificate exists.
+# - Behind the VPS's own web server (ISPConfig, another Nginx): no profile, so
+#   `up` starts only db, api and backup; the web server proxies HTTPS to
+#   127.0.0.1:3000. README "Behind an existing web server (ISPConfig)".
+# Afterwards, either way: docker compose -f docker-compose.prod.yml up -d --build
 #
 # Two networks: `edge` (nginx, certbot, api) reaches the internet; `data`
 # (api, db, backup) is internal. Only the API is on both.
@@ -91,6 +98,8 @@ services:
 
   nginx:
     image: nginx:1.30-alpine
+    # Only with COMPOSE_PROFILES=proxy (see the top of this file).
+    profiles: [proxy]
     restart: unless-stopped
     # The image's own start (it fills the templates), plus a reload every 6 hours
     # so a certificate renewed by certbot is picked up without a restart.
@@ -117,6 +126,9 @@ services:
 
   certbot:
     image: certbot/certbot:v5.8.0
+    # Only with COMPOSE_PROFILES=proxy, like Nginx; `run --rm certbot` (the
+    # first certificate, README) works either way.
+    profiles: [proxy]
     restart: unless-stopped
     # LETSENCRYPT_EMAIL: the account contact, used by the first certificate's
     # command (see README).

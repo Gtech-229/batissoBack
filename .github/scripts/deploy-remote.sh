@@ -45,7 +45,9 @@ git merge --ff-only --quiet "$sha"
 echo "Checkout at $sha."
 
 # Rebuilds what changed and waits until every service is healthy or running;
-# a failed health check fails the deploy.
+# a failed health check fails the deploy. Compose reads the checkout's `.env`
+# by itself: with COMPOSE_PROFILES=proxy this includes our Nginx and certbot,
+# without it only db, api and backup (behind the VPS's own web server).
 $compose up -d --build --wait --wait-timeout 300 </dev/null
 $compose ps </dev/null
 echo "Deployed $sha."
