@@ -5,9 +5,19 @@
 # certbot) and .env.backup.production (backups); start from their .example
 # files. The dev docker-compose.yml is separate.
 #
-# First deploy: follow README "Production on a VPS" (database and API, then the
-# first certificate, then everything): Nginx cannot start before a certificate
-# exists. Afterwards: docker compose -f docker-compose.prod.yml up -d --build
+# Two ways to run, chosen by the `proxy` profile:
+# - Our own Nginx and certbot (ports 80 and 443): put COMPOSE_PROFILES=proxy in
+#   a `.env` file next to this one (Compose reads it by itself; it never reaches
+#   the image). First deploy: README "Production on a VPS" (database and API,
+#   then the first certificate, then everything): Nginx cannot start before a
+#   certificate exists.
+# - Behind the VPS's own web server (ISPConfig, another Nginx): no profile, so
+#   `up` starts only db, api and backup; the web server proxies HTTPS to
+#   127.0.0.1:3000. README "Behind an existing web server (ISPConfig)".
+# Afterwards, either way: docker compose -f docker-compose.prod.yml up -d --build
+#
+# Two networks: `edge` (nginx, certbot, api) reaches the internet; `data`
+# (api, db, backup) is internal. Only the API is on both.
 #
 # `down` keeps the four volumes (database, private files, certificates and
 # challenges); only `down -v` deletes them (never by mistake).
@@ -20,12 +30,42 @@ services:
     # POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB only: the database never
     # sees the API's secrets.
     env_file: .env.db.production
+    # Sized for the 4 GB, 2-CPU VPS, which also runs the API, Nginx and other
+    # work: see README "PostgreSQL settings" to resize for another machine.
+    # Slow statements (500 ms+) are logged without their values (phones,
+    # names); pg_stat_statements sums up every query.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=2GB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - max_connections=50
+      - -c
+      - max_parallel_workers_per_gather=1
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - log_min_duration_statement=500ms
+      - -c
+      - log_parameter_max_length=0
+    # Docker's 64 MB /dev/shm is too small for parallel queries.
+    shm_size: 256mb
     volumes:
       - pgdata-prod:/var/lib/postgresql
-    # No published port: only the API reaches the database, on the Compose
-    # network (host `db`).
+      # Runs once, when the volume is created: the pg_stat_statements view.
+      - ./docker/postgres-prod/pg_stat_statements.sql:/docker-entrypoint-initdb.d/pg_stat_statements.sql:ro
+    # No published port: only the API and the backups reach the database, on
+    # the internal `data` network (host `db`).
+    networks: [data]
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      test:
+        ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -41,6 +81,9 @@ services:
     volumes:
       # The private identity photos, proofs and store documents.
       - app-storage:/app/storage
+    # `edge` for Nginx and the providers (email, SMS, push), `data` for the
+    # database: the only service on both.
+    networks: [edge, data]
     # From the VPS itself only, for the operator's checks; from outside, the
     # API is reached through Nginx.
     ports:
@@ -55,6 +98,8 @@ services:
 
   nginx:
     image: nginx:1.30-alpine
+    # Only with COMPOSE_PROFILES=proxy (see the top of this file).
+    profiles: [proxy]
     restart: unless-stopped
     # The image's own start (it fills the templates), plus a reload every 6 hours
     # so a certificate renewed by certbot is picked up without a restart.
@@ -67,6 +112,8 @@ services:
     env_file: .env.proxy.production
     depends_on:
       - api
+    # `edge` only: Nginx reaches the API, never the database.
+    networks: [edge]
     ports:
       - '80:80'
       - '443:443'
@@ -79,10 +126,15 @@ services:
 
   certbot:
     image: certbot/certbot:v5.8.0
+    # Only with COMPOSE_PROFILES=proxy, like Nginx; `run --rm certbot` (the
+    # first certificate, README) works either way.
+    profiles: [proxy]
     restart: unless-stopped
     # LETSENCRYPT_EMAIL: the account contact, used by the first certificate's
     # command (see README).
     env_file: .env.proxy.production
+    # `edge`: Let's Encrypt is on the internet.
+    networks: [edge]
     volumes:
       - certbot-etc:/etc/letsencrypt
       - certbot-www:/var/www/certbot
@@ -105,12 +157,23 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # `data` only: it needs the database (and `api`, whose name refuses a
+    # restore while the API runs), never the internet.
+    networks: [data]
     volumes:
       - app-storage:/app/storage:ro
       # The encrypted backups, on the VPS next to this file (git-ignored).
       - ./backups:/backups
     # Every day at 01:00 UTC; on demand: run --rm backup backup.sh once
     command: ['backup.sh', 'schedule']
+
+networks:
+  # Nginx, certbot and the API: reaches the internet.
+  edge:
+  # The API, the database and the backups: no route out of the VPS, so the
+  # database and the backups can neither be reached from nor reach outside.
+  data:
+    internal: true
 
 volumes:
   pgdata-prod:
