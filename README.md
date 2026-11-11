@@ -704,7 +704,8 @@ DNS A record for the API's domain (e.g. `api.example.com`) pointing at the VPS.
    `{"status":"ok","database":"up"}`, `http://` redirects to `https://`, and
    `docker compose -f docker-compose.prod.yml run --rm --entrypoint certbot certbot renew --dry-run --webroot -w /var/www/certbot`
    simulates a renewal. Swagger is off in production. On the VPS itself the
-   API is also on `http://127.0.0.1:3000`.
+   API is also on `http://127.0.0.1:3000` (or the `API_HOST_PORT` set in `.env`,
+   see below).
 
 HTTPS details:
 
@@ -816,10 +817,11 @@ database nor the backups can reach the internet.
 
 When the VPS already runs a web server on ports 80 and 443 (here ISPConfig's
 Nginx, with other sites), that server does HTTPS and forwards to the API on
-`127.0.0.1:3000`. Docker runs only `db`, `api` and `backup`: **no `.env` with
-`COMPOSE_PROFILES=proxy`**, so our Nginx and certbot never start and never
-touch the ports. Leave the host's web server, its other sites and its own
-PostgreSQL alone; ours publishes no port.
+`127.0.0.1:<port>`: 3000 by default, or `API_HOST_PORT` (step 1). Docker runs
+only `db`, `api` and `backup`: **no `COMPOSE_PROFILES=proxy`** in `.env`, so
+our Nginx and certbot never start and never touch the ports. Leave the host's
+web server, its other sites and its own PostgreSQL alone; ours publishes no
+port.
 
 1. **The site, in ISPConfig:** Sites > Websites > the API's domain (e.g.
    `apis.example.com`, with its DNS A record on the VPS). Domain tab: **SSL** and
@@ -827,7 +829,9 @@ PostgreSQL alone; ours publishes no port.
    Redirect tab: **Rewrite HTTP to HTTPS** ticked. ISPConfig serves ports 80
    and 443 from the same server block, so without it the directives below
    would also answer on plain HTTP, and passwords, PINs and tokens could cross
-   the network unencrypted. Options tab, **nginx Directives**:
+   the network unencrypted. Options tab, **nginx Directives** (a client
+   account does not see this tab or the SSL settings: the server's
+   administrator sets them):
 
    ```nginx
    client_max_body_size 6m;
@@ -846,17 +850,25 @@ PostgreSQL alone; ours publishes no port.
    The `add_header` line is the same 6-month HSTS as our own Nginx (HTTPS
    details above); leave it out only if the panel's own HSTS option is already
    on, or browsers get the header twice.
+
+   **If the site already forwards to another local port** (an existing
+   `proxy_pass http://127.0.0.1:6100;`, say) and you keep it, publish the API
+   there instead: check the port is free, `ss -tln | grep ':6100 '` prints
+   nothing, then write `API_HOST_PORT=6100` in a `.env` next to
+   `docker-compose.prod.yml` (that line only, no `COMPOSE_PROFILES`). Compose
+   reads it for every command and for the GitHub deploys; inside Docker the API
+   still listens on 3000.
 2. **The env files:** `.env.db.production`, `.env.production` and
-   `.env.backup.production` as in step 1 above. `.env.proxy.production` and
-   `.env` are not needed.
+   `.env.backup.production` as in step 1 above. `.env.proxy.production` is not
+   needed, and `.env` only for `API_HOST_PORT`.
 3. **Start:** `docker compose -f docker-compose.prod.yml up -d --build`
    (migrations and the super admin as in step 2 above).
 4. **Check:** `docker compose -f docker-compose.prod.yml ps` lists `db`, `api`
-   and `backup`, no `nginx`; on the VPS,
-   `curl http://127.0.0.1:3000/api/v1/health` answers
+   and `backup`, no `nginx`, and the api's port as `127.0.0.1:<port>->3000/tcp`;
+   on the VPS, `curl http://127.0.0.1:<port>/api/v1/health` answers
    `{"status":"ok","database":"up"}`; then the same through HTTPS,
    `curl https://<domain>/api/v1/health`. A `502` there means the API is not
-   running, or the directive points elsewhere. Then
+   running, or the directive's port is not the published one. Then
    `curl -sI http://<domain>/api/v1/health` answers `301` with a
    `Location: https://...` (the redirect), and
    `curl -sI https://<domain>/api/v1/health | grep -i strict-transport`
