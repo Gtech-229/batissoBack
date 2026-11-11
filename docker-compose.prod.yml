@@ -13,7 +13,8 @@
 #   certificate exists.
 # - Behind the VPS's own web server (ISPConfig, another Nginx): no profile, so
 #   `up` starts only db, api and backup; the web server proxies HTTPS to
-#   127.0.0.1:3000. README "Behind an existing web server (ISPConfig)".
+#   127.0.0.1:3000, or to the port set by API_HOST_PORT in that `.env`.
+#   README "Behind an existing web server (ISPConfig)".
 # Afterwards, either way: docker compose -f docker-compose.prod.yml up -d --build
 #
 # Two networks: `edge` (nginx, certbot, api) reaches the internet; `data`
@@ -84,10 +85,12 @@ services:
     # `edge` for Nginx and the providers (email, SMS, push), `data` for the
     # database: the only service on both.
     networks: [edge, data]
-    # From the VPS itself only, for the operator's checks; from outside, the
-    # API is reached through Nginx.
+    # From the VPS itself only, for the operator's checks and a host web
+    # server; from outside, the API is reached through Nginx. The host port is
+    # API_HOST_PORT from the `.env` next to this file (3000 when unset or
+    # empty); inside, the API always listens on 3000.
     ports:
-      - '127.0.0.1:3000:3000'
+      - '127.0.0.1:${API_HOST_PORT:-3000}:3000'
     healthcheck:
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/api/v1/health']
       interval: 30s
