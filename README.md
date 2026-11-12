@@ -703,7 +703,8 @@ DNS A record for the API's domain (e.g. `api.example.com`) pointing at the VPS.
 3. Check: `curl https://<API_DOMAIN>/api/v1/health` answers
    `{"status":"ok","database":"up"}`, `http://` redirects to `https://`, and
    `docker compose -f docker-compose.prod.yml run --rm --entrypoint certbot certbot renew --dry-run --webroot -w /var/www/certbot`
-   simulates a renewal. Swagger is off in production. On the VPS itself the
+   simulates a renewal. Swagger is off in production unless `SWAGGER_USER` and
+   `SWAGGER_PASSWORD` are set (Day to day below). On the VPS itself the
    API is also on `http://127.0.0.1:3000` (or the `API_HOST_PORT` set in `.env`,
    see below).
 
@@ -800,6 +801,12 @@ Day to day:
 - Logs: `docker compose -f docker-compose.prod.yml logs -f api`
 - Update: `git pull`, then `docker compose -f docker-compose.prod.yml up -d --build`
   (or the Deploy button, see "Deploys from GitHub" below)
+- API docs for the front-end developers: add `SWAGGER_USER` and
+  `SWAGGER_PASSWORD` (16+ characters, `openssl rand -hex 16`) to
+  `.env.production`, then `docker compose -f docker-compose.prod.yml up -d api`.
+  `https://<domain>/docs` then asks for that login in the browser (`/docs-json`
+  too); wrong or missing credentials get `401`. Remove both lines and run the
+  same command to turn the docs off again.
 - Password link for a super admin who cannot receive email:
   `docker compose -f docker-compose.prod.yml exec api node dist/cli/password-link.js <email>`
 - Stop: `docker compose -f docker-compose.prod.yml down` keeps the data
@@ -989,7 +996,7 @@ must resolve it the same way.
 |---|---|---|---|
 | `DATABASE_URL` | yes | | `postgresql://` URL |
 | `PORT` | no | `3000` | |
-| `NODE_ENV` | no | `development` | `development`, `test`, or `production` (Swagger is off and cookies are `Secure` in production) |
+| `NODE_ENV` | no | `development` | `development`, `test`, or `production` (cookies are `Secure` in production; Swagger is off there unless `SWAGGER_USER` and `SWAGGER_PASSWORD` are set) |
 | `CORS_ORIGINS` | no | none | Comma-separated web admin origins allowed to send cookies, e.g. `http://localhost:5173` |
 | `ADMIN_WEB_URL` | yes | | The web admin's address, used in the password links emailed to admins, e.g. `http://localhost:5173` (`http` or `https`; trailing slashes are dropped) |
 | `JWT_ACCESS_SECRET` | yes | | At least 32 random characters; signs admin access tokens. The `.env.example` placeholder is deliberately too short, so the API refuses to start until you set a real one: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
@@ -998,5 +1005,7 @@ must resolve it the same way.
 | `STORE_DOCUMENT_DIR` | no | `storage/store-documents` | Private directory of the documents sent with a store registration from the app (manager's identity, trade register); created at startup. Never served statically; back it up with the database |
 | `SUPER_ADMIN_EMAIL` | when no super admin exists | | Email of the super admin created at startup |
 | `SUPER_ADMIN_PASSWORD` | when no super admin exists | | 8 to 128 characters with an uppercase letter, a lowercase letter, a digit, and a special character. **Wrap it in quotes**: an unquoted `#` starts a comment. The `.env.example` placeholder breaks the rule on purpose, so the API refuses to start until you choose a real password. Once the super admin exists, both `SUPER_ADMIN_*` variables can be removed |
+| `SWAGGER_USER` | no | | With `SWAGGER_PASSWORD`, serves the API docs in production behind a browser login (HTTP Basic). Set both or neither: one alone stops the API at startup. No `:` in the name |
+| `SWAGGER_PASSWORD` | no | | At least 16 characters, e.g. `openssl rand -hex 16`. Never logged |
 
 The app refuses to start if a variable is missing or invalid.

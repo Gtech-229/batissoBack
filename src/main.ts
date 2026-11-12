@@ -1,9 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module.js';
-import { Environment, EnvironmentVariables } from './config/env.validation.js';
+import type { EnvironmentVariables } from './config/env.validation.js';
 import { configureApp } from './configure-app.js';
-import { setupSwagger } from './swagger.js';
+import { setupDocs } from './swagger.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -11,10 +11,11 @@ async function bootstrap() {
   const port = config.get('PORT', { infer: true });
 
   configureApp(app);
-
-  if (config.get('NODE_ENV', { infer: true }) !== Environment.Production) {
-    setupSwagger(app);
-  }
+  setupDocs(app, {
+    NODE_ENV: config.get('NODE_ENV', { infer: true }),
+    SWAGGER_USER: config.get('SWAGGER_USER', { infer: true }),
+    SWAGGER_PASSWORD: config.get('SWAGGER_PASSWORD', { infer: true }),
+  });
 
   await app.listen(port);
 }
