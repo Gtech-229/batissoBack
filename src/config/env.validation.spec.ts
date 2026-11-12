@@ -259,4 +259,85 @@ describe('validate (environment variables)', () => {
       );
     });
   });
+
+  describe('SWAGGER_USER and SWAGGER_PASSWORD (docs in production)', () => {
+    const DOCS_PASSWORD = 'docs-password-0123456789';
+
+    it('are unset by default', () => {
+      const env = validate(BASE);
+
+      expect(env.SWAGGER_USER).toBeUndefined();
+      expect(env.SWAGGER_PASSWORD).toBeUndefined();
+    });
+
+    it('accept both together', () => {
+      const env = validate({
+        ...BASE,
+        SWAGGER_USER: 'frontdev',
+        SWAGGER_PASSWORD: DOCS_PASSWORD,
+      });
+
+      expect(env.SWAGGER_USER).toBe('frontdev');
+      expect(env.SWAGGER_PASSWORD).toBe(DOCS_PASSWORD);
+    });
+
+    it('read empty values as unset', () => {
+      const env = validate({ ...BASE, SWAGGER_USER: '', SWAGGER_PASSWORD: '' });
+
+      expect(env.SWAGGER_USER).toBeUndefined();
+      expect(env.SWAGGER_PASSWORD).toBeUndefined();
+    });
+
+    it.each([
+      ['only the user', { SWAGGER_USER: 'frontdev' }],
+      ['only the password', { SWAGGER_PASSWORD: DOCS_PASSWORD }],
+      [
+        'the user and an empty password',
+        { SWAGGER_USER: 'frontdev', SWAGGER_PASSWORD: '' },
+      ],
+    ])('reject %s, naming both variables', (_label, vars) => {
+      expect(() => validate({ ...BASE, ...vars })).toThrow(
+        /SWAGGER_USER and SWAGGER_PASSWORD/,
+      );
+    });
+
+    it('rejects a password under 16 characters without echoing it', () => {
+      const short = 'fifteen-chars-x';
+
+      expect(short).toHaveLength(15);
+      expect(() =>
+        validate({
+          ...BASE,
+          SWAGGER_USER: 'frontdev',
+          SWAGGER_PASSWORD: short,
+        }),
+      ).toThrow(
+        expect.objectContaining({
+          message: expect.stringMatching(
+            /^(?=.*SWAGGER_PASSWORD)(?!.*fifteen-chars-x)/s,
+          ) as string,
+        }),
+      );
+    });
+
+    it('rejects a user name containing ":"', () => {
+      expect(() =>
+        validate({
+          ...BASE,
+          SWAGGER_USER: 'front:dev',
+          SWAGGER_PASSWORD: DOCS_PASSWORD,
+        }),
+      ).toThrow(/SWAGGER_USER/);
+    });
+
+    it('never puts the password in the together-or-neither message', () => {
+      expect(() =>
+        validate({ ...BASE, SWAGGER_PASSWORD: DOCS_PASSWORD }),
+      ).toThrow(
+        expect.objectContaining({
+          message: expect.not.stringContaining(DOCS_PASSWORD) as string,
+        }),
+      );
+    });
+  });
 });

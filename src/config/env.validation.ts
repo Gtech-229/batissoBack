@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  Matches,
   Max,
   Min,
   MinLength,
@@ -113,6 +114,32 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsPassword()
   SUPER_ADMIN_PASSWORD?: string;
+
+  /**
+   * With SWAGGER_PASSWORD, turns the API docs on in production, behind HTTP
+   * Basic auth (src/swagger.ts). Both or neither; an empty value counts as
+   * unset. No `:`, which Basic auth forbids in the user name.
+   */
+  @EmptyAsUnset()
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @Matches(/^[^:]+$/, { message: 'SWAGGER_USER must not contain ":"' })
+  SWAGGER_USER?: string;
+
+  /** The docs password, 16+ characters. Never logged. */
+  @EmptyAsUnset()
+  @IsOptional()
+  @IsString()
+  @MinLength(16)
+  SWAGGER_PASSWORD?: string;
+}
+
+/** An empty variable (`NAME=`) reads as unset. */
+function EmptyAsUnset(): PropertyDecorator {
+  return Transform(({ value }: { value: unknown }) =>
+    value === '' ? undefined : value,
+  );
 }
 
 export function validate(
@@ -128,6 +155,15 @@ export function validate(
 
   if (errors.length > 0) {
     throw new Error(errors.toString());
+  }
+  // The docs credentials go together: one alone is a half-done setup.
+  if (
+    (validatedConfig.SWAGGER_USER === undefined) !==
+    (validatedConfig.SWAGGER_PASSWORD === undefined)
+  ) {
+    throw new Error(
+      'SWAGGER_USER and SWAGGER_PASSWORD must be set together, or both left unset',
+    );
   }
   return validatedConfig;
 }
