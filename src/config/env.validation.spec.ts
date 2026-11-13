@@ -340,4 +340,114 @@ describe('validate (environment variables)', () => {
       );
     });
   });
+
+  describe('SMTP_* and EMAIL_FROM (outgoing email)', () => {
+    const SMTP_PASSWORD = 'smtp-pa55word-value';
+    const SMTP = {
+      SMTP_HOST: 'mail.ikaso-mali.com',
+      SMTP_PORT: '465',
+      SMTP_USER: 'alerte@ikaso-mali.com',
+      SMTP_PASSWORD,
+      EMAIL_FROM: 'Ikasso <alerte@ikaso-mali.com>',
+    };
+
+    it('are unset by default', () => {
+      const env = validate(BASE);
+
+      expect(env.SMTP_HOST).toBeUndefined();
+      expect(env.SMTP_PORT).toBeUndefined();
+      expect(env.EMAIL_FROM).toBeUndefined();
+    });
+
+    it('accept all five together and convert SMTP_PORT to a number', () => {
+      const env = validate({ ...BASE, ...SMTP });
+
+      expect(env.SMTP_HOST).toBe('mail.ikaso-mali.com');
+      expect(env.SMTP_PORT).toBe(465);
+      expect(env.SMTP_USER).toBe('alerte@ikaso-mali.com');
+      expect(env.SMTP_PASSWORD).toBe(SMTP_PASSWORD);
+      expect(env.EMAIL_FROM).toBe('Ikasso <alerte@ikaso-mali.com>');
+    });
+
+    it('accept a bare address as EMAIL_FROM', () => {
+      expect(
+        validate({ ...BASE, ...SMTP, EMAIL_FROM: 'alerte@ikaso-mali.com' })
+          .EMAIL_FROM,
+      ).toBe('alerte@ikaso-mali.com');
+    });
+
+    it('read empty values as unset, SMTP_PORT included', () => {
+      const env = validate({
+        ...BASE,
+        SMTP_HOST: '',
+        SMTP_PORT: '',
+        SMTP_USER: '',
+        SMTP_PASSWORD: '',
+        EMAIL_FROM: '',
+      });
+
+      expect(env.SMTP_HOST).toBeUndefined();
+      expect(env.SMTP_PORT).toBeUndefined();
+      expect(env.SMTP_PASSWORD).toBeUndefined();
+    });
+
+    it.each(Object.keys(SMTP))(
+      'reject the set without %s, naming the variables',
+      (missing) => {
+        const partial: Record<string, string> = { ...SMTP };
+        delete partial[missing];
+
+        expect(() => validate({ ...BASE, ...partial })).toThrow(
+          /SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM must be set together/,
+        );
+      },
+    );
+
+    it('rejects a lone SMTP_HOST', () => {
+      expect(() =>
+        validate({ ...BASE, SMTP_HOST: 'mail.ikaso-mali.com' }),
+      ).toThrow(/must be set together/);
+    });
+
+    it.each([
+      ['not a number', 'abc'],
+      ['zero', '0'],
+      ['above 65535', '70000'],
+    ])('rejects SMTP_PORT %s', (_label, port) => {
+      expect(() => validate({ ...BASE, ...SMTP, SMTP_PORT: port })).toThrow(
+        /SMTP_PORT/,
+      );
+    });
+
+    it.each([
+      ['a name without an address', 'Ikasso'],
+      ['a line break', 'Ikasso <alerte@ikaso-mali.com>\r\nBcc: x@y.z'],
+      ['an unclosed bracket', 'Ikasso <alerte@ikaso-mali.com'],
+    ])('rejects EMAIL_FROM with %s', (_label, from) => {
+      expect(() => validate({ ...BASE, ...SMTP, EMAIL_FROM: from })).toThrow(
+        /EMAIL_FROM/,
+      );
+    });
+
+    it('rejects a SMTP_HOST with a space or a scheme', () => {
+      expect(() =>
+        validate({ ...BASE, ...SMTP, SMTP_HOST: 'smtp://mail.ikaso-mali.com' }),
+      ).toThrow(/SMTP_HOST/);
+    });
+
+    it('never puts the password in an error message', () => {
+      const { SMTP_HOST: _host, ...withoutHost } = SMTP;
+
+      expect(() => validate({ ...BASE, ...withoutHost })).toThrow(
+        expect.objectContaining({
+          message: expect.not.stringContaining(SMTP_PASSWORD) as string,
+        }),
+      );
+      expect(() => validate({ ...BASE, ...SMTP, SMTP_PORT: 'abc' })).toThrow(
+        expect.objectContaining({
+          message: expect.not.stringContaining(SMTP_PASSWORD) as string,
+        }),
+      );
+    });
+  });
 });

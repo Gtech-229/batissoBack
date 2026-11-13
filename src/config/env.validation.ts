@@ -15,6 +15,13 @@ import {
 import { IsPassword } from '../common/validation/password.js';
 import { TrimLowerCase } from '../common/validation/trim.js';
 
+/**
+ * EMAIL_FROM: `Name <address>` or a bare `address`. No line break, so the
+ * value cannot add a header.
+ */
+const EMAIL_FROM_PATTERN =
+  /^(?:[^<>@\r\n]+ <[^\s<>@]+@[^\s<>@]+>|[^\s<>@]+@[^\s<>@]+)$/;
+
 export enum Environment {
   Development = 'development',
   Production = 'production',
@@ -133,14 +140,73 @@ export class EnvironmentVariables {
   @IsString()
   @MinLength(16)
   SWAGGER_PASSWORD?: string;
+
+  /**
+   * The outgoing mail server (src/email/smtp-email-sender.ts). SMTP_HOST,
+   * SMTP_PORT, SMTP_USER, SMTP_PASSWORD and EMAIL_FROM go together: all set,
+   * admins' emails go out over SMTP; none, the console fake. Empty counts as
+   * unset.
+   */
+  @EmptyAsUnset()
+  @IsOptional()
+  @Matches(/^[A-Za-z0-9.-]+$/, {
+    message: 'SMTP_HOST must be a host name or an IPv4 address',
+  })
+  SMTP_HOST?: string;
+
+  /** 465: TLS from the first byte; any other port: STARTTLS required. */
+  @EmptyAsUnset()
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(65535)
+  SMTP_PORT?: number;
+
+  @EmptyAsUnset()
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  SMTP_USER?: string;
+
+  /** Never logged nor put in an error message. */
+  @EmptyAsUnset()
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  SMTP_PASSWORD?: string;
+
+  /** The sender admins see: `Name <address>` or a bare `address`. */
+  @EmptyAsUnset()
+  @IsOptional()
+  @Matches(EMAIL_FROM_PATTERN, {
+    message: 'EMAIL_FROM must be "Name <address>" or an address',
+  })
+  EMAIL_FROM?: string;
 }
 
-/** An empty variable (`NAME=`) reads as unset. */
+/** An empty variable (`NAME=`) reads as unset, before any conversion. */
 function EmptyAsUnset(): PropertyDecorator {
-  return Transform(({ value }: { value: unknown }) =>
-    value === '' ? undefined : value,
+  return Transform(
+    ({
+      obj,
+      key,
+      value,
+    }: {
+      obj: Record<string, unknown>;
+      key: string;
+      value: unknown;
+    }) => (obj[key] === '' ? undefined : value),
   );
 }
+
+/** The SMTP settings that must be set together. */
+export const SMTP_VARIABLES = [
+  'SMTP_HOST',
+  'SMTP_PORT',
+  'SMTP_USER',
+  'SMTP_PASSWORD',
+  'EMAIL_FROM',
+] as const;
 
 export function validate(
   configuration: Record<string, unknown>,
@@ -163,6 +229,15 @@ export function validate(
   ) {
     throw new Error(
       'SWAGGER_USER and SWAGGER_PASSWORD must be set together, or both left unset',
+    );
+  }
+  // The mail settings too: some without the others cannot send.
+  const smtpSet = SMTP_VARIABLES.filter(
+    (name) => validatedConfig[name] !== undefined,
+  ).length;
+  if (smtpSet !== 0 && smtpSet !== SMTP_VARIABLES.length) {
+    throw new Error(
+      `${SMTP_VARIABLES.join(', ')} must be set together, or all left unset`,
     );
   }
   return validatedConfig;
