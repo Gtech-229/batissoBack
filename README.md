@@ -54,9 +54,16 @@ Nobody but the admin ever knows their password:
 - A mistyped email: the super admin corrects it with
   `PATCH /api/v1/admin/admins/:id` (`email`, `firstName`, `lastName`); the links
   sent to the old address stop working, and the admin asks again.
-- No email provider exists yet: outside production, the console sender prints
-  each email in the API log (`[Email] To <address>: ...`), link included. In
-  production it only warns that nothing was sent.
+- Sending: with `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` and
+  `EMAIL_FROM` set (all five or none), emails go out through that SMTP server,
+  encrypted (port 465 TLS, any other port STARTTLS required, certificate
+  checked). Without them, the console sender prints each email in the API log
+  (`[Email] To <address>: ...`), link included, outside production; in
+  production it only warns that nothing was sent. A failed send is logged as
+  `Password email not sent: SMTP send failed (<code> <reply>)`, without the
+  address or the link (`EAUTH 535`: wrong user or password; `ETIMEDOUT` or
+  `ECONNECTION`: server unreachable; `ESOCKET`/`ETLS`: certificate or TLS
+  problem). The admin asks again after a minute.
 
 **Super admin who cannot receive email.** On the server, run `npm run build`,
 then `npm run admin:password-link -- <email>`. It prints a link for that super
@@ -807,6 +814,12 @@ Day to day:
   `https://<domain>/docs` then asks for that login in the browser (`/docs-json`
   too); wrong or missing credentials get `401`. Remove both lines and run the
   same command to turn the docs off again.
+- Admin emails (password links): add the five `SMTP_*`/`EMAIL_FROM` lines to
+  `.env.production` (see the variables table), then
+  `docker compose -f docker-compose.prod.yml up -d api`. Check with
+  `forgot-password?mode=reset` for your own admin email: the email arrives,
+  and `docker compose -f docker-compose.prod.yml logs api | grep -i 'password email'`
+  shows no error.
 - Password link for a super admin who cannot receive email:
   `docker compose -f docker-compose.prod.yml exec api node dist/cli/password-link.js <email>`
 - Stop: `docker compose -f docker-compose.prod.yml down` keeps the data
@@ -1007,5 +1020,10 @@ must resolve it the same way.
 | `SUPER_ADMIN_PASSWORD` | when no super admin exists | | 8 to 128 characters with an uppercase letter, a lowercase letter, a digit, and a special character. **Wrap it in quotes**: an unquoted `#` starts a comment. The `.env.example` placeholder breaks the rule on purpose, so the API refuses to start until you choose a real password. Once the super admin exists, both `SUPER_ADMIN_*` variables can be removed |
 | `SWAGGER_USER` | no | | With `SWAGGER_PASSWORD`, serves the API docs in production behind a browser login (HTTP Basic). Set both or neither: one alone stops the API at startup. No `:` in the name |
 | `SWAGGER_PASSWORD` | no | | At least 16 characters, e.g. `openssl rand -hex 16`. Never logged |
+| `SMTP_HOST` | no | | Outgoing mail server for the admins' emails, e.g. `mail.example.com`. `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` and `EMAIL_FROM` go together: all five or none (some alone stop the API at startup). None: no email is sent in production |
+| `SMTP_PORT` | with `SMTP_HOST` | | `465` (TLS from the first byte) or another port such as `587` (STARTTLS required) |
+| `SMTP_USER` | with `SMTP_HOST` | | The mailbox login, usually its address |
+| `SMTP_PASSWORD` | with `SMTP_HOST` | | The mailbox password. Never logged; quote it if it holds `#` |
+| `EMAIL_FROM` | with `SMTP_HOST` | | The sender admins see, `Name <address>` or `address`, usually the `SMTP_USER` mailbox (servers often refuse another address) |
 
 The app refuses to start if a variable is missing or invalid.
