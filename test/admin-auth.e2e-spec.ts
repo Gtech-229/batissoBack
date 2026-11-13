@@ -67,7 +67,7 @@ describe('Admin authentication (e2e)', () => {
       const refresh = cookies.get(REFRESH)!.header;
       expect(access).toMatch(/HttpOnly/);
       expect(access).toMatch(/SameSite=Lax/);
-      expect(access).toMatch(/Path=\/api\/v1;/);
+      expect(access).toMatch(/Path=\/;/);
       expect(access).toMatch(/Max-Age=900/);
       expect(refresh).toMatch(/HttpOnly/);
       expect(refresh).toMatch(/Path=\/api\/v1\/admin\/auth/);
@@ -302,9 +302,13 @@ describe('Admin authentication (e2e)', () => {
         .set('Cookie', cookies.get(REFRESH)!.pair)
         .expect(204);
 
-      expect(
-        cookiesFrom(response.headers['set-cookie']).get(ACCESS)!.header,
-      ).toMatch(/Expires=Thu, 01 Jan 1970/);
+      const cleared = cookiesFrom(response.headers['set-cookie']);
+      // Cleared with the same paths they were set with, or they would stay.
+      expect(cleared.get(ACCESS)!.header).toMatch(/Expires=Thu, 01 Jan 1970/);
+      expect(cleared.get(ACCESS)!.header).toMatch(/Path=\/;/);
+      expect(cleared.get(REFRESH)!.header).toMatch(
+        /Path=\/api\/v1\/admin\/auth/,
+      );
       const [session] = await prisma.adminSession.findMany();
       expect(session.revokedAt).not.toBeNull();
 
