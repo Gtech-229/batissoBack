@@ -84,16 +84,24 @@ export class AdminAlertView {
 
   @ApiProperty({
     description:
-      'ACCOUNT_BALANCE_GAP (le solde du compte ne correspond pas à ses opérations), GOAL_BALANCE_GAP (le solde d’un objectif ne correspond pas à ses opérations et mouvements), GOAL_SUM_GAP (les objectifs ne totalisent pas le solde du compte), ORDER_CANCELLATION_UNANSWERED (une demande d’annulation d’un client est restée sans réponse du gérant)',
+      'ACCOUNT_BALANCE_GAP (le solde du compte ne correspond pas à ses opérations), GOAL_BALANCE_GAP (le solde d’un objectif ne correspond pas à ses opérations et mouvements), GOAL_SUM_GAP (les objectifs ne totalisent pas le solde du compte), ORDER_CANCELLATION_UNANSWERED (une demande d’annulation d’un client est restée sans réponse du gérant), CODE_LIMIT_REACHED (le plafond de codes de connexion de la plateforme a été atteint : plus aucun code n’est envoyé jusqu’à la fin de la fenêtre ; ni quincaillerie ni compte)',
     enum: AdminAlertType,
   })
   type: AdminAlertType;
 
-  @ApiProperty({ type: AdminAlertStore })
-  store: AdminAlertStore;
+  @ApiProperty({
+    description: 'La quincaillerie ; null pour CODE_LIMIT_REACHED',
+    type: AdminAlertStore,
+    nullable: true,
+  })
+  store: AdminAlertStore | null;
 
-  @ApiProperty({ type: AdminAlertAccount })
-  account: AdminAlertAccount;
+  @ApiProperty({
+    description: 'Le compte ; null pour CODE_LIMIT_REACHED',
+    type: AdminAlertAccount,
+    nullable: true,
+  })
+  account: AdminAlertAccount | null;
 
   @ApiProperty({
     description: 'L’objectif, pour GOAL_BALANCE_GAP',
@@ -137,8 +145,8 @@ export const ADMIN_ALERT_INCLUDE = {
 } as const;
 
 type AlertWithRelations = AdminAlert & {
-  store: Pick<HardwareStore, 'id' | 'name'>;
-  account: Pick<Account, 'id' | 'number'>;
+  store: Pick<HardwareStore, 'id' | 'name'> | null;
+  account: Pick<Account, 'id' | 'number'> | null;
   goal: Pick<Goal, 'id' | 'label'> | null;
   order: Pick<MaterialOrder, 'id' | 'reference'> | null;
   resolvedBy: Pick<Admin, 'id' | 'firstName' | 'lastName'> | null;
@@ -148,8 +156,11 @@ export function toAdminAlertView(alert: AlertWithRelations): AdminAlertView {
   return {
     id: alert.id,
     type: alert.type,
-    store: { id: alert.store.id, name: alert.store.name },
-    account: { id: alert.account.id, number: alert.account.number },
+    store: alert.store && { id: alert.store.id, name: alert.store.name },
+    account: alert.account && {
+      id: alert.account.id,
+      number: alert.account.number,
+    },
     goal: alert.goal ? { id: alert.goal.id, label: alert.goal.label } : null,
     order: alert.order
       ? { id: alert.order.id, reference: alert.order.reference }

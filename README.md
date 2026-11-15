@@ -71,8 +71,9 @@ admin and nothing else (`set` without a password, `reset` otherwise) and exits
 with code 1 for any other email. Treat the link like a password.
 
 Security settings (max login attempts before a 15-minute lock, max sessions per
-admin, max wrong PINs before a mobile user is locked, where 0 means no limit) are
-editable at `PATCH /api/v1/admin/settings`, by the super admin or an admin whose
+admin, max wrong PINs before a mobile user is locked, where 0 means no limit, and
+the platform-wide sign-in code caps `maxCodesPerHour` and `maxCodesPerDay`, see
+"First mobile sign-in") are editable at `PATCH /api/v1/admin/settings`, by the super admin or an admin whose
 role holds `settings.manage`.
 
 ### Roles and permissions
@@ -140,10 +141,16 @@ A phone already known as a user (a store's first manager, registered above, or a
 customer whose account was opened at a counter) activates; a new phone signs up
 in the same steps. There is no real SMS provider yet: in development, each code
 is printed in the API log (`[SMS] To +223...: ...`). Codes go to any number of
-the active country, limited per phone only (1 a minute, 5 an hour, 10 a day):
-before connecting a paid SMS provider, add a global or per-IP limit, or the
-provider's fraud controls, so no client can make the platform pay for SMS
-across a whole number range.
+the active country, limited per phone (1 a minute, 5 an hour, 10 a day) and for
+the whole platform: by default **50 codes in a rolling hour and 200 in 24
+hours**, for every phone together (`maxCodesPerHour` 1 to 10000 and
+`maxCodesPerDay` 1 to 100000 in the admin settings). Past a cap no code is
+sent, the answer stays the same (it reveals nothing), the log says
+`Code limit reached (hour|day): no code sent` without the phone, and a
+`CODE_LIMIT_REACHED` admin alert opens (one at a time; resolve it once the cause
+is clear). Codes start again as the window moves on, or at once if an admin
+raises the cap. A per-IP limit does not apply: behind the VPS's web server every
+request comes from `127.0.0.1`.
 
 1. `POST /api/v1/auth/code` `{ "phone": "76 00 00 00" }`: sends a 6-digit code
    (valid 10 minutes), to a known phone or a new one. The answer is always the
@@ -622,7 +629,9 @@ changes a balance (a manager fixes it with a correction). The run logs one line:
 
 - `GET /api/v1/admin/alerts` (`alerts.read`): `status=open` (default),
   `resolved` or `all`, `type`, paginated. Each alert names the store, the
-  account and the gap (stored minus computed), never a balance.
+  account and the gap (stored minus computed), never a balance. A
+  `CODE_LIMIT_REACHED` alert (the sign-in code cap, see "First mobile sign-in")
+  has `store` and `account` set to `null`.
 - `PATCH /api/v1/admin/alerts/:id/resolve` (`alerts.manage`): records who and
   when. A gap still there the next night creates a new alert.
 

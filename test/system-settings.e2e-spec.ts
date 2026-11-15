@@ -47,6 +47,8 @@ describe('System settings (e2e)', () => {
       deliveryAlertDays: 7,
       cancellationEscalationHours: 48,
       inactivityReminderDays: 30,
+      maxCodesPerHour: 50,
+      maxCodesPerDay: 200,
     });
   });
 
@@ -72,6 +74,8 @@ describe('System settings (e2e)', () => {
       deliveryAlertDays: 7,
       cancellationEscalationHours: 48,
       inactivityReminderDays: 30,
+      maxCodesPerHour: 50,
+      maxCodesPerDay: 200,
     });
     const read = await api()
       .get('/api/v1/admin/settings')
@@ -188,6 +192,59 @@ describe('System settings (e2e)', () => {
     },
   );
 
+  it('lets the super admin change the code caps (25a)', async () => {
+    const response = await api()
+      .patch('/api/v1/admin/settings')
+      .set('Cookie', superCookie)
+      .send({ maxCodesPerHour: 80, maxCodesPerDay: 400 })
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      maxCodesPerHour: 80,
+      maxCodesPerDay: 400,
+      inactivityReminderDays: 30,
+    });
+    const stored = await prisma.systemSettings.findUniqueOrThrow({
+      where: { id: 1 },
+    });
+    expect(stored.maxCodesPerHour).toBe(80);
+    expect(stored.maxCodesPerDay).toBe(400);
+  });
+
+  it.each([
+    [
+      'maxCodesPerHour',
+      [0, 10_001, 7.5, '50', null],
+      'Le nombre de codes de connexion par heure doit être un entier entre 1 et 10000',
+    ],
+    [
+      'maxCodesPerDay',
+      [0, 100_001, 7.5, '200', null],
+      'Le nombre de codes de connexion par jour doit être un entier entre 1 et 100000',
+    ],
+  ] as const)(
+    'rejects invalid %s values in French',
+    async (field, values, message) => {
+      for (const value of values) {
+        const response = await api()
+          .patch('/api/v1/admin/settings')
+          .set('Cookie', superCookie)
+          .send({ [field]: value })
+          .expect(400);
+
+        expect(response.body.details).toEqual([{ field, errors: [message] }]);
+      }
+    },
+  );
+
+  it('refuses the code caps to an ADMIN without settings.manage', async () => {
+    await api()
+      .patch('/api/v1/admin/settings')
+      .set('Cookie', adminCookie)
+      .send({ maxCodesPerHour: 80 })
+      .expect(403);
+  });
+
   it('refuses the reminder delay to an ADMIN without settings.manage', async () => {
     await api()
       .patch('/api/v1/admin/settings')
@@ -220,6 +277,8 @@ describe('System settings (e2e)', () => {
         deliveryAlertDays: 7,
         cancellationEscalationHours: 48,
         inactivityReminderDays: 30,
+        maxCodesPerHour: 50,
+        maxCodesPerDay: 200,
       });
       const stored = await prisma.systemSettings.findUniqueOrThrow({
         where: { id: 1 },

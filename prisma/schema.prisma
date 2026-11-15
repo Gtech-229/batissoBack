@@ -126,6 +126,11 @@ model SystemSettings {
   cancellationEscalationHours Int      @default(48)
   /// Days without a deposit before a customer is reminded (17c); 1 to 365 (CHECK).
   inactivityReminderDays      Int      @default(30)
+  /// Sign-in and sign-up codes the whole platform may send in a rolling hour
+  /// (25a), on top of the per-phone limits; 1 to 10000 (CHECK).
+  maxCodesPerHour             Int      @default(50)
+  /// The same over a rolling 24 hours (25a); 1 to 100000 (CHECK).
+  maxCodesPerDay              Int      @default(200)
   updatedAt                   DateTime @updatedAt
   updatedById                 String?  @db.Uuid
 
@@ -410,6 +415,8 @@ model PhoneVerification {
   createdAt      DateTime  @default(now())
 
   @@index([phone, createdAt])
+  /// The platform-wide code count (25a).
+  @@index([createdAt])
   @@map("phone_verifications")
 }
 
@@ -1195,6 +1202,9 @@ enum AdminAlertType {
   GOAL_SUM_GAP
   /// A cancellation request left unanswered past the delay (17b).
   ORDER_CANCELLATION_UNANSWERED
+  /// The platform-wide sign-in code cap was reached: codes stop until the
+  /// window passes (25a). No store, no account.
+  CODE_LIMIT_REACHED
 }
 
 /// A problem found by a scheduled job, for admins to look into (17a). Never a
@@ -1203,8 +1213,9 @@ enum AdminAlertType {
 model AdminAlert {
   id           String         @id @default(uuid(7)) @db.Uuid
   type         AdminAlertType
-  storeId      String         @db.Uuid
-  accountId    String         @db.Uuid
+  /// Required except for CODE_LIMIT_REACHED, which has neither (CHECK).
+  storeId      String?        @db.Uuid
+  accountId    String?        @db.Uuid
   /// The goal, for GOAL_BALANCE_GAP only.
   goalId       String?        @db.Uuid
   /// The order, for ORDER_CANCELLATION_UNANSWERED only.
@@ -1215,8 +1226,8 @@ model AdminAlert {
   resolvedAt   DateTime?
   resolvedById String?        @db.Uuid
 
-  store      HardwareStore  @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  account    Account        @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  store      HardwareStore? @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  account    Account?       @relation(fields: [accountId], references: [id], onDelete: Restrict)
   goal       Goal?          @relation(fields: [goalId], references: [id], onDelete: Restrict)
   order      MaterialOrder? @relation(fields: [orderId], references: [id], onDelete: Restrict)
   resolvedBy Admin?         @relation(fields: [resolvedById], references: [id], onDelete: SetNull)

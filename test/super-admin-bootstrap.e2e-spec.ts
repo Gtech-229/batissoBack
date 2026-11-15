@@ -55,6 +55,8 @@ describe('Super admin bootstrap and system settings (e2e)', () => {
       deliveryAlertDays: 7,
       cancellationEscalationHours: 48,
       inactivityReminderDays: 30,
+      maxCodesPerHour: 50,
+      maxCodesPerDay: 200,
     });
   });
 });

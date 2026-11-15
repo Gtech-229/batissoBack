@@ -224,6 +224,43 @@ describe('Admin alerts (e2e)', () => {
     });
   });
 
+  it('lists, filters and resolves a code-limit alert, which has no store or account (25a)', async () => {
+    const { cookie } = await signedIn(['alerts.read', 'alerts.manage']);
+    const codeAlert = await prisma.adminAlert.create({
+      data: { type: 'CODE_LIMIT_REACHED' },
+    });
+    await alert('GOAL_SUM_GAP');
+
+    const listed = await api()
+      .get('/api/v1/admin/alerts?type=CODE_LIMIT_REACHED')
+      .set('Cookie', cookie)
+      .expect(200);
+
+    expect(listed.body.total).toBe(1);
+    expect(listed.body.items[0]).toMatchObject({
+      id: codeAlert.id,
+      type: 'CODE_LIMIT_REACHED',
+      store: null,
+      account: null,
+      goal: null,
+      order: null,
+      difference: null,
+      resolvedAt: null,
+    });
+
+    await api()
+      .patch(`/api/v1/admin/alerts/${codeAlert.id}/resolve`)
+      .set('Cookie', cookie)
+      .expect(200);
+    expect(
+      (
+        await prisma.adminAlert.findUniqueOrThrow({
+          where: { id: codeAlert.id },
+        })
+      ).resolvedAt,
+    ).not.toBeNull();
+  });
+
   it('offers both permissions in the role editor, outside the Administrateur role', async () => {
     await createAdmin(prisma, {
       email: 'super@batisso.test',
