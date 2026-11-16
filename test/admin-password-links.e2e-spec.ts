@@ -78,7 +78,7 @@ describe('Admin password links (e2e)', () => {
       expect(asked.body).toEqual({ message: PASSWORD_LINK_REQUESTED });
 
       const [email] = emails.sentTo(EMAIL);
-      expect(email.subject).toBe('Bâtisso : choisissez votre mot de passe');
+      expect(email.subject).toBe('Ikasso : choisissez votre mot de passe');
       expect(email.text).toContain('Bonjour Awa,');
       expect(email.text).toContain('valable 3 jours');
       const link = emails.lastLinkFor(EMAIL);
@@ -121,7 +121,7 @@ describe('Admin password links (e2e)', () => {
 
       const token = await tokenFor('reset');
       const [email] = emails.sentTo(EMAIL);
-      expect(email.subject).toBe('Bâtisso : réinitialisez votre mot de passe');
+      expect(email.subject).toBe('Ikasso : réinitialisez votre mot de passe');
       // Asking for a link changes nothing until the token is used.
       await api()
         .get('/api/v1/admin/auth/me')

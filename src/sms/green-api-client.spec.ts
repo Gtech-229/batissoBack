@@ -11,7 +11,7 @@ const CREDENTIALS = {
   token: 'd75b3a66374942c5b3c019c698abc2067e151558acbd412345',
 };
 const PHONE = '+22376000000';
-const TEXT = 'Bâtisso : votre code est 123456';
+const TEXT = 'Ikasso : votre code est 123456';
 
 function fakeFetch(
   respond: () => Promise<Response>,
@@ -174,7 +174,7 @@ describe('sendFailureKind (F-97)', () => {
   });
 
   it('gives only the name of any other error, never its message', () => {
-    const error = new Error(`Bâtisso : votre code est 123456 for ${PHONE}`);
+    const error = new Error(`Ikasso : votre code est 123456 for ${PHONE}`);
     error.name = 'NoProviderConfiguredError';
 
     expect(sendFailureKind(error)).toBe('NoProviderConfiguredError');

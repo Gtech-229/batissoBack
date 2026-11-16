@@ -15,7 +15,7 @@ const SETTINGS: Record<string, unknown> = {
 };
 const MESSAGE = {
   to: 'awa@batisso.test',
-  subject: 'Bâtisso : réinitialisez votre mot de passe',
+  subject: 'Ikasso : réinitialisez votre mot de passe',
   text: 'Ouvrez ce lien : https://admin.example/password?mode=reset&token=s3cr3t-t0ken',
 };
 

@@ -5,7 +5,7 @@ import { ConsoleEmailSender } from './console-email-sender.js';
 
 const MESSAGE = {
   to: 'awa@batisso.test',
-  subject: 'Bâtisso : réinitialisez votre mot de passe',
+  subject: 'Ikasso : réinitialisez votre mot de passe',
   text: 'Ouvrez ce lien : http://localhost:5173/password?mode=reset&token=s3cr3t-t0ken',
 };
 

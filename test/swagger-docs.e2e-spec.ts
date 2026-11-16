@@ -45,7 +45,7 @@ describe('API docs (e2e)', () => {
         .get('/docs-json')
         .expect(200);
       expect((json.body as { info: { title: string } }).info.title).toBe(
-        'API Bâtisso',
+        'API Ikasso',
       );
     });
   });
@@ -93,7 +93,7 @@ describe('API docs (e2e)', () => {
         expect(response.headers['www-authenticate']).toBe(
           'Basic realm="Batisso API docs", charset="UTF-8"',
         );
-        expect(response.text).not.toMatch(/API Bâtisso|swagger/i);
+        expect(response.text).not.toMatch(/API Ikasso|swagger/i);
       },
     );
 
@@ -123,7 +123,7 @@ describe('API docs (e2e)', () => {
         .set('Authorization', basic(USER, PASSWORD))
         .expect(200);
       expect((json.body as { info: { title: string } }).info.title).toBe(
-        'API Bâtisso',
+        'API Ikasso',
       );
     });
 

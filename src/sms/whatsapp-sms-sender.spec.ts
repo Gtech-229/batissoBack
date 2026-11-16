@@ -6,7 +6,7 @@ import { WhatsappSmsSender } from './whatsapp-sms-sender.js';
 
 const CREDENTIALS = { instanceId: '7103123456', token: 'a'.repeat(50) };
 const PHONE = '+22376000000';
-const TEXT = 'Bâtisso : votre code est 123456';
+const TEXT = 'Ikasso : votre code est 123456';
 
 function setup(credentials: GreenApiCredentials | null) {
   const settings = {

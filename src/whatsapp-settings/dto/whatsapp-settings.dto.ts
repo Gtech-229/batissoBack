@@ -170,7 +170,7 @@ export class WhatsappSettingsChangeView {
 
 /** The fixed text of the test message. */
 export const WHATSAPP_TEST_MESSAGE =
-  'Bâtisso : message de test WhatsApp. Si vous le recevez, l’envoi fonctionne.';
+  'Ikasso : message de test WhatsApp. Si vous le recevez, l’envoi fonctionne.';
 
 export class SendWhatsappTestDto {
   @ApiProperty({

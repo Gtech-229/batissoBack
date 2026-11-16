@@ -35,8 +35,8 @@ export function passwordLinkEmail(
 ): EmailMessage {
   const action =
     mode === 'set'
-      ? 'Pour choisir le mot de passe de votre compte administrateur Bâtisso, ouvrez ce lien :'
-      : 'Pour choisir un nouveau mot de passe pour votre compte administrateur Bâtisso, ouvrez ce lien :';
+      ? 'Pour choisir le mot de passe de votre compte administrateur Ikasso, ouvrez ce lien :'
+      : 'Pour choisir un nouveau mot de passe pour votre compte administrateur Ikasso, ouvrez ce lien :';
   const keep =
     mode === 'reset'
       ? '\nVotre mot de passe actuel reste valable tant que vous n’utilisez pas ce lien.'
@@ -45,8 +45,8 @@ export function passwordLinkEmail(
     to,
     subject:
       mode === 'set'
-        ? 'Bâtisso : choisissez votre mot de passe'
-        : 'Bâtisso : réinitialisez votre mot de passe',
+        ? 'Ikasso : choisissez votre mot de passe'
+        : 'Ikasso : réinitialisez votre mot de passe',
     text: [
       `Bonjour ${firstName},`,
       '',

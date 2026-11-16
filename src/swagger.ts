@@ -95,10 +95,10 @@ function parseBasic(
 
 function setupSwagger(app: INestApplication): void {
   const config = new DocumentBuilder()
-    .setTitle('API Bâtisso')
+    .setTitle('API Ikasso')
     .setDescription(
       [
-        'API de la plateforme Bâtisso : épargne-construction pour les quincailleries.',
+        'API de la plateforme Ikasso : épargne-construction pour les quincailleries.',
         '',
         'Toutes les routes sont préfixées par `/api/v1`.',
         'Toute réponse en erreur suit le schéma `ErrorResponse` : le champ `message` est en français et peut être affiché à l’utilisateur, le champ `error` est un code stable destiné aux applications.',
