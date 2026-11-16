@@ -110,6 +110,7 @@ describe('Admin alerts (e2e)', () => {
           createdAt: '2026-11-05T02:00:00.000Z',
           resolvedAt: null,
           resolvedBy: null,
+          whatsappChange: null,
         },
         expect.objectContaining({
           id: older.id,
@@ -246,6 +247,7 @@ describe('Admin alerts (e2e)', () => {
       order: null,
       difference: null,
       resolvedAt: null,
+      whatsappChange: null,
     });
 
     await api()

@@ -52,7 +52,7 @@ export class AdminAlertsController {
   @ApiOperation({
     summary: 'Alertes de la plateforme',
     description:
-      'Les écarts trouvés par la vérification nocturne des soldes (chaque nuit à 2 h UTC), les plus récents d’abord. Chaque alerte nomme la quincaillerie, le compte et l’écart, jamais un solde. Par défaut, seulement les alertes à traiter.',
+      'Les écarts trouvés par la vérification nocturne des soldes (chaque nuit à 2 h UTC), les plus récents d’abord. Chaque alerte nomme la quincaillerie, le compte et l’écart, jamais un solde. Par défaut, seulement les alertes à traiter. Les alertes WHATSAPP_SETTINGS_CHANGED ne sont visibles et traitables que par le super administrateur.',
   })
   @ApiPaginatedResponse(AdminAlertView, 'Page d’alertes')
   @ApiBadRequestResponse({
@@ -61,8 +61,9 @@ export class AdminAlertsController {
   })
   list(
     @Query() query: AdminAlertsQueryDto,
+    @CurrentAdmin() current: AuthenticatedAdmin,
   ): Promise<Paginated<AdminAlertView>> {
-    return this.alerts.list(query);
+    return this.alerts.list(query, current.role);
   }
 
   /**
@@ -97,6 +98,6 @@ export class AdminAlertsController {
     @Param('id', AlertIdPipe) id: string,
     @CurrentAdmin() current: AuthenticatedAdmin,
   ): Promise<AdminAlertView> {
-    return this.alerts.resolve(id, current.adminId);
+    return this.alerts.resolve(id, current.adminId, current.role);
   }
 }

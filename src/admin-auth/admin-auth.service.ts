@@ -253,6 +253,46 @@ export class AdminAuthService {
   }
 
   /**
+   * Re-confirms a signed-in admin's password before a sensitive change (25b:
+   * the WhatsApp settings). A wrong password counts in the same lockout as
+   * login and password change (F-05), so a stolen session cannot guess it
+   * without limit; the errors are the same, thrown after the commit so a
+   * counted failure is kept.
+   */
+  async confirmPassword(adminId: string, password: string): Promise<void> {
+    const admin = await this.prisma.admin.findUnique({
+      where: { id: adminId },
+      select: { lockedUntil: true, passwordHash: true },
+    });
+    // Fast path only: the decision that counts is taken again under the lock.
+    if (admin?.lockedUntil && admin.lockedUntil > new Date()) {
+      throw accountLocked(minutesUntil(admin.lockedUntil, new Date()));
+    }
+    // The slow scrypt work happens before the transaction (short row lock).
+    const passwordHash = admin?.passwordHash ?? null;
+    const passwordOk =
+      passwordHash !== null && (await verifyPassword(password, passwordHash));
+    const { maxLoginAttempts } = await this.settings.get();
+
+    const attempt = await this.prisma.$transaction((tx) =>
+      this.countPasswordAttempt(
+        tx,
+        adminId,
+        passwordOk,
+        passwordHash,
+        maxLoginAttempts,
+        new Date(),
+      ),
+    );
+    switch (attempt.kind) {
+      case 'locked':
+        throw accountLocked(minutesUntil(attempt.lockedUntil, new Date()));
+      case 'invalid':
+        throw invalidCredentials();
+    }
+  }
+
+  /**
    * Counts one password attempt under a row lock on the admin, for login and
    * password change alike, so parallel attempts are judged one after another
    * against the real lock state (F-01). A locked admin is refused even with the

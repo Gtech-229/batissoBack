@@ -5,7 +5,11 @@ import {
   toSkipTake,
   type Paginated,
 } from '../common/pagination.js';
-import type { Prisma } from '../generated/prisma/client.js';
+import {
+  AdminAlertType,
+  AdminRole,
+  type Prisma,
+} from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { alertAlreadyResolved, alertNotFound } from './admin-alerts.errors.js';
 import {
@@ -20,11 +24,17 @@ import {
 export class AdminAlertsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Newest first; open ones by default. */
-  async list(query: AdminAlertsQueryDto): Promise<Paginated<AdminAlertView>> {
+  /**
+   * Newest first; open ones by default. A WhatsApp settings alert is the super
+   * admin's only (25b): an ADMIN never sees it, whatever their permissions.
+   */
+  async list(
+    query: AdminAlertsQueryDto,
+    role: AdminRole,
+  ): Promise<Paginated<AdminAlertView>> {
     const status = query.status ?? 'open';
     const where: Prisma.AdminAlertWhereInput = {
-      type: query.type,
+      AND: [{ type: query.type }, visibleTo(role)],
       ...(status === 'open' && { resolvedAt: null }),
       ...(status === 'resolved' && { resolvedAt: { not: null } }),
     };
@@ -49,13 +59,18 @@ export class AdminAlertsService {
    * Marks an open alert resolved. The update only matches an unresolved row,
    * so two admins resolving at once cannot both succeed: the second gets 409.
    */
-  async resolve(id: string, adminId: string): Promise<AdminAlertView> {
+  async resolve(
+    id: string,
+    adminId: string,
+    role: AdminRole,
+  ): Promise<AdminAlertView> {
+    // An alert the admin cannot see is unknown to them (404), never resolved.
     const { count } = await this.prisma.adminAlert.updateMany({
-      where: { id, resolvedAt: null },
+      where: { AND: [{ id, resolvedAt: null }, visibleTo(role)] },
       data: { resolvedAt: new Date(), resolvedById: adminId },
     });
-    const alert = await this.prisma.adminAlert.findUnique({
-      where: { id },
+    const alert = await this.prisma.adminAlert.findFirst({
+      where: { AND: [{ id }, visibleTo(role)] },
       include: ADMIN_ALERT_INCLUDE,
     });
     if (!alert) {
@@ -66,4 +81,11 @@ export class AdminAlertsService {
     }
     return toAdminAlertView(alert);
   }
+}
+
+/** The alerts an admin may see and resolve: all for the super admin. */
+function visibleTo(role: AdminRole): Prisma.AdminAlertWhereInput {
+  return role === AdminRole.SUPER_ADMIN
+    ? {}
+    : { type: { not: AdminAlertType.WHATSAPP_SETTINGS_CHANGED } };
 }

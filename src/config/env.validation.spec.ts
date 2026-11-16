@@ -450,4 +450,44 @@ describe('validate (environment variables)', () => {
       );
     });
   });
+
+  describe('SETTINGS_ENCRYPTION_KEY (25b)', () => {
+    const KEY = 'a1'.repeat(32);
+
+    it('is optional, and empty counts as unset', () => {
+      expect(validate(BASE).SETTINGS_ENCRYPTION_KEY).toBeUndefined();
+      expect(
+        validate({ ...BASE, SETTINGS_ENCRYPTION_KEY: '' })
+          .SETTINGS_ENCRYPTION_KEY,
+      ).toBeUndefined();
+    });
+
+    it('accepts 64 hexadecimal characters, in either case', () => {
+      expect(
+        validate({ ...BASE, SETTINGS_ENCRYPTION_KEY: KEY })
+          .SETTINGS_ENCRYPTION_KEY,
+      ).toBe(KEY);
+      expect(() =>
+        validate({ ...BASE, SETTINGS_ENCRYPTION_KEY: KEY.toUpperCase() }),
+      ).not.toThrow();
+    });
+
+    it.each([
+      ['63 characters', 'a'.repeat(63)],
+      ['65 characters', 'a'.repeat(65)],
+      ['a non-hexadecimal character', 'g'.repeat(64)],
+      ['spaces', ` ${'a'.repeat(62)} `],
+    ])('rejects %s without echoing the value', (_label, key) => {
+      expect(() => validate({ ...BASE, SETTINGS_ENCRYPTION_KEY: key })).toThrow(
+        expect.objectContaining({
+          message: expect.stringMatching(
+            new RegExp(
+              `^(?=.*SETTINGS_ENCRYPTION_KEY)(?!.*${key.trim()})`,
+              's',
+            ),
+          ) as string,
+        }),
+      );
+    });
+  });
 });

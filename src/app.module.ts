@@ -26,6 +26,7 @@ import { StaffModule } from './staff/staff.module.js';
 import { StoresModule } from './stores/stores.module.js';
 import { StoreDocumentsModule } from './store-documents/store-documents.module.js';
 import { SystemSettingsModule } from './system-settings/system-settings.module.js';
+import { WhatsappSettingsModule } from './whatsapp-settings/whatsapp-settings.module.js';
 import { CountriesModule } from './countries/countries.module.js';
 import { SecurityQuestionsModule } from './security-questions/security-questions.module.js';
 import { StoreReportsModule } from './store-reports/store-reports.module.js';
@@ -43,6 +44,8 @@ import { AdminAlertsModule } from './admin-alerts/admin-alerts.module.js';
     PrismaModule,
     HealthModule,
     SystemSettingsModule,
+    // 25b: the super admin's WhatsApp (Green API) settings.
+    WhatsappSettingsModule,
     AdminAuthModule,
     AdminsModule,
     AdminRolesModule,

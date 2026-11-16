@@ -666,6 +666,44 @@ opening); corrections and purchases do not restart it. Only active accounts in
 verified stores. Balances never change. The run logs
 `Inactivity reminders: N accounts reminded`.
 
+## WhatsApp settings
+
+The SMS interface (sign-in and sign-up codes, purchase codes, SMS notifications)
+will go out over WhatsApp through Green API (feature 25). Here the super admin
+stores the instance; sending comes with 25c. These settings decide where every
+sign-in code goes, so they are guarded:
+
+- **Super admin only:** `GET /api/v1/admin/whatsapp-settings`,
+  `PATCH /api/v1/admin/whatsapp-settings` and
+  `GET /api/v1/admin/whatsapp-settings/changes`. An `ADMIN` gets 403 whatever
+  their role.
+- **Password re-confirmed on every change:** the PATCH body holds
+  `currentPassword` and any of `enabled`, `instanceId` (Green API
+  idInstance, 4 to 20 digits) and `token` (apiTokenInstance, 20 to 128 letters
+  or digits). A wrong password answers `INVALID_CREDENTIALS` (401) and counts
+  in the login lockout; once locked, `ACCOUNT_LOCKED` (403).
+- **The token is write-only:** encrypted at rest (AES-256-GCM with
+  `SETTINGS_ENCRYPTION_KEY`), never returned; reads show `tokenConfigured`,
+  `tokenLast4` and `tokenReadable`. Without the key, `encryptionAvailable` is
+  false and a token is refused (`ENCRYPTION_KEY_MISSING`, 409). A changed key
+  makes the stored token unreadable: type it again.
+- **Enabling** needs an instance and a readable token
+  (`WHATSAPP_NOT_CONFIGURED`, 409); so does staying on: once a changed key
+  leaves the token unreadable, a save refuses to keep WhatsApp on until the
+  token is typed again or WhatsApp is turned off.
+- **Every change is recorded and alerts:** who, when, what (never the token)
+  in `.../changes`, and one `WHATSAPP_SETTINGS_CHANGED` admin alert per change
+  (`whatsappChange` in `GET /api/v1/admin/alerts`). Saving the same values
+  records nothing. These alerts are the super admin's only: an `ADMIN`, even
+  with `alerts.read` and `alerts.manage`, does not see them and gets 404 trying
+  to resolve one.
+
+To set it up in production: generate the key once on the VPS with
+`openssl rand -hex 32`, add `SETTINGS_ENCRYPTION_KEY=<it>` to
+`.env.production`, run `docker compose -f docker-compose.prod.yml up -d api`,
+then enter the instance and the token from the admin web. Keep the key with the
+env files (not in the backups): without it, the saved token cannot be read.
+
 ## Production on a VPS
 
 The API and PostgreSQL run from `docker-compose.prod.yml`; the dev
@@ -1034,5 +1072,6 @@ must resolve it the same way.
 | `SMTP_USER` | with `SMTP_HOST` | | The mailbox login, usually its address |
 | `SMTP_PASSWORD` | with `SMTP_HOST` | | The mailbox password. Never logged; quote it if it holds `#` |
 | `EMAIL_FROM` | with `SMTP_HOST` | | The sender admins see, `Name <address>` or `address`, usually the `SMTP_USER` mailbox (servers often refuse another address) |
+| `SETTINGS_ENCRYPTION_KEY` | to save the WhatsApp token | | 64 hexadecimal characters, `openssl rand -hex 32`; encrypts the WhatsApp token in the database (AES-256-GCM). Without it the API starts but no token can be saved; changing it makes the saved token unreadable. Never logged |
 
 The app refuses to start if a variable is missing or invalid.
