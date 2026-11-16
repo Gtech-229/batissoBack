@@ -9,6 +9,10 @@ import {
   type EmailSender,
 } from '../../src/email/email-sender.js';
 import { PUSH_SENDER, type PushSender } from '../../src/push/push-sender.js';
+import {
+  GREEN_API_SEND,
+  type GreenApiSend,
+} from '../../src/sms/green-api-client.js';
 import { SMS_SENDER, type SmsSender } from '../../src/sms/sms-sender.js';
 import { cookiesFrom, TEST_PASSWORD } from './admins.js';
 
@@ -18,7 +22,13 @@ import { cookiesFrom, TEST_PASSWORD } from './admins.js';
  * receives).
  */
 export async function createTestApp(
-  options: { sms?: SmsSender; push?: PushSender; email?: EmailSender } = {},
+  options: {
+    sms?: SmsSender;
+    push?: PushSender;
+    email?: EmailSender;
+    /** Replaces the real Green API call (25c): no test reaches the network. */
+    greenApi?: GreenApiSend;
+  } = {},
 ): Promise<INestApplication<App>> {
   let builder = Test.createTestingModule({ imports: [AppModule] });
   if (options.sms) {
@@ -29,6 +39,11 @@ export async function createTestApp(
   }
   if (options.email) {
     builder = builder.overrideProvider(EMAIL_SENDER).useValue(options.email);
+  }
+  if (options.greenApi) {
+    builder = builder
+      .overrideProvider(GREEN_API_SEND)
+      .useValue(options.greenApi);
   }
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<INestApplication<App>>();

@@ -9,6 +9,7 @@ import type { OperationWithReceipt } from '../ledger/dto/operation-receipt.js';
 import type { AuthenticatedUser } from '../mobile-auth/authenticated-user.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PUSH_SENDER, type PushSender } from '../push/push-sender.js';
+import { sendFailureKind } from '../sms/green-api-client.js';
 import { SMS_SENDER, type SmsSender } from '../sms/sms-sender.js';
 import {
   paginated,
@@ -142,7 +143,8 @@ export interface PurchaseEvent {
 
 /** The kind of a failure, short enough for `lastError`: never its text. */
 function errorKind(error: unknown): string {
-  return (error instanceof Error ? error.name : 'unknown error').slice(0, 100);
+  // With the Green API cause (25c): "WhatsappSendError (HTTP 466)".
+  return sendFailureKind(error).slice(0, 100);
 }
 
 /**

@@ -182,6 +182,20 @@ export class EnvironmentVariables {
     message: 'EMAIL_FROM must be "Name <address>" or an address',
   })
   EMAIL_FROM?: string;
+
+  /**
+   * Encrypts the secrets admins save in the database (25b: the Green API
+   * token), AES-256-GCM: 32 bytes as 64 hexadecimal characters, e.g.
+   * `openssl rand -hex 32`. Optional: without it, the API starts and such
+   * secrets cannot be saved. Changing it makes the stored ones unreadable.
+   * Never logged nor put in an error message.
+   */
+  @EmptyAsUnset()
+  @IsOptional()
+  @Matches(/^[0-9a-fA-F]{64}$/, {
+    message: 'SETTINGS_ENCRYPTION_KEY must be 64 hexadecimal characters',
+  })
+  SETTINGS_ENCRYPTION_KEY?: string;
 }
 
 /** An empty variable (`NAME=`) reads as unset, before any conversion. */

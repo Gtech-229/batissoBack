@@ -71,8 +71,9 @@ admin and nothing else (`set` without a password, `reset` otherwise) and exits
 with code 1 for any other email. Treat the link like a password.
 
 Security settings (max login attempts before a 15-minute lock, max sessions per
-admin, max wrong PINs before a mobile user is locked, where 0 means no limit) are
-editable at `PATCH /api/v1/admin/settings`, by the super admin or an admin whose
+admin, max wrong PINs before a mobile user is locked, where 0 means no limit, and
+the platform-wide sign-in code caps `maxCodesPerHour` and `maxCodesPerDay`, see
+"First mobile sign-in") are editable at `PATCH /api/v1/admin/settings`, by the super admin or an admin whose
 role holds `settings.manage`.
 
 ### Roles and permissions
@@ -138,12 +139,19 @@ billing, no limit per plan, nothing automatic when one ends.
 Mobile users (store staff and customers) sign in to the app with their phone.
 A phone already known as a user (a store's first manager, registered above, or a
 customer whose account was opened at a counter) activates; a new phone signs up
-in the same steps. There is no real SMS provider yet: in development, each code
-is printed in the API log (`[SMS] To +223...: ...`). Codes go to any number of
-the active country, limited per phone only (1 a minute, 5 an hour, 10 a day):
-before connecting a paid SMS provider, add a global or per-IP limit, or the
-provider's fraud controls, so no client can make the platform pay for SMS
-across a whole number range.
+in the same steps. Codes go over WhatsApp once the super admin has turned it on
+(see "WhatsApp settings"); otherwise, in development, each code is printed in
+the API log (`[SMS] To +223...: ...`). Codes go to any number of
+the active country, limited per phone (1 a minute, 5 an hour, 10 a day) and for
+the whole platform: by default **50 codes in a rolling hour and 200 in 24
+hours**, for every phone together (`maxCodesPerHour` 1 to 10000 and
+`maxCodesPerDay` 1 to 100000 in the admin settings). Past a cap no code is
+sent, the answer stays the same (it reveals nothing), the log says
+`Code limit reached (hour|day): no code sent` without the phone, and a
+`CODE_LIMIT_REACHED` admin alert opens (one at a time; resolve it once the cause
+is clear). Codes start again as the window moves on, or at once if an admin
+raises the cap. A per-IP limit does not apply: behind the VPS's web server every
+request comes from `127.0.0.1`.
 
 1. `POST /api/v1/auth/code` `{ "phone": "76 00 00 00" }`: sends a 6-digit code
    (valid 10 minutes), to a known phone or a new one. The answer is always the
@@ -622,7 +630,9 @@ changes a balance (a manager fixes it with a correction). The run logs one line:
 
 - `GET /api/v1/admin/alerts` (`alerts.read`): `status=open` (default),
   `resolved` or `all`, `type`, paginated. Each alert names the store, the
-  account and the gap (stored minus computed), never a balance.
+  account and the gap (stored minus computed), never a balance. A
+  `CODE_LIMIT_REACHED` alert (the sign-in code cap, see "First mobile sign-in")
+  has `store` and `account` set to `null`.
 - `PATCH /api/v1/admin/alerts/:id/resolve` (`alerts.manage`): records who and
   when. A gap still there the next night creates a new alert.
 
@@ -656,6 +666,72 @@ store and never an amount. The quiet period starts at the last deposit (or the
 opening); corrections and purchases do not restart it. Only active accounts in
 verified stores. Balances never change. The run logs
 `Inactivity reminders: N accounts reminded`.
+
+## WhatsApp settings
+
+The SMS interface (sign-in and sign-up codes, purchase codes, SMS notifications)
+goes out over WhatsApp through Green API (feature 25) once the super admin has
+saved an instance and a token and turned WhatsApp on. These settings decide
+where every sign-in code goes, so they are guarded:
+
+- **Super admin only:** `GET /api/v1/admin/whatsapp-settings`,
+  `PATCH /api/v1/admin/whatsapp-settings` and
+  `GET /api/v1/admin/whatsapp-settings/changes`. An `ADMIN` gets 403 whatever
+  their role.
+- **Password re-confirmed on every change:** the PATCH body holds
+  `currentPassword` and any of `enabled`, `instanceId` (Green API
+  idInstance, 4 to 20 digits) and `token` (apiTokenInstance, 20 to 128 letters
+  or digits). A wrong password answers `INVALID_CREDENTIALS` (401) and counts
+  in the login lockout; once locked, `ACCOUNT_LOCKED` (403).
+- **The token is write-only:** encrypted at rest (AES-256-GCM with
+  `SETTINGS_ENCRYPTION_KEY`), never returned; reads show `tokenConfigured`,
+  `tokenLast4` and `tokenReadable`. Without the key, `encryptionAvailable` is
+  false and a token is refused (`ENCRYPTION_KEY_MISSING`, 409). A changed key
+  makes the stored token unreadable: type it again.
+- **Enabling** needs an instance and a readable token
+  (`WHATSAPP_NOT_CONFIGURED`, 409); so does staying on: once a changed key
+  leaves the token unreadable, a save refuses to keep WhatsApp on until the
+  token is typed again or WhatsApp is turned off.
+- **Every change is recorded and alerts:** who, when, what (never the token)
+  in `.../changes`, and one `WHATSAPP_SETTINGS_CHANGED` admin alert per change
+  (`whatsappChange` in `GET /api/v1/admin/alerts`). Saving the same values
+  records nothing. These alerts are the super admin's only: an `ADMIN`, even
+  with `alerts.read` and `alerts.manage`, does not see them and gets 404 trying
+  to resolve one.
+
+**Sending (25c).** For every message the API reads these settings:
+
+- **On, with an instance and a readable token:** the message goes to Green API,
+  `POST https://<first 4 digits of the instance>.api.greenapi.com/waInstance<id>/sendMessage/<token>`
+  with `chatId` = the number without `+` followed by `@c.us`, 10 seconds at
+  most. The host is built from the instance id in the code, never typed by an
+  admin.
+- **Off, or not usable** (no instance, no token, unreadable token): exactly as
+  before, the console sender (the log in development, a failure in production).
+- **A Green API failure** is the caller's, like any provider failure: a
+  sign-in code is simply not received (the user asks again), a notification is
+  recorded `FAILED`. The log line and the notification's `lastError` say why,
+  for example `WhatsappSendError (HTTP 466)`: the cause is `HTTP <status>`,
+  `timeout`, `network` (a redirect counts as one: it is never followed) or
+  `bad response`, never the URL (it holds the token), the number or the text.
+  A number without
+  WhatsApp does not receive its code: every user is assumed to have WhatsApp
+  (V1).
+- **Test before turning it on:** `POST /api/v1/admin/whatsapp-settings/test`
+  with `{ "phone": "76 00 00 00" }` (super admin only) sends a fixed test text
+  with the saved instance and token, even while WhatsApp is off: `200
+  { "sent": true }`, `WHATSAPP_NOT_CONFIGURED` (409) without an instance and a
+  readable token, `WHATSAPP_SEND_FAILED` (502) with the cause when Green API
+  fails. It changes and records nothing.
+
+To set it up in production: generate the key once on the VPS with
+`openssl rand -hex 32`, add `SETTINGS_ENCRYPTION_KEY=<it>` to
+`.env.production`, run `docker compose -f docker-compose.prod.yml up -d api`,
+then enter the instance and the token from the admin web, send a test to your
+own number, and only then turn WhatsApp on. If the test answers `network` or
+`HTTP 404`, compare the instance's `apiUrl` in the Green API console with the
+host above. Keep the key with the env files (not in the backups): without it,
+the saved token cannot be read.
 
 ## Production on a VPS
 
@@ -1025,5 +1101,6 @@ must resolve it the same way.
 | `SMTP_USER` | with `SMTP_HOST` | | The mailbox login, usually its address |
 | `SMTP_PASSWORD` | with `SMTP_HOST` | | The mailbox password. Never logged; quote it if it holds `#` |
 | `EMAIL_FROM` | with `SMTP_HOST` | | The sender admins see, `Name <address>` or `address`, usually the `SMTP_USER` mailbox (servers often refuse another address) |
+| `SETTINGS_ENCRYPTION_KEY` | to save the WhatsApp token | | 64 hexadecimal characters, `openssl rand -hex 32`; encrypts the WhatsApp token in the database (AES-256-GCM). Without it the API starts but no token can be saved; changing it makes the saved token unreadable. Never logged |
 
 The app refuses to start if a variable is missing or invalid.

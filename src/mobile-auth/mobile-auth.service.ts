@@ -10,16 +10,18 @@ import { TokensService } from '../admin-auth/tokens.service.js';
 import type { AuthenticatedUser } from './authenticated-user.js';
 import { minutesUntil } from '../common/minutes-until.js';
 import { isPhoneCountry, normalizePhone } from '../common/phone.js';
-import type {
-  PhoneVerification,
-  Prisma,
-  User,
+import {
+  AdminAlertType,
+  type PhoneVerification,
+  type Prisma,
+  type User,
 } from '../generated/prisma/client.js';
 import { invalidFields } from '../stores/stores.errors.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { SecurityAnswerDto } from '../security-questions/dto/security-answers.dto.js';
 import { normalizeAnswer } from '../security-questions/normalize-answer.js';
+import { sendFailureKind } from '../sms/green-api-client.js';
 import { SMS_SENDER, type SmsSender } from '../sms/sms-sender.js';
 import { SystemSettingsService } from '../system-settings/system-settings.service.js';
 import type { VerificationResponse } from './dto/code-responses.js';
@@ -132,8 +134,12 @@ export class MobileAuthService {
       return;
     }
 
+    // The platform-wide caps (25a), read once: a value saved during the request
+    // applies from the next one.
+    const { maxCodesPerHour, maxCodesPerDay } = await this.settings.get();
+
     // The same transaction for every valid phone, known or not (F-15).
-    const created = await this.prisma.$transaction(async (tx) => {
+    const outcome = await this.prisma.$transaction(async (tx) => {
       // One request per phone at a time: without it, two parallel requests
       // could both pass the cooldown and send two SMS.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('phone-verification:' || ${phone}))`;
@@ -158,7 +164,25 @@ export class MobileAuthService {
         lastHourCount >= CODES_PER_HOUR ||
         lastDay.length >= CODES_PER_DAY
       ) {
-        return false;
+        return 'refused' as const;
+      }
+
+      // Then the whole platform (25a): one global lock, always taken after the
+      // phone's, so two requests cannot both take the last free slot.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('phone-verification:global'))`;
+      const [platformHour, platformDay] = await Promise.all([
+        tx.phoneVerification.count({
+          where: { createdAt: { gt: new Date(now - HOUR_MS) } },
+        }),
+        tx.phoneVerification.count({
+          where: { createdAt: { gt: new Date(now - DAY_MS) } },
+        }),
+      ]);
+      if (platformHour >= maxCodesPerHour) {
+        return 'hour-cap' as const;
+      }
+      if (platformDay >= maxCodesPerDay) {
+        return 'day-cap' as const;
       }
 
       // Only the newest code works: asking again retires the previous one.
@@ -169,15 +193,36 @@ export class MobileAuthService {
       await tx.phoneVerification.create({
         data: { phone, codeHash, expiresAt: new Date(now + CODE_TTL_MS) },
       });
-      return true;
+      return 'created' as const;
     });
 
     // After the commit, so the code exists before the user can type it, and not
     // awaited: the response time and outcome never depend on the provider, so
     // they cannot reveal which phones have an account (F-15).
-    if (created) {
+    if (outcome === 'created') {
       this.sendCode(phone, code);
+    } else if (outcome !== 'refused') {
+      this.codeLimitReached(outcome === 'hour-cap' ? 'hour' : 'day');
     }
+  }
+
+  /**
+   * The platform cap stopped a code (25a): a warning, without the phone, and
+   * one open admin alert (the partial unique index keeps a single one;
+   * skipDuplicates adds nothing while it is open). Not awaited: the answer
+   * must not change, and a failure here is only logged.
+   */
+  private codeLimitReached(window: 'hour' | 'day'): void {
+    this.logger.warn(`Code limit reached (${window}): no code sent`);
+    this.prisma.adminAlert
+      .createMany({
+        data: [{ type: AdminAlertType.CODE_LIMIT_REACHED }],
+        skipDuplicates: true,
+      })
+      .catch((error: unknown) => {
+        const kind = error instanceof Error ? error.name : 'unknown error';
+        this.logger.error(`Code limit alert not recorded (${kind})`);
+      });
   }
 
   /**
@@ -187,7 +232,7 @@ export class MobileAuthService {
    */
   private sendCode(phone: string, code: string): void {
     this.sms.send(phone, codeMessage(code)).catch((error: unknown) => {
-      const kind = error instanceof Error ? error.name : 'unknown error';
+      const kind = sendFailureKind(error);
       this.logger.error(`SMS to ${maskPhone(phone)} failed (${kind})`);
     });
   }

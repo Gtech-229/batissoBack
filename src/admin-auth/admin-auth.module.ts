@@ -39,6 +39,7 @@ import { TokensService } from './tokens.service.js';
     // Global: protects every route of the app, not only this module's.
     { provide: APP_GUARD, useClass: AdminAuthGuard },
   ],
-  exports: [TokensService],
+  // AdminAuthService for the password re-confirmation of sensitive changes (25b).
+  exports: [TokensService, AdminAuthService],
 })
 export class AdminAuthModule {}

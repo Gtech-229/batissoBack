@@ -50,22 +50,25 @@ model Admin {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  accessRole           AccessRole?          @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  createdBy            Admin?               @relation("AdminCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAdmins        Admin[]              @relation("AdminCreatedBy")
-  sessions             AdminSession[]
-  passwordTokens       AdminPasswordToken[]
-  updatedSettings      SystemSettings[]
+  accessRole              AccessRole?              @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  createdBy               Admin?                   @relation("AdminCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAdmins           Admin[]                  @relation("AdminCreatedBy")
+  sessions                AdminSession[]
+  passwordTokens          AdminPasswordToken[]
+  updatedSettings         SystemSettings[]
   // Feature 3: stores this admin registered, status changes, settings edits.
-  storesCreated        HardwareStore[]      @relation("StoreCreatedBy")
-  storeStatusChanges   HardwareStore[]      @relation("StoreStatusChangedBy")
-  storeSettingsUpdates StoreSettings[]
+  storesCreated           HardwareStore[]          @relation("StoreCreatedBy")
+  storeStatusChanges      HardwareStore[]          @relation("StoreStatusChangedBy")
+  storeSettingsUpdates    StoreSettings[]
   // Feature 16a: subscriptions this admin recorded or last edited.
-  subscriptionsCreated Subscription[]       @relation("SubscriptionCreatedBy")
-  subscriptionsUpdated Subscription[]       @relation("SubscriptionUpdatedBy")
+  subscriptionsCreated    Subscription[]           @relation("SubscriptionCreatedBy")
+  subscriptionsUpdated    Subscription[]           @relation("SubscriptionUpdatedBy")
   // Feature 16b: accounts this admin last suspended or reactivated.
-  accountStatusChanges Account[]            @relation("AccountStatusChangedBy")
-  resolvedAlerts       AdminAlert[]
+  accountStatusChanges    Account[]                @relation("AccountStatusChangedBy")
+  resolvedAlerts          AdminAlert[]
+  // Feature 25b: WhatsApp settings this admin last saved, and every change made.
+  whatsappSettingsUpdates WhatsappSettings[]
+  whatsappSettingsChanges WhatsappSettingsChange[]
 
   @@map("admins")
 }
@@ -126,6 +129,11 @@ model SystemSettings {
   cancellationEscalationHours Int      @default(48)
   /// Days without a deposit before a customer is reminded (17c); 1 to 365 (CHECK).
   inactivityReminderDays      Int      @default(30)
+  /// Sign-in and sign-up codes the whole platform may send in a rolling hour
+  /// (25a), on top of the per-phone limits; 1 to 10000 (CHECK).
+  maxCodesPerHour             Int      @default(50)
+  /// The same over a rolling 24 hours (25a); 1 to 100000 (CHECK).
+  maxCodesPerDay              Int      @default(200)
   updatedAt                   DateTime @updatedAt
   updatedById                 String?  @db.Uuid
 
@@ -410,6 +418,8 @@ model PhoneVerification {
   createdAt      DateTime  @default(now())
 
   @@index([phone, createdAt])
+  /// The platform-wide code count (25a).
+  @@index([createdAt])
   @@map("phone_verifications")
 }
 
@@ -1195,32 +1205,84 @@ enum AdminAlertType {
   GOAL_SUM_GAP
   /// A cancellation request left unanswered past the delay (17b).
   ORDER_CANCELLATION_UNANSWERED
+  /// The platform-wide sign-in code cap was reached: codes stop until the
+  /// window passes (25a). No store, no account.
+  CODE_LIMIT_REACHED
+  /// The super admin changed the WhatsApp settings (25b): one alert per change,
+  /// pointing to it. No store, no account.
+  WHATSAPP_SETTINGS_CHANGED
 }
 
 /// A problem found by a scheduled job, for admins to look into (17a). Never a
 /// balance: only the gap. One unresolved alert per type, account, goal and
 /// order (a partial unique index in the migration, as Prisma cannot declare it).
 model AdminAlert {
-  id           String         @id @default(uuid(7)) @db.Uuid
-  type         AdminAlertType
-  storeId      String         @db.Uuid
-  accountId    String         @db.Uuid
+  id                       String         @id @default(uuid(7)) @db.Uuid
+  type                     AdminAlertType
+  /// Required except for CODE_LIMIT_REACHED and WHATSAPP_SETTINGS_CHANGED,
+  /// which have neither (CHECK).
+  storeId                  String?        @db.Uuid
+  accountId                String?        @db.Uuid
   /// The goal, for GOAL_BALANCE_GAP only.
-  goalId       String?        @db.Uuid
+  goalId                   String?        @db.Uuid
   /// The order, for ORDER_CANCELLATION_UNANSWERED only.
-  orderId      String?        @db.Uuid
+  orderId                  String?        @db.Uuid
   /// Stored minus computed, in the smallest currency unit; balance gaps only.
-  difference   BigInt?
-  createdAt    DateTime       @default(now())
-  resolvedAt   DateTime?
-  resolvedById String?        @db.Uuid
+  difference               BigInt?
+  createdAt                DateTime       @default(now())
+  resolvedAt               DateTime?
+  resolvedById             String?        @db.Uuid
+  /// The change, for WHATSAPP_SETTINGS_CHANGED only (CHECK); one alert each.
+  whatsappSettingsChangeId String?        @unique @db.Uuid
 
-  store      HardwareStore  @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  account    Account        @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  goal       Goal?          @relation(fields: [goalId], references: [id], onDelete: Restrict)
-  order      MaterialOrder? @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  resolvedBy Admin?         @relation(fields: [resolvedById], references: [id], onDelete: SetNull)
+  store                  HardwareStore?          @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  account                Account?                @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  goal                   Goal?                   @relation(fields: [goalId], references: [id], onDelete: Restrict)
+  order                  MaterialOrder?          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  resolvedBy             Admin?                  @relation(fields: [resolvedById], references: [id], onDelete: SetNull)
+  whatsappSettingsChange WhatsappSettingsChange? @relation(fields: [whatsappSettingsChangeId], references: [id], onDelete: Restrict)
 
   @@index([resolvedAt, createdAt])
   @@map("admin_alerts")
+}
+
+/// The Green API credentials of the WhatsApp delivery (25b), set by the super
+/// admin. A single row (id = 1); until it exists, WhatsApp is off and nothing
+/// is configured. The token is stored encrypted only (AES-256-GCM, key from
+/// SETTINGS_ENCRYPTION_KEY), never in clear and never returned.
+model WhatsappSettings {
+  id              Int      @id @default(1)
+  enabled         Boolean  @default(false)
+  /// Green API idInstance (digits).
+  instanceId      String?
+  /// `v1:<iv>:<tag>:<ciphertext>`, base64 parts.
+  tokenCiphertext String?
+  /// The token's last 4 characters, the only part ever shown.
+  tokenLast4      String?  @db.VarChar(4)
+  updatedAt       DateTime @updatedAt
+  updatedById     String?  @db.Uuid
+
+  updatedBy Admin? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("whatsapp_settings")
+}
+
+/// One saved change of the WhatsApp settings (25b): who, when, what. Never the
+/// token, only whether it changed and its new last 4 characters.
+model WhatsappSettingsChange {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  adminId          String   @db.Uuid
+  createdAt        DateTime @default(now())
+  enabledBefore    Boolean
+  enabledAfter     Boolean
+  instanceIdBefore String?
+  instanceIdAfter  String?
+  tokenChanged     Boolean
+  tokenLast4       String?  @db.VarChar(4)
+
+  admin Admin       @relation(fields: [adminId], references: [id], onDelete: Restrict)
+  alert AdminAlert?
+
+  @@index([createdAt])
+  @@map("whatsapp_settings_changes")
 }

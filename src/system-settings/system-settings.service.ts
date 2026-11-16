@@ -13,6 +13,10 @@ export interface SystemSettingsValues {
   cancellationEscalationHours: number;
   /** Days without a deposit before a customer is reminded (17c). */
   inactivityReminderDays: number;
+  /** Sign-in and sign-up codes the whole platform may send in a rolling hour (25a). */
+  maxCodesPerHour: number;
+  /** The same over a rolling 24 hours (25a). */
+  maxCodesPerDay: number;
 }
 
 /** Used until an admin saves settings for the first time (no seed data). */
@@ -23,6 +27,9 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettingsValues = {
   deliveryAlertDays: 7,
   cancellationEscalationHours: 48,
   inactivityReminderDays: 30,
+  // User decision, 2026-11-14 (25a).
+  maxCodesPerHour: 50,
+  maxCodesPerDay: 200,
 };
 
 /** Allowed range of each setting, enforced by the update DTO. */
@@ -35,6 +42,9 @@ export const SYSTEM_SETTINGS_LIMITS = {
   deliveryAlertDays: { min: 1, max: 365 },
   cancellationEscalationHours: { min: 1, max: 720 },
   inactivityReminderDays: { min: 1, max: 365 },
+  // Also CHECK constraints in the database (25a).
+  maxCodesPerHour: { min: 1, max: 10_000 },
+  maxCodesPerDay: { min: 1, max: 100_000 },
 } as const;
 
 // The settings table holds a single row.
@@ -83,5 +93,7 @@ function toValues(row: SystemSettingsValues): SystemSettingsValues {
     deliveryAlertDays: row.deliveryAlertDays,
     cancellationEscalationHours: row.cancellationEscalationHours,
     inactivityReminderDays: row.inactivityReminderDays,
+    maxCodesPerHour: row.maxCodesPerHour,
+    maxCodesPerDay: row.maxCodesPerDay,
   };
 }

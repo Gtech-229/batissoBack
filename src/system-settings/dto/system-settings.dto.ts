@@ -18,6 +18,10 @@ const ALERT_DAYS_MESSAGE = `Le délai d’alerte de livraison doit être un nomb
 const REMINDER = LIMITS.inactivityReminderDays;
 const REMINDER_MESSAGE = `Le délai de rappel d’inactivité doit être un nombre entier de jours entre ${REMINDER.min} et ${REMINDER.max}`;
 const ESCALATION = LIMITS.cancellationEscalationHours;
+const CODES_HOUR = LIMITS.maxCodesPerHour;
+const CODES_HOUR_MESSAGE = `Le nombre de codes de connexion par heure doit être un entier entre ${CODES_HOUR.min} et ${CODES_HOUR.max}`;
+const CODES_DAY = LIMITS.maxCodesPerDay;
+const CODES_DAY_MESSAGE = `Le nombre de codes de connexion par jour doit être un entier entre ${CODES_DAY.min} et ${CODES_DAY.max}`;
 const ESCALATION_MESSAGE = `Le délai de réponse à une demande d’annulation doit être un nombre entier d’heures entre ${ESCALATION.min} et ${ESCALATION.max}`;
 
 export class SystemSettingsResponse {
@@ -62,6 +66,20 @@ export class SystemSettingsResponse {
     example: 30,
   })
   inactivityReminderDays: number;
+
+  @ApiProperty({
+    description:
+      'Codes de connexion et d’inscription que toute la plateforme peut envoyer sur une heure glissante, en plus des limites par numéro ; au-delà, aucun code n’est envoyé et une alerte est créée pour les administrateurs',
+    example: 50,
+  })
+  maxCodesPerHour: number;
+
+  @ApiProperty({
+    description:
+      'Codes de connexion et d’inscription que toute la plateforme peut envoyer sur 24 heures glissantes, en plus des limites par numéro ; au-delà, aucun code n’est envoyé et une alerte est créée pour les administrateurs',
+    example: 200,
+  })
+  maxCodesPerDay: number;
 }
 
 /**
@@ -127,4 +145,24 @@ export class UpdateSystemSettingsDto {
   @Min(REMINDER.min, { message: REMINDER_MESSAGE })
   @Max(REMINDER.max, { message: REMINDER_MESSAGE })
   inactivityReminderDays?: number;
+
+  @ApiPropertyOptional({
+    description: `Entre ${CODES_HOUR.min} et ${CODES_HOUR.max} codes`,
+    example: 50,
+  })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsInt({ message: CODES_HOUR_MESSAGE })
+  @Min(CODES_HOUR.min, { message: CODES_HOUR_MESSAGE })
+  @Max(CODES_HOUR.max, { message: CODES_HOUR_MESSAGE })
+  maxCodesPerHour?: number;
+
+  @ApiPropertyOptional({
+    description: `Entre ${CODES_DAY.min} et ${CODES_DAY.max} codes`,
+    example: 200,
+  })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsInt({ message: CODES_DAY_MESSAGE })
+  @Min(CODES_DAY.min, { message: CODES_DAY_MESSAGE })
+  @Max(CODES_DAY.max, { message: CODES_DAY_MESSAGE })
+  maxCodesPerDay?: number;
 }

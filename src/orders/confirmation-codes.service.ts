@@ -7,6 +7,7 @@ import {
 import type { AuthenticatedUser } from '../mobile-auth/authenticated-user.js';
 import { maskPhone } from '../mobile-auth/mobile-auth.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { sendFailureKind } from '../sms/green-api-client.js';
 import { SMS_SENDER, type SmsSender } from '../sms/sms-sender.js';
 import type { CurrentStoreContext } from '../store-access/current-store.js';
 import { lockStoreNotClosed } from '../store-access/verified-store.js';
@@ -131,7 +132,7 @@ export class ConfirmationCodesService {
     // not awaited: a slow or failing provider never fails the request; staff
     // can ask again after the cooldown.
     this.sms.send(sent.phone, sent.text).catch((error: unknown) => {
-      const kind = error instanceof Error ? error.name : 'unknown error';
+      const kind = sendFailureKind(error);
       this.logger.error(
         `Order code SMS to ${maskPhone(sent.phone)} failed (${kind})`,
       );

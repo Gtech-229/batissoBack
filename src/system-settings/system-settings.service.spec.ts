@@ -28,6 +28,8 @@ describe('SystemSettingsService', () => {
       deliveryAlertDays: 7,
       cancellationEscalationHours: 48,
       inactivityReminderDays: 30,
+      maxCodesPerHour: 50,
+      maxCodesPerDay: 200,
     });
   });
 
@@ -49,6 +51,8 @@ describe('SystemSettingsService', () => {
       deliveryAlertDays: 7,
       cancellationEscalationHours: 48,
       inactivityReminderDays: 30,
+      maxCodesPerHour: 50,
+      maxCodesPerDay: 200,
       updatedAt: new Date(),
       updatedById: 'admin-1',
     });
@@ -60,6 +64,8 @@ describe('SystemSettingsService', () => {
       deliveryAlertDays: 7,
       cancellationEscalationHours: 48,
       inactivityReminderDays: 30,
+      maxCodesPerHour: 50,
+      maxCodesPerDay: 200,
     });
   });
 
@@ -78,6 +84,8 @@ describe('SystemSettingsService', () => {
         deliveryAlertDays: 7,
         cancellationEscalationHours: 48,
         inactivityReminderDays: 30,
+        maxCodesPerHour: 50,
+        maxCodesPerDay: 200,
         updatedById: 'admin-1',
       },
       update: { maxLoginAttempts: 10, updatedById: 'admin-1' },
@@ -89,6 +97,8 @@ describe('SystemSettingsService', () => {
       deliveryAlertDays: 7,
       cancellationEscalationHours: 48,
       inactivityReminderDays: 30,
+      maxCodesPerHour: 50,
+      maxCodesPerDay: 200,
     });
   });
 
@@ -113,6 +123,8 @@ describe('SystemSettingsService', () => {
       deliveryAlertDays: 7,
       cancellationEscalationHours: 48,
       inactivityReminderDays: 30,
+      maxCodesPerHour: 50,
+      maxCodesPerDay: 200,
     });
   });
 });
