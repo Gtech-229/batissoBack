@@ -6,29 +6,54 @@ import { PERMISSION_NAMES } from '../src/admin-auth/permissions.js';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/configure-app.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import {
+  WhatsappSendError,
+  type GreenApiCredentials,
+} from '../src/sms/green-api-client.js';
+import { WHATSAPP_TEST_MESSAGE } from '../src/whatsapp-settings/dto/whatsapp-settings.dto.js';
 import { TokenCipher } from '../src/whatsapp-settings/token-cipher.js';
 import { createAdmin, TEST_PASSWORD } from './utils/admins.js';
 import { accessCookieFor, createTestApp } from './utils/app.js';
+import { createMali } from './utils/countries.js';
 import { resetDatabase } from './utils/reset-database.js';
 
 const INSTANCE = '7103123456';
 const TOKEN = 'd75b3a66374942c5b3c019c698abc2067e151558acbd412345';
 const OTHER_TOKEN = 'a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5';
 
-describe('WhatsApp settings (e2e, 25b)', () => {
+describe('WhatsApp settings (e2e, 25b and 25c)', () => {
+  /** Stands in for Green API: records every call, or fails like it. */
+  const greenApi = {
+    calls: [] as {
+      credentials: GreenApiCredentials;
+      phone: string;
+      text: string;
+    }[],
+    failure: null as Error | null,
+    send(credentials: GreenApiCredentials, phone: string, text: string) {
+      greenApi.calls.push({ credentials, phone, text });
+      return greenApi.failure
+        ? Promise.reject(greenApi.failure)
+        : Promise.resolve();
+    },
+  };
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let superCookie: string;
   let superId: string;
 
   beforeAll(async () => {
-    // The real key from .env.test.
-    app = await createTestApp();
+    // The real key from .env.test; a fake Green API (no network).
+    app = await createTestApp({
+      greenApi: (...args) => greenApi.send(...args),
+    });
     prisma = app.get(PrismaService);
   });
 
   beforeEach(async () => {
     await resetDatabase(prisma);
+    greenApi.calls = [];
+    greenApi.failure = null;
     const superAdmin = await createAdmin(prisma, {
       email: 'super@batisso.test',
       role: 'SUPER_ADMIN',
@@ -392,6 +417,119 @@ describe('WhatsApp settings (e2e, 25b)', () => {
         .set('Cookie', superCookie)
         .send({ enabled: false })
         .expect(400);
+    });
+  });
+
+  describe('POST /admin/whatsapp-settings/test (25c)', () => {
+    const sendTest = (body: Record<string, unknown>, cookie = superCookie) =>
+      api()
+        .post('/api/v1/admin/whatsapp-settings/test')
+        .set('Cookie', cookie)
+        .send(body);
+
+    beforeEach(async () => {
+      await createMali(prisma);
+    });
+
+    it('sends the test text with the saved credentials, even while WhatsApp is off', async () => {
+      await save({ instanceId: INSTANCE, token: TOKEN }).expect(200);
+
+      const response = await sendTest({ phone: '76 00 00 00' }).expect(200);
+
+      expect(response.body).toEqual({ sent: true });
+      expect(greenApi.calls).toEqual([
+        {
+          credentials: { instanceId: INSTANCE, token: TOKEN },
+          phone: '+22376000000',
+          text: WHATSAPP_TEST_MESSAGE,
+        },
+      ]);
+      // Nothing recorded besides the save.
+      expect(await prisma.whatsappSettingsChange.count()).toBe(1);
+    });
+
+    it('refuses without an instance and a readable token (409), sending nothing', async () => {
+      const empty = await sendTest({ phone: '76 00 00 00' }).expect(409);
+      await save({ instanceId: INSTANCE }).expect(200);
+      await sendTest({ phone: '76 00 00 00' }).expect(409);
+
+      expect(empty.body.error).toBe('WHATSAPP_NOT_CONFIGURED');
+      expect(greenApi.calls).toHaveLength(0);
+    });
+
+    it.each([
+      ['a number of another country', '+33 6 12 34 56 78'],
+      ['letters', 'abc'],
+      ['an empty phone', ''],
+    ])('refuses %s (400)', async (_label, phone) => {
+      await save({ instanceId: INSTANCE, token: TOKEN }).expect(200);
+
+      await sendTest({ phone }).expect(400);
+
+      expect(greenApi.calls).toHaveLength(0);
+    });
+
+    it('answers 502 with the cause when Green API fails, never the token', async () => {
+      await save({ instanceId: INSTANCE, token: TOKEN }).expect(200);
+      greenApi.failure = new WhatsappSendError('HTTP 466');
+
+      const response = await sendTest({ phone: '76 00 00 00' }).expect(502);
+
+      expect(response.body.error).toBe('WHATSAPP_SEND_FAILED');
+      expect(response.body.message).toContain('HTTP 466');
+      expect(JSON.stringify(response.body)).not.toContain(TOKEN);
+    });
+
+    it("is the super admin's only (403 for an ADMIN with every permission)", async () => {
+      await save({ instanceId: INSTANCE, token: TOKEN }).expect(200);
+      await createAdmin(prisma, {
+        email: 'admin@batisso.test',
+        permissions: PERMISSION_NAMES,
+      });
+      const adminCookie = await accessCookieFor(app, 'admin@batisso.test');
+
+      await sendTest({ phone: '76 00 00 00' }, adminCookie).expect(403);
+
+      expect(greenApi.calls).toHaveLength(0);
+    });
+  });
+
+  describe('sending over WhatsApp (25c)', () => {
+    beforeEach(async () => {
+      await createMali(prisma);
+    });
+
+    it('sends a sign-in code over WhatsApp once it is on', async () => {
+      await save({ instanceId: INSTANCE, token: TOKEN, enabled: true }).expect(
+        200,
+      );
+
+      await api()
+        .post('/api/v1/auth/code')
+        .send({ phone: '76 00 00 00' })
+        .expect(202);
+
+      // The code is sent after the answer, without waiting.
+      await vi.waitFor(() => {
+        expect(greenApi.calls).toHaveLength(1);
+      });
+      expect(greenApi.calls[0]).toMatchObject({
+        credentials: { instanceId: INSTANCE, token: TOKEN },
+        phone: '+22376000000',
+      });
+      expect(greenApi.calls[0].text).toMatch(/\b\d{6}\b/);
+    });
+
+    it('goes the old way while WhatsApp is off', async () => {
+      await save({ instanceId: INSTANCE, token: TOKEN }).expect(200);
+
+      await api()
+        .post('/api/v1/auth/code')
+        .send({ phone: '76 00 00 00' })
+        .expect(202);
+
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(greenApi.calls).toHaveLength(0);
     });
   });
 

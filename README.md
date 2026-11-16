@@ -139,8 +139,9 @@ billing, no limit per plan, nothing automatic when one ends.
 Mobile users (store staff and customers) sign in to the app with their phone.
 A phone already known as a user (a store's first manager, registered above, or a
 customer whose account was opened at a counter) activates; a new phone signs up
-in the same steps. There is no real SMS provider yet: in development, each code
-is printed in the API log (`[SMS] To +223...: ...`). Codes go to any number of
+in the same steps. Codes go over WhatsApp once the super admin has turned it on
+(see "WhatsApp settings"); otherwise, in development, each code is printed in
+the API log (`[SMS] To +223...: ...`). Codes go to any number of
 the active country, limited per phone (1 a minute, 5 an hour, 10 a day) and for
 the whole platform: by default **50 codes in a rolling hour and 200 in 24
 hours**, for every phone together (`maxCodesPerHour` 1 to 10000 and
@@ -669,9 +670,9 @@ verified stores. Balances never change. The run logs
 ## WhatsApp settings
 
 The SMS interface (sign-in and sign-up codes, purchase codes, SMS notifications)
-will go out over WhatsApp through Green API (feature 25). Here the super admin
-stores the instance; sending comes with 25c. These settings decide where every
-sign-in code goes, so they are guarded:
+goes out over WhatsApp through Green API (feature 25) once the super admin has
+saved an instance and a token and turned WhatsApp on. These settings decide
+where every sign-in code goes, so they are guarded:
 
 - **Super admin only:** `GET /api/v1/admin/whatsapp-settings`,
   `PATCH /api/v1/admin/whatsapp-settings` and
@@ -698,11 +699,39 @@ sign-in code goes, so they are guarded:
   with `alerts.read` and `alerts.manage`, does not see them and gets 404 trying
   to resolve one.
 
+**Sending (25c).** For every message the API reads these settings:
+
+- **On, with an instance and a readable token:** the message goes to Green API,
+  `POST https://<first 4 digits of the instance>.api.greenapi.com/waInstance<id>/sendMessage/<token>`
+  with `chatId` = the number without `+` followed by `@c.us`, 10 seconds at
+  most. The host is built from the instance id in the code, never typed by an
+  admin.
+- **Off, or not usable** (no instance, no token, unreadable token): exactly as
+  before, the console sender (the log in development, a failure in production).
+- **A Green API failure** is the caller's, like any provider failure: a
+  sign-in code is simply not received (the user asks again), a notification is
+  recorded `FAILED`. The log line and the notification's `lastError` say why,
+  for example `WhatsappSendError (HTTP 466)`: the cause is `HTTP <status>`,
+  `timeout`, `network` (a redirect counts as one: it is never followed) or
+  `bad response`, never the URL (it holds the token), the number or the text.
+  A number without
+  WhatsApp does not receive its code: every user is assumed to have WhatsApp
+  (V1).
+- **Test before turning it on:** `POST /api/v1/admin/whatsapp-settings/test`
+  with `{ "phone": "76 00 00 00" }` (super admin only) sends a fixed test text
+  with the saved instance and token, even while WhatsApp is off: `200
+  { "sent": true }`, `WHATSAPP_NOT_CONFIGURED` (409) without an instance and a
+  readable token, `WHATSAPP_SEND_FAILED` (502) with the cause when Green API
+  fails. It changes and records nothing.
+
 To set it up in production: generate the key once on the VPS with
 `openssl rand -hex 32`, add `SETTINGS_ENCRYPTION_KEY=<it>` to
 `.env.production`, run `docker compose -f docker-compose.prod.yml up -d api`,
-then enter the instance and the token from the admin web. Keep the key with the
-env files (not in the backups): without it, the saved token cannot be read.
+then enter the instance and the token from the admin web, send a test to your
+own number, and only then turn WhatsApp on. If the test answers `network` or
+`HTTP 404`, compare the instance's `apiUrl` in the Green API console with the
+host above. Keep the key with the env files (not in the backups): without it,
+the saved token cannot be read.
 
 ## Production on a VPS
 

@@ -21,6 +21,7 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { SecurityAnswerDto } from '../security-questions/dto/security-answers.dto.js';
 import { normalizeAnswer } from '../security-questions/normalize-answer.js';
+import { sendFailureKind } from '../sms/green-api-client.js';
 import { SMS_SENDER, type SmsSender } from '../sms/sms-sender.js';
 import { SystemSettingsService } from '../system-settings/system-settings.service.js';
 import type { VerificationResponse } from './dto/code-responses.js';
@@ -231,7 +232,7 @@ export class MobileAuthService {
    */
   private sendCode(phone: string, code: string): void {
     this.sms.send(phone, codeMessage(code)).catch((error: unknown) => {
-      const kind = error instanceof Error ? error.name : 'unknown error';
+      const kind = sendFailureKind(error);
       this.logger.error(`SMS to ${maskPhone(phone)} failed (${kind})`);
     });
   }

@@ -1,5 +1,15 @@
-import { Body, Controller, Get, Patch, Query } from '@nestjs/common';
 import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
+import {
+  ApiBadGatewayResponse,
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCookieAuth,
@@ -19,9 +29,11 @@ import {
   type Paginated,
 } from '../common/pagination.js';
 import {
+  SendWhatsappTestDto,
   UpdateWhatsappSettingsDto,
   WhatsappSettingsChangeView,
   WhatsappSettingsResponse,
+  WhatsappTestResponse,
 } from './dto/whatsapp-settings.dto.js';
 import { WhatsappSettingsService } from './whatsapp-settings.service.js';
 
@@ -90,7 +102,7 @@ export class WhatsappSettingsController {
   @ApiOperation({
     summary: 'Modifier les paramètres WhatsApp',
     description:
-      'Mise à jour partielle, confirmée par le mot de passe actuel (un mot de passe erroné compte dans le blocage de connexion). Chaque modification est enregistrée (qui, quand, quoi) et crée une alerte pour les administrateurs ; enregistrer les mêmes valeurs ne crée rien.',
+      'Mise à jour partielle, confirmée par le mot de passe actuel (un mot de passe erroné compte dans le blocage de connexion). Chaque modification est enregistrée (qui, quand, quoi) et crée une alerte visible du seul super administrateur ; enregistrer les mêmes valeurs ne crée rien.',
   })
   @ApiOkResponse({
     description: 'Paramètres enregistrés',
@@ -102,7 +114,7 @@ export class WhatsappSettingsController {
   })
   @ApiConflictResponse({
     description:
-      'WHATSAPP_NOT_CONFIGURED (activation sans identifiant ou jeton lisible) ou ENCRYPTION_KEY_MISSING (clé de chiffrement absente du serveur)',
+      'WHATSAPP_NOT_CONFIGURED (WhatsApp activé, ou laissé activé, sans identifiant ou jeton lisible) ou ENCRYPTION_KEY_MISSING (clé de chiffrement absente du serveur)',
     type: ErrorResponse,
   })
   update(
@@ -110,5 +122,41 @@ export class WhatsappSettingsController {
     @CurrentAdmin() current: AuthenticatedAdmin,
   ): Promise<WhatsappSettingsResponse> {
     return this.settings.update(body, current.adminId);
+  }
+
+  /**
+   * @description Send a test WhatsApp message with the saved instance and token
+   * @route POST /api/v1/admin/whatsapp-settings/test
+   * @access Super admin
+   * @body SendWhatsappTestDto (phone)
+   * @returns WhatsappTestResponse; 409 not configured; 502 Green API failed
+   */
+  @Post('test')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Envoyer un message WhatsApp de test',
+    description:
+      'Envoie un message de test fixe au numéro donné (pays actif) avec l’instance et le jeton enregistrés, même si WhatsApp est désactivé, pour les vérifier avant de l’activer. Ne modifie et n’enregistre rien.',
+  })
+  @ApiOkResponse({ description: 'Message envoyé', type: WhatsappTestResponse })
+  @ApiBadRequestResponse({
+    description: 'Numéro invalide',
+    type: ErrorResponse,
+  })
+  @ApiConflictResponse({
+    description:
+      'WHATSAPP_NOT_CONFIGURED : identifiant d’instance ou jeton lisible manquant',
+    type: ErrorResponse,
+  })
+  @ApiBadGatewayResponse({
+    description:
+      'WHATSAPP_SEND_FAILED : Green API a refusé ou n’a pas répondu (la cause est dans le message)',
+    type: ErrorResponse,
+  })
+  async sendTest(
+    @Body() body: SendWhatsappTestDto,
+  ): Promise<WhatsappTestResponse> {
+    await this.settings.sendTest(body.phone);
+    return { sent: true };
   }
 }

@@ -167,3 +167,23 @@ export class WhatsappSettingsChangeView {
   })
   tokenLast4: string | null;
 }
+
+/** The fixed text of the test message. */
+export const WHATSAPP_TEST_MESSAGE =
+  'Bâtisso : message de test WhatsApp. Si vous le recevez, l’envoi fonctionne.';
+
+export class SendWhatsappTestDto {
+  @ApiProperty({
+    description: 'Numéro qui reçoit le message de test (pays actif)',
+    example: '76 00 00 00',
+  })
+  @IsString({ message: 'Le numéro de téléphone est requis' })
+  @MinLength(1, { message: 'Le numéro de téléphone est requis' })
+  @MaxLength(30, { message: 'Ce numéro de téléphone n’est pas valide' })
+  phone: string;
+}
+
+export class WhatsappTestResponse {
+  @ApiProperty({ description: 'Le message de test est parti', example: true })
+  sent: true;
+}

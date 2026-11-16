@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { AdminAuthService } from '../admin-auth/admin-auth.service.js';
 import {
   ONE_SNAPSHOT,
@@ -9,15 +9,25 @@ import {
 } from '../common/pagination.js';
 import { AdminAlertType } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import type {
-  UpdateWhatsappSettingsDto,
-  WhatsappSettingsChangeView,
-  WhatsappSettingsResponse,
+import { isPhoneCountry, normalizePhone } from '../common/phone.js';
+import { invalidPhone } from '../mobile-auth/mobile-auth.errors.js';
+import {
+  GREEN_API_SEND,
+  WhatsappSendError,
+  type GreenApiCredentials,
+  type GreenApiSend,
+} from '../sms/green-api-client.js';
+import {
+  WHATSAPP_TEST_MESSAGE,
+  type UpdateWhatsappSettingsDto,
+  type WhatsappSettingsChangeView,
+  type WhatsappSettingsResponse,
 } from './dto/whatsapp-settings.dto.js';
 import { TokenCipher } from './token-cipher.js';
 import {
   encryptionKeyMissing,
   whatsappNotConfigured,
+  whatsappSendFailed,
 } from './whatsapp-settings.errors.js';
 
 // The settings table holds a single row.
@@ -54,7 +64,66 @@ export class WhatsappSettingsService {
     private readonly prisma: PrismaService,
     private readonly cipher: TokenCipher,
     private readonly adminAuth: AdminAuthService,
+    @Inject(GREEN_API_SEND) private readonly sendWhatsapp: GreenApiSend,
   ) {}
+
+  /**
+   * The credentials to send with (25c), read for every message so a change
+   * applies at once: only when WhatsApp is on, an instance is set and the
+   * token decrypts; otherwise null and messages go the old way.
+   */
+  async deliveryCredentials(): Promise<GreenApiCredentials | null> {
+    const row = await this.prisma.whatsappSettings.findUnique({
+      where: { id: SETTINGS_ROW_ID },
+      select: { enabled: true, instanceId: true, tokenCiphertext: true },
+    });
+    if (!row?.enabled || !row.instanceId || !row.tokenCiphertext) {
+      return null;
+    }
+    const token = this.cipher.decrypt(row.tokenCiphertext);
+    return token ? { instanceId: row.instanceId, token } : null;
+  }
+
+  /**
+   * Sends the fixed test message to a number of the active country (25c), with
+   * the saved instance and token even while WhatsApp is off, so the super admin
+   * can check them before turning it on. Changes and records nothing.
+   */
+  async sendTest(rawPhone: string): Promise<void> {
+    const row = await this.prisma.whatsappSettings.findUnique({
+      where: { id: SETTINGS_ROW_ID },
+      select: { instanceId: true, tokenCiphertext: true },
+    });
+    const token = row?.tokenCiphertext
+      ? this.cipher.decrypt(row.tokenCiphertext)
+      : null;
+    if (!row?.instanceId || !token) {
+      throw whatsappNotConfigured();
+    }
+    const country = await this.prisma.country.findFirst({
+      where: { active: true },
+      select: { code: true },
+    });
+    const phone =
+      country && isPhoneCountry(country.code)
+        ? normalizePhone(rawPhone, country.code)
+        : null;
+    if (!phone) {
+      throw invalidPhone();
+    }
+    try {
+      await this.sendWhatsapp(
+        { instanceId: row.instanceId, token },
+        phone,
+        WHATSAPP_TEST_MESSAGE,
+      );
+    } catch (error) {
+      if (error instanceof WhatsappSendError) {
+        throw whatsappSendFailed(error.reason);
+      }
+      throw error;
+    }
+  }
 
   async get(): Promise<WhatsappSettingsResponse> {
     const row = await this.prisma.whatsappSettings.findUnique({
