@@ -706,6 +706,22 @@ where every sign-in code goes, so they are guarded:
   with `chatId` = the number without `+` followed by `@c.us`, 10 seconds at
   most. The host is built from the instance id in the code, never typed by an
   admin.
+- **Ivorian and Beninese numbers** (`+225`/`+229` with 10 digits): these
+  countries moved from 8 to 10 digits, and WhatsApp accounts created before
+  the switch keep their old ID. Before sending, the API asks Green API
+  `checkWhatsapp` about the new ID (`2250707020304`), then the old one
+  (`22507020304`: country code + the last 8 digits), and sends to the first
+  that has an account; with neither, nothing is sent and the cause is
+  `no WhatsApp account`. In Côte d'Ivoire the old ID is tried only when the
+  prefix is the one that old number moved to in 2021 (its operator, from its
+  first 2 digits: Moov `01`, MTN `05`, Orange `07`, table
+  `IVORIAN_OPERATOR_RANGES` in `src/sms/green-api-client.ts`): the same 8
+  digits behind another prefix belong to someone else, so such a number gets
+  only the new-ID check. Benin added `01` to every number, so its old ID always
+  applies. The checks and the send share the same 10 seconds; a
+  failed check gives `check HTTP <status>`, `check timeout`, `check network` or
+  `check bad response` (a Green API plan that limits `checkWhatsapp` shows up
+  here). Other countries are sent as they are, without a check.
 - **Off, or not usable** (no instance, no token, unreadable token): exactly as
   before, the console sender (the log in development, a failure in production).
 - **A Green API failure** is the caller's, like any provider failure: a
@@ -722,7 +738,10 @@ where every sign-in code goes, so they are guarded:
   with the saved instance and token, even while WhatsApp is off: `200
   { "sent": true }`, `WHATSAPP_NOT_CONFIGURED` (409) without an instance and a
   readable token, `WHATSAPP_SEND_FAILED` (502) with the cause when Green API
-  fails. It changes and records nothing.
+  fails or the number has no WhatsApp account. It changes and records nothing.
+  A `200` means Green API accepted the message, not that it was delivered: the
+  instance's outgoing journal in the Green API console shows each message's
+  recipient and status.
 
 To set it up in production: generate the key once on the VPS with
 `openssl rand -hex 32`, add `SETTINGS_ENCRYPTION_KEY=<it>` to
