@@ -31,5 +31,5 @@ export function confirmationCodeMessage(order: {
   currencyCode: string;
   storeName: string;
 }): string {
-  return `Bâtisso : code ${order.code} pour confirmer le bon ${order.reference} de ${groupThousands(order.total)} ${order.currencyCode} chez ${order.storeName}. Valable 10 minutes. Donnez-le au vendeur seulement pour confirmer cet achat.`;
+  return `Ikasso : code ${order.code} pour confirmer le bon ${order.reference} de ${groupThousands(order.total)} ${order.currencyCode} chez ${order.storeName}. Valable 10 minutes. Donnez-le au vendeur seulement pour confirmer cet achat.`;
 }

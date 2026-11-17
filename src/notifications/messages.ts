@@ -227,7 +227,7 @@ export function accessResetMessage(reset: {
 }): NotificationMessage {
   return {
     title: 'Accès réinitialisé',
-    body: `${reset.storeName} a réinitialisé votre accès à Bâtisso. Connectez-vous avec un code SMS et choisissez un nouveau code PIN. Si vous n’avez rien demandé, contactez cette quincaillerie.`,
+    body: `${reset.storeName} a réinitialisé votre accès à Ikasso. Connectez-vous avec un code SMS et choisissez un nouveau code PIN. Si vous n’avez rien demandé, contactez cette quincaillerie.`,
   };
 }
 
@@ -271,7 +271,7 @@ export function accountStatusMessage(change: {
 export function accessRecoveredMessage(): NotificationMessage {
   return {
     title: 'Accès récupéré',
-    body: 'Votre accès à Bâtisso a été récupéré avec vos questions de sécurité et votre code PIN a changé. Si ce n’est pas vous, voyez vite votre quincaillerie.',
+    body: 'Votre accès à Ikasso a été récupéré avec vos questions de sécurité et votre code PIN a changé. Si ce n’est pas vous, voyez vite votre quincaillerie.',
   };
 }
 

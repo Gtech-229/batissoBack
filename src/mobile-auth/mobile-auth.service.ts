@@ -84,7 +84,7 @@ export function maskPhone(phone: string): string {
 
 /** The SMS a user receives. French, like every message users see. */
 export function codeMessage(code: string): string {
-  return `Bâtisso : votre code de connexion est ${code}. Il expire dans 10 minutes. Ne le partagez avec personne.`;
+  return `Ikasso : votre code de connexion est ${code}. Il expire dans 10 minutes. Ne le partagez avec personne.`;
 }
 
 type CodeOutcome = { kind: 'invalid' } | { kind: 'verified'; token: string };

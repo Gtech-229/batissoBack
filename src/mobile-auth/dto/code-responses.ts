@@ -22,7 +22,7 @@ export class VerificationResponse {
 
   @ApiProperty({
     description:
-      '`false` : numéro sans compte Bâtisso ; l’application demande le prénom et le nom avec le PIN choisi, à envoyer à `POST /auth/pin` (inscription)',
+      '`false` : numéro sans compte Ikasso ; l’application demande le prénom et le nom avec le PIN choisi, à envoyer à `POST /auth/pin` (inscription)',
     example: true,
   })
   registered: boolean;

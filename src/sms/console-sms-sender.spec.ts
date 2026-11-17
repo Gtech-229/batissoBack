@@ -4,7 +4,7 @@ import type { EnvironmentVariables } from '../config/env.validation.js';
 import { NoProviderConfiguredError } from '../common/errors/no-provider-configured.error.js';
 import { ConsoleSmsSender } from './console-sms-sender.js';
 
-const TEXT = 'Bâtisso : votre code de connexion est 482915.';
+const TEXT = 'Ikasso : votre code de connexion est 482915.';
 
 function senderFor(nodeEnv: string) {
   const config = { get: vi.fn().mockReturnValue(nodeEnv) };

@@ -22,7 +22,7 @@ describe('confirmationCodeMessage', () => {
         storeName: 'Quincaillerie du Carrefour',
       }),
     ).toBe(
-      'Bâtisso : code 048213 pour confirmer le bon B-00042 de 250 000 XOF chez Quincaillerie du Carrefour. Valable 10 minutes. Donnez-le au vendeur seulement pour confirmer cet achat.',
+      'Ikasso : code 048213 pour confirmer le bon B-00042 de 250 000 XOF chez Quincaillerie du Carrefour. Valable 10 minutes. Donnez-le au vendeur seulement pour confirmer cet achat.',
     );
   });
 });

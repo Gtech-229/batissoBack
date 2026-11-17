@@ -135,7 +135,7 @@ describe('Confirming an order with an SMS code (e2e)', () => {
       expect(sms.messages).toEqual([
         {
           phone: customer.phone,
-          text: `Bâtisso : code ${codeOf()} pour confirmer le bon ${order.reference} de 20 000 XOF chez Quincaillerie du Carrefour. Valable 10 minutes. Donnez-le au vendeur seulement pour confirmer cet achat.`,
+          text: `Ikasso : code ${codeOf()} pour confirmer le bon ${order.reference} de 20 000 XOF chez Quincaillerie du Carrefour. Valable 10 minutes. Donnez-le au vendeur seulement pour confirmer cet achat.`,
         },
       ]);
       const [stored] = await codes(order.id);

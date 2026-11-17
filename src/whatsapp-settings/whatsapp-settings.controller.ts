@@ -150,7 +150,7 @@ export class WhatsappSettingsController {
   })
   @ApiBadGatewayResponse({
     description:
-      'WHATSAPP_SEND_FAILED : Green API a refusé ou n’a pas répondu (la cause est dans le message)',
+      'WHATSAPP_SEND_FAILED : Green API a refusé ou n’a pas répondu, ou le numéro n’a pas de compte WhatsApp (`no WhatsApp account`) ; la cause est dans le message',
     type: ErrorResponse,
   })
   async sendTest(

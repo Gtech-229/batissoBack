@@ -33,7 +33,7 @@ describe('password links', () => {
     );
 
     expect(email.to).toBe('awa@batisso.test');
-    expect(email.subject).toBe('Bâtisso : choisissez votre mot de passe');
+    expect(email.subject).toBe('Ikasso : choisissez votre mot de passe');
     expect(email.text).toContain('Bonjour Awa,');
     expect(email.text).toContain('http://x/password?mode=set&token=t');
     expect(email.text).toContain('valable 3 jours');
@@ -43,7 +43,7 @@ describe('password links', () => {
   it('tells a reset email that the current password still works', () => {
     const email = passwordLinkEmail('a@b.test', 'Awa', 'reset', 'http://x');
 
-    expect(email.subject).toBe('Bâtisso : réinitialisez votre mot de passe');
+    expect(email.subject).toBe('Ikasso : réinitialisez votre mot de passe');
     expect(email.text).toContain('actuel reste valable');
   });
 });
