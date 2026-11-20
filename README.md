@@ -754,8 +754,9 @@ the saved token cannot be read.
 
 ## Production on a VPS
 
-The API and PostgreSQL run from `docker-compose.prod.yml`; the dev
-`docker-compose.yml` is separate. HTTPS comes one of two ways:
+The API, PostgreSQL and the admin web (`admin`, built from the frontend
+checkout next to this one: "Deploys from GitHub" below) run from
+`docker-compose.prod.yml`; the dev `docker-compose.yml` is separate. HTTPS comes one of two ways:
 
 - **Our own Nginx and certbot** (the steps below): on a VPS where ports 80 and
   443 are free.
@@ -763,8 +764,13 @@ The API and PostgreSQL run from `docker-compose.prod.yml`; the dev
   ports (a hosting panel like ISPConfig, other sites): see "Behind an existing
   web server (ISPConfig)" below. Our Nginx and certbot then stay off.
 
-Before you start: Docker with Compose on the VPS, ports 80 and 443 open, and a
-DNS A record for the API's domain (e.g. `api.example.com`) pointing at the VPS.
+Before you start: Docker with Compose on the VPS, ports 80 and 443 open, a
+DNS A record for the API's domain (e.g. `api.example.com`) pointing at the VPS,
+and the frontend repo (`Gtech-229/ikasso-front`) cloned as `frontend` next to
+this checkout: every `up` also builds the admin web (`admin`) from
+`../frontend` and fails without it ("Deploys from GitHub" below). With our own
+Nginx the admin web is then reachable only from the VPS, on `127.0.0.1:3100`:
+our Nginx template serves the API only.
 
 1. Write the four env files (all git-ignored), plus a fifth, `.env`, holding
    just `COMPOSE_PROFILES=proxy`: it turns on our Nginx and certbot, which are
@@ -923,7 +929,7 @@ Day to day:
   on the VPS except to wipe everything on purpose.
 
 From outside, only the web server's ports 80 and 443 are open. Inside, the services sit
-on two networks: `edge` (Nginx, certbot, the API) reaches the internet, and
+on two networks: `edge` (Nginx, certbot, the API, the admin web) reaches the internet, and
 `data` (the API, PostgreSQL, the backups) is internal, with no route out. Only
 the API is on both, so Nginx cannot reach the database, and neither the
 database nor the backups can reach the internet.
@@ -932,8 +938,9 @@ database nor the backups can reach the internet.
 
 When the VPS already runs a web server on ports 80 and 443 (here ISPConfig's
 Nginx, with other sites), that server does HTTPS and forwards to the API on
-`127.0.0.1:<port>`: 3000 by default, or `API_HOST_PORT` (step 1). Docker runs
-only `db`, `api` and `backup`: **no `COMPOSE_PROFILES=proxy`** in `.env`, so
+`127.0.0.1:<port>`: 3000 by default, or `API_HOST_PORT` (step 1), and to the
+admin web on `127.0.0.1:3100`, or `ADMIN_HOST_PORT` (step 1b). Docker runs
+only `db`, `api`, `admin` and `backup`: **no `COMPOSE_PROFILES=proxy`** in `.env`, so
 our Nginx and certbot never start and never touch the ports. Leave the host's
 web server, its other sites and its own PostgreSQL alone; ours publishes no
 port.
@@ -973,13 +980,35 @@ port.
    `docker-compose.prod.yml` (that line only, no `COMPOSE_PROFILES`). Compose
    reads it for every command and for the GitHub deploys; inside Docker the API
    still listens on 3000.
+
+   1b. **The admin web's site** (e.g. `ikaso-mali.com`, the address in
+   `ADMIN_WEB_URL`): a second website, with the same SSL, Let's Encrypt and
+   HTTP-to-HTTPS settings, whose nginx Directives forward to the admin:
+
+   ```nginx
+   add_header Strict-Transport-Security "max-age=15552000" always;
+
+   location / {
+       proxy_pass http://127.0.0.1:3100;
+       proxy_http_version 1.1;
+       proxy_set_header Host $host;
+       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+       proxy_set_header X-Forwarded-Proto $scheme;
+   }
+   ```
+
+   If 3100 is taken (`ss -tln | grep ':3100 '` prints a line), choose a free
+   port, put it in both the directive and `ADMIN_HOST_PORT=<port>` in the same
+   `.env`. The admin calls the API through its own `/api/v1` proxy, inside
+   Docker (`http://api:3000`), so it needs no CORS origin.
 2. **The env files:** `.env.db.production`, `.env.production` and
    `.env.backup.production` as in step 1 above. `.env.proxy.production` is not
    needed, and `.env` only for `API_HOST_PORT`.
 3. **Start:** `docker compose -f docker-compose.prod.yml up -d --build`
    (migrations and the super admin as in step 2 above).
-4. **Check:** `docker compose -f docker-compose.prod.yml ps` lists `db`, `api`
-   and `backup`, no `nginx`, and the api's port as `127.0.0.1:<port>->3000/tcp`;
+4. **Check:** `docker compose -f docker-compose.prod.yml ps` lists `db`, `api`,
+   `admin` and `backup`, no `nginx`, the api's port as `127.0.0.1:<port>->3000/tcp`
+   and the admin's as `127.0.0.1:3100->3000/tcp`;
    on the VPS, `curl http://127.0.0.1:<port>/api/v1/health` answers
    `{"status":"ok","database":"up"}`; then the same through HTTPS,
    `curl https://<domain>/api/v1/health`. A `502` there means the API is not
@@ -987,7 +1016,9 @@ port.
    `curl -sI http://<domain>/api/v1/health` answers `301` with a
    `Location: https://...` (the redirect), and
    `curl -sI https://<domain>/api/v1/health | grep -i strict-transport`
-   prints the HSTS header once.
+   prints the HSTS header once. For the admin:
+   `curl -sI http://127.0.0.1:3100/login` answers `200`, then
+   `https://<admin-domain>/login` opens in a browser.
 
 Backups, PostgreSQL settings and day to day are as above, except the restore:
 stop only the API, `docker compose -f docker-compose.prod.yml stop api`, then
@@ -1000,9 +1031,9 @@ Deploy > Run workflow** on `main`. The workflow
 (`.github/workflows/deploy.yml`) deploys that commit only once its CI run
 passed: over SSH it checks the VPS checkout, takes a backup
 (`backup.sh once`), fast-forwards the checkout to the commit, then runs
-`up -d --build --wait`. That starts what the VPS's `.env` selects: all five
-services with `COMPOSE_PROFILES=proxy`, otherwise `db`, `api` and `backup`
-(behind an existing web server). It fails, and the job turns red, when:
+`up -d --build --wait`. That starts what the VPS's `.env` selects: all six
+services with `COMPOSE_PROFILES=proxy`, otherwise `db`, `api`, `admin` and
+`backup` (behind an existing web server). It fails, and the job turns red, when:
 
 - it was started from another branch, or CI has not passed for the commit;
 - the VPS checkout is not on `main`, has local changes, or is already past
@@ -1015,6 +1046,16 @@ services with `COMPOSE_PROFILES=proxy`, otherwise `db`, `api` and `backup`
   `docker compose -f docker-compose.prod.yml logs api`, then deploy a fix. A
   migration is not undone by redeploying: restore the backup the run took
   first (Restore above).
+
+**The admin web is rebuilt by every backend deploy.** The `admin` service is
+built from `../frontend`, the frontend checkout (`Gtech-229/ikasso-front`)
+cloned next to the backend one on the VPS, and `up -d --build --wait` rebuilds
+it and waits for its health check too. So that checkout must exist there and
+be on the frontend commit meant to run: missing, the deploy fails after the
+backup and the fast-forward (the containers stay as they were; clone it and
+run again). The frontend has its own Deploy workflow, which updates its
+checkout and rebuilds only `admin` (`--no-deps`), leaving the API and the
+database alone.
 
 One-time setup (SSH on port 22; replace `<...>`):
 
