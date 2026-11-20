@@ -1039,6 +1039,9 @@ services with `COMPOSE_PROFILES=proxy`, otherwise `db`, `api`, `admin` and
 - the VPS checkout is not on `main`, has local changes, or is already past
   the commit (deploying an older commit is refused);
 - the checkout cannot fast-forward (a commit made on the VPS);
+- there is no frontend checkout next to the backend one (no
+  `../frontend/Dockerfile`): refused before anything changes; clone it and
+  run again;
 - the backup fails. Nothing has changed yet: the checkout and the running
   containers stay as they were. Read
   `docker compose -f docker-compose.prod.yml logs backup`, fix it, run again;
@@ -1051,10 +1054,10 @@ services with `COMPOSE_PROFILES=proxy`, otherwise `db`, `api`, `admin` and
 built from `../frontend`, the frontend checkout (`Gtech-229/ikasso-front`)
 cloned next to the backend one on the VPS, and `up -d --build --wait` rebuilds
 it and waits for its health check too. So that checkout must exist there and
-be on the frontend commit meant to run: missing, the deploy fails after the
-backup and the fast-forward (the containers stay as they were; clone it and
-run again). The frontend has its own Deploy workflow, which updates its
-checkout and rebuilds only `admin` (`--no-deps`), leaving the API and the
+be on the frontend commit meant to run: missing, the deploy is refused before
+the backup and the fast-forward, and nothing changes (clone it and run
+again). The frontend has its own Deploy workflow, which updates its checkout
+and rebuilds only `admin` (`--no-deps`), leaving the API and the
 database alone.
 
 One-time setup (SSH on port 22; replace `<...>`):
