@@ -22,6 +22,11 @@ compose="docker compose -f docker-compose.prod.yml"
   refuse "the checkout on the VPS is not on main."
 [ -z "$(git status --porcelain --untracked-files=no)" ] ||
   refuse "the checkout on the VPS has local changes."
+# Every `up` also builds the admin web from the frontend checkout next to this
+# one (service `admin`): without it, the deploy would fail only after the
+# backup and the fast-forward.
+[ -f ../frontend/Dockerfile ] ||
+  refuse "no frontend checkout next to the backend one (../frontend/Dockerfile): clone it there first."
 
 # Fetching moves only origin/main, never the checkout.
 git fetch --quiet origin main
@@ -47,7 +52,7 @@ echo "Checkout at $sha."
 # Rebuilds what changed and waits until every service is healthy or running;
 # a failed health check fails the deploy. Compose reads the checkout's `.env`
 # by itself: with COMPOSE_PROFILES=proxy this includes our Nginx and certbot,
-# without it only db, api and backup (behind the VPS's own web server).
+# without it only db, api, admin and backup (behind the VPS's own web server).
 $compose up -d --build --wait --wait-timeout 300 </dev/null
 $compose ps </dev/null
 echo "Deployed $sha."
