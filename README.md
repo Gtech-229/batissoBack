@@ -115,6 +115,54 @@ There is no seed data, so a fresh database has no country. As an admin:
 
 Lists are paginated: `?page=1&pageSize=20` returns `{ items, total, page, pageSize }`.
 
+### Store import
+
+An admin with `stores.manage` can register many stores from one file
+(`src/stores/import/`):
+
+1. Download the template: `GET /api/v1/admin/stores/import/template?format=xlsx`
+   (or `csv`: UTF-8 with a BOM, `;` separators). It has the header row only, one
+   column per field of `POST /api/v1/admin/stores`, named by its path:
+   `countryCode`, `name`, `address`, `city`, `phone`, `tradeRegister`,
+   `settings.maxBalance`, `settings.validationThreshold`, `settings.minDeposit`,
+   `settings.terms` (optional), `settings.deliveryDelayDays` (optional),
+   `manager.firstName`, `manager.lastName`, `manager.phone`.
+2. Fill one row per store, then check it:
+   `POST /api/v1/admin/stores/import?dryRun=true` with the file as multipart
+   field `file`. Nothing is created; each row comes back `valid` or `invalid`
+   with its errors (`field` is the column name).
+3. Import: the same call with `dryRun=false`. Each valid row is registered on
+   its own, exactly as `POST /admin/stores` does (PENDING, its first manager,
+   the default categories, the admin as `createdById`): one refused row never
+   undoes or blocks the others. Rows come back `created` (with `storeId`),
+   `invalid`, or `rejected` (passed the checks, refused at creation).
+
+The rules:
+
+- Each row is checked like `POST /admin/stores`: the same validation, an active
+  country, phones of that country, `minDeposit` at most `maxBalance`.
+- One store per trade register and country: a row whose `tradeRegister`
+  (trimmed, any case) is already used in its country, by an earlier row or by
+  a registered store, is `invalid`. Re-running a file therefore creates nothing
+  twice. A manager phone may repeat (one person, several stores).
+  `POST /admin/stores` itself does not apply this rule.
+- The file as a whole is refused (400, nothing checked or created) when it is
+  not a `.csv` or `.xlsx`, is over 2 MB or 500 rows, has no rows, has an unknown,
+  missing required or doubled column, or cannot be read: a CSV must be UTF-8
+  (Excel's "CSV UTF-8"), an XLSX is read from its first sheet only. Its
+  `error` says which (`IMPORT_FILE_INVALID`, `IMPORT_EMPTY`,
+  `IMPORT_TOO_MANY_ROWS`, `IMPORT_UNKNOWN_COLUMN`, `IMPORT_MISSING_COLUMN`,
+  `IMPORT_DUPLICATE_COLUMN`).
+- XLSX cells: numbers become their digits (keep phones as text, as the
+  template's columns are, to keep a leading `+` or `0`), formulas give the
+  value Excel saved (never evaluated here), dates and true/false are refused as
+  unreadable.
+- The file stays in memory, never on disk; messages name columns and line
+  numbers, never a cell's value. An XLSX is a zip: its 2 MB can unzip to much
+  more, which is accepted for this admin-only route.
+- An unexpected error (database down) fails the whole request with a 500; the
+  stores created before it stay, and re-running the file skips them.
+
 ### Subscriptions
 
 An admin with `subscriptions.manage` records each store's subscriptions by hand,

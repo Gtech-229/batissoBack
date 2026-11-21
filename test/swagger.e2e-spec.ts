@@ -125,6 +125,36 @@ describe('Swagger document (e2e)', () => {
     );
   });
 
+  it('documents the store import routes (feature 26a)', () => {
+    const routes = operations.map(([route]) => route);
+
+    expect(routes).toEqual(
+      expect.arrayContaining([
+        'GET /api/v1/admin/stores/import/template',
+        'POST /api/v1/admin/stores/import',
+      ]),
+    );
+    const importOperation = operations.find(
+      ([route]) => route === 'POST /api/v1/admin/stores/import',
+    )?.[1];
+    expect(importOperation?.parameters?.map((p) => p.name)).toContain('dryRun');
+    expect(Object.keys(schemas.StoreImportResult.properties ?? {})).toEqual([
+      'total',
+      'created',
+      'rejected',
+      'rows',
+    ]);
+    expect(Object.keys(schemas.StoreImportRow.properties ?? {})).toEqual([
+      'row',
+      'status',
+      'storeId',
+      'errors',
+    ]);
+    expect(Object.keys(schemas.StoreImportFileBody.properties ?? {})).toEqual([
+      'file',
+    ]);
+  });
+
   it('documents the store registration routes (feature 21b)', () => {
     const routes = operations.map(([route]) => route);
 

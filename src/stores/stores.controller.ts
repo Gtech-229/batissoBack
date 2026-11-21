@@ -2,22 +2,32 @@ import {
   Body,
   Controller,
   Get,
+  Header,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   Query,
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
 import { RequirePermission } from '../admin-auth/decorators/require-permission.decorator.js';
 import {
   ApiBadRequestResponse,
+  ApiBody,
   ApiConflictResponse,
+  ApiConsumes,
   ApiCookieAuth,
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
+  ApiForbiddenResponse,
   ApiOperation,
   ApiParam,
+  ApiProduces,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -27,6 +37,15 @@ import { ErrorResponse } from '../common/errors/error-response.js';
 import { ApiPaginatedResponse, type Paginated } from '../common/pagination.js';
 import { ListStoresQueryDto, StoreSummary } from './dto/list-stores.dto.js';
 import { RegisterStoreDto } from './dto/register-store.dto.js';
+import {
+  ImportTemplateQueryDto,
+  StoreImportFileBody,
+  StoreImportQueryDto,
+  StoreImportResult,
+} from './dto/store-import.dto.js';
+import { StoreImportService } from './import/store-import.service.js';
+import { buildImportTemplate } from './import/store-import-template.js';
+import { StoreImportUploadInterceptor } from './import/store-import-upload.interceptor.js';
 import { StatusReasonDto } from './dto/status-reason.dto.js';
 import { StoreDetail } from './dto/store-detail.js';
 import {
@@ -44,7 +63,10 @@ const StoreIdPipe = new ParseUUIDPipe({ exceptionFactory: invalidStoreId });
 @ApiUnauthorizedResponse({ description: 'Non connecté', type: ErrorResponse })
 @Controller('admin/stores')
 export class StoresController {
-  constructor(private readonly stores: StoresService) {}
+  constructor(
+    private readonly stores: StoresService,
+    private readonly storeImport: StoreImportService,
+  ) {}
 
   /**
    * @description Register a store (PENDING) with its money settings and first manager
@@ -79,6 +101,88 @@ export class StoresController {
     @CurrentAdmin() current: AuthenticatedAdmin,
   ): Promise<StoreDetail> {
     return this.stores.register(body, current.adminId);
+  }
+
+  /**
+   * @description Download the empty store import template (header row only)
+   * @route GET /api/v1/admin/stores/import/template
+   * @access Admin (stores.manage)
+   * @query ImportTemplateQueryDto (format: csv | xlsx)
+   * @returns 200 the template file (attachment); 400 bad format
+   */
+  @Get('import/template')
+  @RequirePermission('stores.manage')
+  @Header('Cache-Control', 'no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  @ApiOperation({
+    summary: 'Modèle d’import des quincailleries',
+    description:
+      'Fichier vide (ligne d’en-tête seule), une colonne par champ de l’inscription : countryCode, name, address, city, phone, tradeRegister, settings.maxBalance, settings.validationThreshold, settings.minDeposit, settings.terms (facultatif), settings.deliveryDelayDays (facultatif), manager.firstName, manager.lastName, manager.phone. Le CSV est en UTF-8 avec séparateur point-virgule.',
+  })
+  @ApiProduces(
+    'text/csv',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  )
+  @ApiOkResponse({
+    description: 'Le modèle, en pièce jointe',
+    schema: { type: 'string', format: 'binary' },
+  })
+  @ApiBadRequestResponse({
+    description: 'Format autre que csv ou xlsx',
+    type: ErrorResponse,
+  })
+  @ApiForbiddenResponse({
+    description: 'Permission stores.manage requise',
+    type: ErrorResponse,
+  })
+  async importTemplate(
+    @Query() query: ImportTemplateQueryDto,
+  ): Promise<StreamableFile> {
+    const template = await buildImportTemplate(query.format);
+    return new StreamableFile(template.content, {
+      type: template.contentType,
+      disposition: `attachment; filename="${template.fileName}"`,
+    });
+  }
+
+  /**
+   * @description Import stores from a CSV or XLSX file: dry run, or create each valid row
+   * @route POST /api/v1/admin/stores/import
+   * @access Admin (stores.manage)
+   * @query StoreImportQueryDto (dryRun: true | false)
+   * @body multipart file (.csv or .xlsx, 2 MB, 500 rows)
+   * @returns 200 StoreImportResult (per-row status and errors); 400 file refused
+   */
+  @Post('import')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('stores.manage')
+  @UseInterceptors(StoreImportUploadInterceptor)
+  @ApiOperation({
+    summary: 'Importer des quincailleries (CSV ou XLSX)',
+    description:
+      'Chaque ligne est vérifiée exactement comme une inscription (POST /admin/stores) : mêmes règles, pays actif, numéros du pays, dépôt minimum. Une ligne dont le registre du commerce existe déjà pour ce pays, plus haut dans le fichier ou chez une quincaillerie inscrite, est refusée. dryRun=true ne crée rien ; dryRun=false crée chaque ligne valide indépendamment (statut PENDING) : une ligne refusée n’annule pas les autres. Colonnes : celles du modèle (GET /admin/stores/import/template).',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ type: StoreImportFileBody })
+  @ApiOkResponse({
+    description: 'Résultat ligne par ligne',
+    type: StoreImportResult,
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Fichier refusé en entier (rien n’est vérifié ni créé) : IMPORT_FILE_INVALID (absent, autre que .csv/.xlsx, plus de 2 Mo, illisible, CSV pas en UTF-8), IMPORT_EMPTY, IMPORT_TOO_MANY_ROWS (plus de 500 lignes), IMPORT_UNKNOWN_COLUMN, IMPORT_MISSING_COLUMN, IMPORT_DUPLICATE_COLUMN ; ou dryRun absent ou autre que true/false',
+    type: ErrorResponse,
+  })
+  @ApiForbiddenResponse({
+    description: 'Permission stores.manage requise',
+    type: ErrorResponse,
+  })
+  importStores(
+    @Query() query: StoreImportQueryDto,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentAdmin() current: AuthenticatedAdmin,
+  ): Promise<StoreImportResult> {
+    return this.storeImport.import(file, query.dryRun, current.adminId);
   }
 
   /**

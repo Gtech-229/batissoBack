@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { definedOnly } from '../common/defined-only.js';
 import type { ValidationErrorDetail } from '../common/errors/error-response.js';
 import { parseAmount } from '../common/money.js';
@@ -136,6 +136,24 @@ export class StoresService {
         }),
       );
     });
+  }
+
+  /**
+   * The checks register() makes after validation, in an active country (the
+   * store and manager phones belong to it, minDeposit <= maxBalance), as field
+   * errors instead of a throw: the store import (26a) reports them per row.
+   */
+  registrationErrors(dto: RegisterStoreDto): ValidationErrorDetail[] {
+    try {
+      this.checkRegistration(dto.countryCode, dto, dto.manager.phone);
+      return [];
+    } catch (error) {
+      const body = error instanceof BadRequestException && error.getResponse();
+      if (body && typeof body === 'object' && 'details' in body) {
+        return body.details as ValidationErrorDetail[];
+      }
+      throw error;
+    }
   }
 
   /**
