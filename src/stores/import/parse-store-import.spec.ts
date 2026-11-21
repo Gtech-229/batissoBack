@@ -308,6 +308,24 @@ describe('parseStoreImport', () => {
       expect(rows[0].values.city).toBe(UNREADABLE_CELL);
     });
 
+    it('marks a whole number past 2^53 as unreadable, not as rounded digits (F-101)', async () => {
+      const cells: ExcelJS.CellValue[] = rowOf(REQUIRED);
+      // settings.maxBalance: digits that would pass the amount rule rounded.
+      cells[6] = 12345678901234568;
+      // settings.validationThreshold: the largest safe integer, still digits.
+      cells[7] = Number.MAX_SAFE_INTEGER;
+
+      const rows = await parseStoreImport(
+        await xlsx([REQUIRED, cells]),
+        'a.xlsx',
+      );
+
+      expect(rows[0].values['settings.maxBalance']).toBe(UNREADABLE_CELL);
+      expect(rows[0].values['settings.validationThreshold']).toBe(
+        '9007199254740991',
+      );
+    });
+
     it('reads blank cells as absent and skips empty rows, keeping line numbers', async () => {
       const cells: ExcelJS.CellValue[] = rowOf(REQUIRED);
       cells[1] = '   ';

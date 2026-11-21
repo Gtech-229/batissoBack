@@ -296,8 +296,15 @@ function xlsxCell(value: ExcelJS.CellValue): ImportCellValue {
     return textCell(value);
   }
   if (typeof value === 'number') {
-    // A safe integer as its digits (76000000, not 7.6e7); anything else as
-    // its plain decimal text, which the amount rules then refuse.
+    // A safe integer as its digits (76000000, not 7.6e7). A whole number past
+    // 2^53 is already rounded (Excel keeps 15 digits), and its digits would
+    // pass the amount rule with a value the admin never typed: unreadable
+    // (F-101; typed as text, it is read as typed). Anything else as its
+    // decimal text (2.5, 0.001), which the amount rules refuse; 1e21 is whole,
+    // so it is unreadable too.
+    if (Number.isInteger(value) && !Number.isSafeInteger(value)) {
+      return UNREADABLE_CELL;
+    }
     return textCell(
       Number.isSafeInteger(value) ? value.toFixed(0) : String(value),
     );
