@@ -35,6 +35,11 @@ import type { AuthenticatedAdmin } from '../admin-auth/authenticated-admin.js';
 import { CurrentAdmin } from '../admin-auth/decorators/current-admin.decorator.js';
 import { ErrorResponse } from '../common/errors/error-response.js';
 import { ApiPaginatedResponse, type Paginated } from '../common/pagination.js';
+import {
+  BulkStatusReasonDto,
+  BulkStatusResult,
+  BulkStoreIdsDto,
+} from './dto/bulk-status.dto.js';
 import { ListStoresQueryDto, StoreSummary } from './dto/list-stores.dto.js';
 import { RegisterStoreDto } from './dto/register-store.dto.js';
 import {
@@ -279,6 +284,160 @@ export class StoresController {
     @CurrentAdmin() current: AuthenticatedAdmin,
   ): Promise<StoreDetail> {
     return this.stores.updateSettings(id, body, current.adminId);
+  }
+
+  /**
+   * @description Verify several stores at once, each with the single action's rules and its own result
+   * @route POST /api/v1/admin/stores/bulk/verify
+   * @access Admin (stores.manage)
+   * @body BulkStoreIdsDto (ids)
+   * @returns 200 BulkStatusResult (one result per store); 400 invalid body
+   */
+  @Post('bulk/verify')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('stores.manage')
+  @ApiOperation({
+    summary: 'Vérifier plusieurs quincailleries',
+    description:
+      'PENDING -> VERIFIED pour chaque quincaillerie. Une quincaillerie inscrite depuis l’application exige ses deux documents (STORE_DOCUMENTS_MISSING sinon) : documentsComplete dans la liste le dit à l’avance. Chaque quincaillerie est traitée seule, dans l’ordre, avec exactement les règles de l’action unitaire ; un refus n’empêche pas les autres. Chaque résultat donne ok, ou le code et le message que l’action unitaire aurait renvoyés (dont NOT_FOUND pour un identifiant inconnu). 1 à 100 identifiants, doublons ignorés.',
+  })
+  @ApiOkResponse({
+    description: 'Un résultat par quincaillerie',
+    type: BulkStatusResult,
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Liste vide, plus de 100 identifiants, identifiant qui n’est pas un UUID : rien n’est modifié',
+    type: ErrorResponse,
+  })
+  @ApiForbiddenResponse({
+    description: 'Permission stores.manage requise',
+    type: ErrorResponse,
+  })
+  verifyMany(
+    @Body() body: BulkStoreIdsDto,
+    @CurrentAdmin() current: AuthenticatedAdmin,
+  ): Promise<BulkStatusResult> {
+    return this.stores.changeStatusMany(body.ids, 'verify', current.adminId);
+  }
+
+  /**
+   * @description Suspend several stores at once, each with the single action's rules and its own result
+   * @route POST /api/v1/admin/stores/bulk/suspend
+   * @access Admin (stores.manage)
+   * @body BulkStatusReasonDto (ids, reason)
+   * @returns 200 BulkStatusResult (one result per store); 400 invalid body
+   */
+  @Post('bulk/suspend')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('stores.manage')
+  @ApiOperation({
+    summary: 'Suspendre plusieurs quincailleries',
+    description:
+      'VERIFIED -> SUSPENDED pour chaque quincaillerie, avec le même motif (plus de nouveaux dépôts, les achats restent servis). Chaque quincaillerie est traitée seule, dans l’ordre, avec exactement les règles de l’action unitaire ; un refus n’empêche pas les autres. Chaque résultat donne ok, ou le code et le message que l’action unitaire aurait renvoyés (dont NOT_FOUND pour un identifiant inconnu). 1 à 100 identifiants, doublons ignorés.',
+  })
+  @ApiOkResponse({
+    description: 'Un résultat par quincaillerie',
+    type: BulkStatusResult,
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Liste vide, plus de 100 identifiants, identifiant qui n’est pas un UUID, motif absent ou hors 3 à 500 caractères : rien n’est modifié',
+    type: ErrorResponse,
+  })
+  @ApiForbiddenResponse({
+    description: 'Permission stores.manage requise',
+    type: ErrorResponse,
+  })
+  suspendMany(
+    @Body() body: BulkStatusReasonDto,
+    @CurrentAdmin() current: AuthenticatedAdmin,
+  ): Promise<BulkStatusResult> {
+    return this.stores.changeStatusMany(
+      body.ids,
+      'suspend',
+      current.adminId,
+      body.reason,
+    );
+  }
+
+  /**
+   * @description Reactivate several stores at once, each with the single action's rules and its own result
+   * @route POST /api/v1/admin/stores/bulk/reactivate
+   * @access Admin (stores.manage)
+   * @body BulkStoreIdsDto (ids)
+   * @returns 200 BulkStatusResult (one result per store); 400 invalid body
+   */
+  @Post('bulk/reactivate')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('stores.manage')
+  @ApiOperation({
+    summary: 'Réactiver plusieurs quincailleries',
+    description:
+      'SUSPENDED -> VERIFIED pour chaque quincaillerie ; le motif de suspension est effacé. Chaque quincaillerie est traitée seule, dans l’ordre, avec exactement les règles de l’action unitaire ; un refus n’empêche pas les autres. Chaque résultat donne ok, ou le code et le message que l’action unitaire aurait renvoyés (dont NOT_FOUND pour un identifiant inconnu). 1 à 100 identifiants, doublons ignorés.',
+  })
+  @ApiOkResponse({
+    description: 'Un résultat par quincaillerie',
+    type: BulkStatusResult,
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Liste vide, plus de 100 identifiants, identifiant qui n’est pas un UUID : rien n’est modifié',
+    type: ErrorResponse,
+  })
+  @ApiForbiddenResponse({
+    description: 'Permission stores.manage requise',
+    type: ErrorResponse,
+  })
+  reactivateMany(
+    @Body() body: BulkStoreIdsDto,
+    @CurrentAdmin() current: AuthenticatedAdmin,
+  ): Promise<BulkStatusResult> {
+    return this.stores.changeStatusMany(
+      body.ids,
+      'reactivate',
+      current.adminId,
+    );
+  }
+
+  /**
+   * @description Close several stores at once, each with the single action's rules and its own result
+   * @route POST /api/v1/admin/stores/bulk/close
+   * @access Admin (stores.manage)
+   * @body BulkStatusReasonDto (ids, reason)
+   * @returns 200 BulkStatusResult (one result per store); 400 invalid body
+   */
+  @Post('bulk/close')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermission('stores.manage')
+  @ApiOperation({
+    summary: 'Fermer plusieurs quincailleries',
+    description:
+      'Fermeture définitive de chaque quincaillerie, avec le même motif (depuis PENDING, VERIFIED ou SUSPENDED). Chaque quincaillerie est traitée seule, dans l’ordre, avec exactement les règles de l’action unitaire ; un refus n’empêche pas les autres. Chaque résultat donne ok, ou le code et le message que l’action unitaire aurait renvoyés (dont NOT_FOUND pour un identifiant inconnu). 1 à 100 identifiants, doublons ignorés.',
+  })
+  @ApiOkResponse({
+    description: 'Un résultat par quincaillerie',
+    type: BulkStatusResult,
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Liste vide, plus de 100 identifiants, identifiant qui n’est pas un UUID, motif absent ou hors 3 à 500 caractères : rien n’est modifié',
+    type: ErrorResponse,
+  })
+  @ApiForbiddenResponse({
+    description: 'Permission stores.manage requise',
+    type: ErrorResponse,
+  })
+  closeMany(
+    @Body() body: BulkStatusReasonDto,
+    @CurrentAdmin() current: AuthenticatedAdmin,
+  ): Promise<BulkStatusResult> {
+    return this.stores.changeStatusMany(
+      body.ids,
+      'close',
+      current.adminId,
+      body.reason,
+    );
   }
 
   /**

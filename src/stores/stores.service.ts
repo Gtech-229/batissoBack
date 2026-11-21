@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, HttpException, Injectable } from '@nestjs/common';
+import {
+  errorCodeFor,
+  errorMessageFor,
+} from '../common/filters/all-exceptions.filter.js';
 import { definedOnly } from '../common/defined-only.js';
 import type { ValidationErrorDetail } from '../common/errors/error-response.js';
 import { parseAmount } from '../common/money.js';
@@ -30,6 +34,7 @@ import {
   type ListStoresQueryDto,
   type StoreSummary,
 } from './dto/list-stores.dto.js';
+import type { BulkStatusResult } from './dto/bulk-status.dto.js';
 import type { RegisterStoreDto } from './dto/register-store.dto.js';
 import type { RegisterOwnStoreDto } from './dto/register-own-store.dto.js';
 import {
@@ -392,6 +397,51 @@ export class StoresService {
       });
       return toStoreDetail(updated);
     });
+  }
+
+  /**
+   * A group action (26b): each store, in order, through changeStatus itself
+   * (its own UPDATE, the same rules and records), with its own result. A
+   * refusal changeStatus means to make (an HttpException) is that store's
+   * result, with the code and message its single route answers; anything else
+   * fails the request, and the stores changed before it keep their change.
+   * Sequential on purpose: results keep their order, the load stays flat.
+   */
+  async changeStatusMany(
+    ids: string[],
+    action: StoreAction,
+    adminId: string,
+    reason?: string,
+  ): Promise<BulkStatusResult> {
+    // A UUID in any case is the same store (F-103): the first spelling sent
+    // is the one processed and reported.
+    const unique = new Map<string, string>();
+    for (const id of ids) {
+      if (!unique.has(id.toLowerCase())) {
+        unique.set(id.toLowerCase(), id);
+      }
+    }
+    const results: BulkStatusResult['results'] = [];
+    for (const id of unique.values()) {
+      try {
+        await this.changeStatus(id, action, adminId, reason);
+        results.push({ id, ok: true });
+      } catch (error) {
+        if (!(error instanceof HttpException)) {
+          throw error;
+        }
+        const status = error.getStatus();
+        results.push({
+          id,
+          ok: false,
+          error: {
+            code: errorCodeFor(error, status),
+            message: errorMessageFor(error, status),
+          },
+        });
+      }
+    }
+    return { results };
   }
 
   /**

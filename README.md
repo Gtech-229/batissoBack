@@ -163,6 +163,30 @@ The rules:
 - An unexpected error (database down) fails the whole request with a 500; the
   stores created before it stay, and re-running the file skips them.
 
+### Group actions
+
+An admin with `stores.manage` can verify, suspend, reactivate or close up to
+100 stores at once: `POST /api/v1/admin/stores/bulk/verify` and
+`.../bulk/reactivate` take `{ "ids": [...] }`, `.../bulk/suspend` and
+`.../bulk/close` take `{ "ids": [...], "reason": "..." }` (the same 3 to 500
+characters as the single routes).
+
+- Each store, in the order sent (a repeated id once), goes through exactly the
+  single route's rules and records (`PATCH /admin/stores/:id/<action>`): its
+  status transition, who changed it and when, the reason. One refused store
+  never blocks the others.
+- The answer (200) has one result per store: `{ id, ok }`, or
+  `{ id, ok: false, error: { code, message } }` with the very code and message
+  the single route would give (`INVALID_STATUS_TRANSITION`,
+  `STORE_DOCUMENTS_MISSING`, `NOT_FOUND` for an unknown id).
+- Bulk verify accepts exactly what single verify accepts: an admin-registered
+  store (including imported ones) needs no documents, a self-registered one
+  needs both photos. `GET /admin/stores` shows this as `documentsComplete` on
+  each store, so a PENDING store with `true` is one bulk verify accepts.
+- An invalid body (no ids, more than 100, a non-UUID, a bad reason) is a 400 and
+  changes nothing. An unexpected error (database down) is a 500; the stores
+  already changed keep their change.
+
 ### Subscriptions
 
 An admin with `subscriptions.manage` records each store's subscriptions by hand,

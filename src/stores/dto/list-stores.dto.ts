@@ -14,6 +14,7 @@ import {
   type Subscription,
 } from '../../generated/prisma/client.js';
 import { Trim, TrimUpperCase } from '../../common/validation/trim.js';
+import { documentsComplete } from './store-documents.js';
 import { SubscriptionView } from '../../subscriptions/dto/subscription.dto.js';
 import {
   toStoreSubscription,
@@ -89,6 +90,13 @@ export class StoreSummary {
 
   @ApiProperty({
     description:
+      'Dossier complet pour la vérification : toujours vrai pour une quincaillerie inscrite par un administrateur ; pour une quincaillerie inscrite depuis l’application, vrai seulement quand ses deux documents sont envoyés. Une quincaillerie PENDING avec true est acceptée par la vérification groupée (POST /admin/stores/bulk/verify).',
+    example: true,
+  })
+  documentsComplete: boolean;
+
+  @ApiProperty({
+    description:
       'Abonnement du jour (UTC) : ACTIVE (en cours), UPCOMING (aucun en cours, un à venir), EXPIRED (tous terminés) ou NONE (jamais abonnée)',
     enum: SUBSCRIPTION_STATES,
     example: 'ACTIVE',
@@ -117,6 +125,7 @@ export function toStoreSummary(
     phone: store.phone,
     status: store.status,
     createdAt: store.createdAt.toISOString(),
+    documentsComplete: documentsComplete(store),
     ...subscription,
   };
 }

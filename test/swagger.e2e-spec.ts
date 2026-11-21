@@ -125,6 +125,30 @@ describe('Swagger document (e2e)', () => {
     );
   });
 
+  it('documents the group actions and documentsComplete (feature 26b)', () => {
+    const routes = operations.map(([route]) => route);
+
+    expect(routes).toEqual(
+      expect.arrayContaining([
+        'POST /api/v1/admin/stores/bulk/verify',
+        'POST /api/v1/admin/stores/bulk/suspend',
+        'POST /api/v1/admin/stores/bulk/reactivate',
+        'POST /api/v1/admin/stores/bulk/close',
+      ]),
+    );
+    expect(Object.keys(schemas.BulkStatusReasonDto.properties ?? {})).toEqual(
+      expect.arrayContaining(['ids', 'reason']),
+    );
+    expect(Object.keys(schemas.BulkStatusResultItem.properties ?? {})).toEqual([
+      'id',
+      'ok',
+      'error',
+    ]);
+    expect(Object.keys(schemas.StoreSummary.properties ?? {})).toContain(
+      'documentsComplete',
+    );
+  });
+
   it('documents the store import routes (feature 26a)', () => {
     const routes = operations.map(([route]) => route);
 
