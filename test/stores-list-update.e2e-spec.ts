@@ -57,6 +57,44 @@ describe('Stores: list and updates (e2e)', () => {
       });
     }
 
+    it('says whether each store has the documents its verification needs', async () => {
+      await createStoreRecord(prisma, { name: 'Inscrite par un admin' });
+      const self = await createStoreRecord(prisma, {
+        name: 'Inscrite depuis l’application',
+        status: 'VERIFIED',
+      });
+      const user = await prisma.user.create({
+        data: { phone: '+22376111111', firstName: 'Awa', lastName: 'Diallo' },
+      });
+      const list = async () =>
+        Object.fromEntries(
+          (
+            await api()
+              .get('/api/v1/admin/stores')
+              .set('Cookie', cookie)
+              .expect(200)
+          ).body.items.map(
+            (item: { name: string; documentsComplete: boolean }) => [
+              item.name,
+              item.documentsComplete,
+            ],
+          ),
+        );
+      const setSelf = (data: object) =>
+        prisma.hardwareStore.update({ where: { id: self.id }, data });
+
+      // Self-registered, whatever its status: the two photos decide.
+      await setSelf({ registeredById: user.id });
+      expect(await list()).toEqual({
+        'Inscrite par un admin': true,
+        'Inscrite depuis l’application': false,
+      });
+      await setSelf({ managerIdPhotoPath: 'identity.jpg' });
+      expect((await list())['Inscrite depuis l’application']).toBe(false);
+      await setSelf({ tradeRegisterPhotoPath: 'trade-register.jpg' });
+      expect((await list())['Inscrite depuis l’application']).toBe(true);
+    });
+
     it('paginates newest first with the default page size', async () => {
       await seed();
 
@@ -76,6 +114,7 @@ describe('Stores: list and updates (e2e)', () => {
         phone: '+22320220000',
         status: 'CLOSED',
         createdAt: '2026-10-03T00:00:00.000Z',
+        documentsComplete: true,
         subscriptionState: 'NONE',
         currentSubscription: null,
       });

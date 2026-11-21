@@ -88,3 +88,25 @@ export function storeDocumentsMissing(documents: {
     error: 'STORE_DOCUMENTS_MISSING',
   });
 }
+
+/** A store import file refused as a whole (26a): nothing in it is checked. */
+export function importFileRefused(
+  code: string,
+  message: string,
+): BadRequestException {
+  return new BadRequestException({ message, error: code });
+}
+
+export const IMPORT_FILE_MISSING =
+  'Joignez le fichier à importer (.csv ou .xlsx) dans le champ « file »';
+export const IMPORT_FILE_TOO_LARGE = 'Le fichier dépasse 2 Mo';
+export const IMPORT_BODY_INVALID =
+  'Envoyez un seul fichier (.csv ou .xlsx) dans le champ « file », et rien d’autre';
+
+/** A row's cell that holds a date, a true/false or an Excel error. */
+export const IMPORT_CELL_UNREADABLE =
+  'Valeur illisible : saisissez-la comme du texte ou un nombre';
+export const IMPORT_DUPLICATE_IN_FILE = (row: number) =>
+  `Ce registre du commerce figure déjà à la ligne ${row} du fichier, pour ce pays`;
+export const IMPORT_DUPLICATE_REGISTERED =
+  'Une quincaillerie de ce pays est déjà inscrite avec ce registre du commerce';

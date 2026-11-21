@@ -25,3 +25,20 @@ export function toStoreDocuments(
     tradeRegister: store.tradeRegisterPhotoPath !== null,
   };
 }
+
+/**
+ * The document half of the verify rule (26b): an admin-registered store needs
+ * no documents; a self-registered one (21b) needs both photos. The same rule
+ * as VERIFIABLE in stores.service.ts, which applies it inside the UPDATE.
+ */
+export function documentsComplete(
+  store: Pick<
+    HardwareStore,
+    'registeredById' | 'managerIdPhotoPath' | 'tradeRegisterPhotoPath'
+  >,
+): boolean {
+  return (
+    store.registeredById === null ||
+    (store.managerIdPhotoPath !== null && store.tradeRegisterPhotoPath !== null)
+  );
+}
