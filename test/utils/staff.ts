@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
+import { countryOfPhone } from '../../src/common/phone.js';
 import type { PrismaService } from '../../src/prisma/prisma.service.js';
 import { createUser, newDeviceKey, TEST_PIN } from './users.js';
 
@@ -48,15 +49,18 @@ export async function signedInStaff(
   });
 
   const api = () => request(app.getHttpServer());
+  // The phone's own country, as the app would send it (27).
+  const countryCode = countryOfPhone(options.phone);
   const { challenge } = (
     await api()
       .post('/api/v1/auth/challenge')
-      .send({ phone: options.phone, deviceId })
+      .send({ countryCode, phone: options.phone, deviceId })
       .expect(200)
   ).body as { challenge: string };
   const session = await api()
     .post('/api/v1/auth/login')
     .send({
+      countryCode,
       phone: options.phone,
       pin: TEST_PIN,
       deviceId,

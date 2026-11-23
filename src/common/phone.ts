@@ -40,3 +40,13 @@ export function normalizePhone(
   }
   return parsed.number;
 }
+
+/**
+ * The country of a phone number in E.164 (`+22990000000` -> `BJ`), or null
+ * when it belongs to no known country. Used where the phone is all we know of
+ * a person's country (27): a store registered from the app takes its
+ * manager's phone country.
+ */
+export function countryOfPhone(e164: string): CountryCode | null {
+  return parsePhoneNumberFromString(e164)?.country ?? null;
+}

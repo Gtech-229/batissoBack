@@ -42,11 +42,16 @@ describe('Mobile auth (e2e)', () => {
 
   const api = () => request(app.getHttpServer());
   const requestCode = (phone: unknown) =>
-    api().post('/api/v1/auth/code').send({ phone });
+    api().post('/api/v1/auth/code').send({ countryCode: 'ML', phone });
   const verifyCode = (body: Record<string, unknown>) =>
     api()
       .post('/api/v1/auth/code/verify')
-      .send({ phone: TEST_PHONE, deviceId: DEVICE, ...body });
+      .send({
+        countryCode: 'ML',
+        phone: TEST_PHONE,
+        deviceId: DEVICE,
+        ...body,
+      });
 
   /** Moves every code of the test phone back in time (past the cooldown). */
   const ageCodes = (ms: number) =>
@@ -244,6 +249,101 @@ describe('Mobile auth (e2e)', () => {
 
       expect(sms.messages).toHaveLength(1);
       expect(await prisma.phoneVerification.count()).toBe(1);
+    });
+  });
+
+  describe('several active countries (27)', () => {
+    const BENIN_LOCAL = '01 54 32 97 03';
+    const BENIN_E164 = '+2290154329703';
+
+    beforeEach(async () => {
+      await prisma.country.create({
+        data: {
+          code: 'BJ',
+          name: 'Bénin',
+          phonePrefix: '+229',
+          currencyCode: 'XOF',
+          currencySymbol: 'F CFA',
+          decimals: 0,
+          active: true,
+        },
+      });
+    });
+
+    const codeFor = (countryCode: unknown, phone: unknown) =>
+      api().post('/api/v1/auth/code').send({ countryCode, phone });
+
+    it('reads each phone for the country sent, with Mali and Benin both open', async () => {
+      await codeFor('BJ', BENIN_LOCAL).expect(202);
+      await codeFor('ml', '76 00 00 00').expect(202);
+
+      expect(sms.messages.map((m) => m.phone)).toEqual([
+        BENIN_E164,
+        '+22376000000',
+      ]);
+      const response = await verifyCode({
+        countryCode: 'BJ',
+        phone: BENIN_LOCAL,
+        code: sms.lastCodeFor(BENIN_E164),
+      }).expect(200);
+      expect(response.body.registered).toBe(false);
+    });
+
+    it('refuses a number that is not one of the country sent, on phone', async () => {
+      const response = await codeFor('ML', BENIN_LOCAL).expect(400);
+
+      expect(response.body.details).toEqual([
+        { field: 'phone', errors: ['Ce numéro de téléphone n’est pas valide'] },
+      ]);
+      expect(sms.messages).toHaveLength(0);
+    });
+
+    it.each([
+      ['a country the platform does not have', 'NE', '90 00 00 00', false],
+      ['a country that exists but is not open', 'CI', '07 07 02 03 04', true],
+    ])(
+      'treats %s like no country: nothing sent, INVALID_CODE',
+      async (_case, countryCode, phone, exists) => {
+        if (exists) {
+          await prisma.country.create({
+            data: {
+              code: countryCode,
+              name: 'Côte d’Ivoire',
+              phonePrefix: '+225',
+              currencyCode: 'XOF',
+              currencySymbol: 'F CFA',
+              decimals: 0,
+              active: false,
+            },
+          });
+        }
+
+        const sent = await codeFor(countryCode, phone).expect(202);
+        expect(sent.body).toEqual({ message: CODE_REQUESTED_MESSAGE });
+        expect(sms.messages).toHaveLength(0);
+        expect(await prisma.phoneVerification.count()).toBe(0);
+
+        const response = await verifyCode({
+          countryCode,
+          phone,
+          code: '123456',
+        }).expect(401);
+        expect(response.body.error).toBe('INVALID_CODE');
+      },
+    );
+
+    it.each([
+      ['missing', undefined],
+      ['not an ISO code', 'MLI'],
+    ])('refuses a countryCode %s', async (_case, countryCode) => {
+      const response = await codeFor(countryCode, '76 00 00 00').expect(400);
+
+      expect(response.body.details).toEqual([
+        {
+          field: 'countryCode',
+          errors: ['Le code pays doit être un code ISO à 2 lettres (ex. ML)'],
+        },
+      ]);
     });
   });
 
@@ -487,12 +587,13 @@ describe('Mobile auth (e2e)', () => {
         const { challenge } = (
           await api()
             .post('/api/v1/auth/challenge')
-            .send({ phone: TEST_PHONE, deviceId: DEVICE })
+            .send({ countryCode: 'ML', phone: TEST_PHONE, deviceId: DEVICE })
             .expect(200)
         ).body as { challenge: string };
         await api()
           .post('/api/v1/auth/login')
           .send({
+            countryCode: 'ML',
             phone: TEST_PHONE,
             pin: TEST_PIN,
             deviceId: DEVICE,
@@ -940,7 +1041,9 @@ describe('Mobile auth (e2e)', () => {
 
   describe('POST /auth/challenge', () => {
     const challengeFor = (phone: unknown, deviceId: unknown = DEVICE) =>
-      api().post('/api/v1/auth/challenge').send({ phone, deviceId });
+      api()
+        .post('/api/v1/auth/challenge')
+        .send({ countryCode: 'ML', phone, deviceId });
 
     it.each([
       ['a known phone', true],
@@ -969,6 +1072,20 @@ describe('Mobile auth (e2e)', () => {
       },
     );
 
+    it('stores the raw phone, like an unknown one, for a country that is not open (27)', async () => {
+      await prisma.country.update({
+        where: { code: 'ML' },
+        data: { active: false },
+      });
+
+      const response = await challengeFor('76 00 00 00').expect(200);
+
+      const stored = await prisma.deviceChallenge.findUniqueOrThrow({
+        where: { challenge: response.body.challenge },
+      });
+      expect(stored.phone).toBe('76 00 00 00');
+    });
+
     it('validates the phone and the deviceId', async () => {
       await challengeFor('12').expect(400);
       await challengeFor(TEST_PHONE, 'abc').expect(400);
@@ -983,7 +1100,7 @@ describe('Mobile auth (e2e)', () => {
       (
         await api()
           .post('/api/v1/auth/challenge')
-          .send({ phone, deviceId })
+          .send({ countryCode: 'ML', phone, deviceId })
           .expect(200)
       ).body.challenge as string;
 
@@ -996,6 +1113,7 @@ describe('Mobile auth (e2e)', () => {
       return api()
         .post('/api/v1/auth/login')
         .send({
+          countryCode: 'ML',
           phone: TEST_PHONE,
           pin: TEST_PIN,
           deviceId: DEVICE,
@@ -1086,6 +1204,7 @@ describe('Mobile auth (e2e)', () => {
         const response = await api()
           .post('/api/v1/auth/login')
           .send({
+            countryCode: 'ML',
             phone: TEST_PHONE,
             pin: TEST_PIN,
             deviceId: DEVICE,
@@ -1100,6 +1219,7 @@ describe('Mobile auth (e2e)', () => {
         const user = await trustedUser();
         const value = await challenge();
         const body = {
+          countryCode: 'ML',
           phone: TEST_PHONE,
           pin: TEST_PIN,
           deviceId: DEVICE,
@@ -1125,6 +1245,7 @@ describe('Mobile auth (e2e)', () => {
         const response = await api()
           .post('/api/v1/auth/login')
           .send({
+            countryCode: 'ML',
             phone: TEST_PHONE,
             pin: TEST_PIN,
             deviceId: DEVICE,
@@ -1146,6 +1267,7 @@ describe('Mobile auth (e2e)', () => {
           const response = await api()
             .post('/api/v1/auth/login')
             .send({
+              countryCode: 'ML',
               phone: TEST_PHONE,
               pin: TEST_PIN,
               deviceId: DEVICE,
@@ -1194,6 +1316,21 @@ describe('Mobile auth (e2e)', () => {
 
       expect(stable(unknown.body)).toEqual(stable(unproven.body));
       expect(stable(notActivated.body)).toEqual(stable(unproven.body));
+    });
+
+    it('refuses a trusted user whose country is no longer open like an unknown phone (27)', async () => {
+      const user = await trustedUser();
+      const unknown = await loginExpect(403, { phone: '76 99 99 99' });
+      await prisma.country.update({
+        where: { code: 'ML' },
+        data: { active: false },
+      });
+
+      const closed = await loginExpect(403);
+
+      expect(stable(closed.body)).toEqual(stable(unknown.body));
+      // Not a wrong PIN: nothing counted against the user.
+      expect(await failedAttempts(user.id)).toBe(0);
     });
 
     it('counts a wrong PIN on a proven device and resets the count on success', async () => {
@@ -1253,6 +1390,7 @@ describe('Mobile auth (e2e)', () => {
           api()
             .post('/api/v1/auth/login')
             .send({
+              countryCode: 'ML',
               phone: TEST_PHONE,
               pin: WRONG_PIN,
               deviceId: DEVICE,

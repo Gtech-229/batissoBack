@@ -1,4 +1,9 @@
-import { getPhonePrefix, isPhoneCountry, normalizePhone } from './phone.js';
+import {
+  countryOfPhone,
+  getPhonePrefix,
+  isPhoneCountry,
+  normalizePhone,
+} from './phone.js';
 
 describe('phone', () => {
   it('derives the international prefix of a country', () => {
@@ -40,5 +45,18 @@ describe('phone', () => {
     ['empty', ''],
   ])('rejects %s for Mali', (_label, value) => {
     expect(normalizePhone(value, 'ML')).toBeNull();
+  });
+
+  it.each([
+    ['+22376000000', 'ML'],
+    ['+2290154329703', 'BJ'],
+    ['+2250707020304', 'CI'],
+    ['+33612345678', 'FR'],
+  ])('reads the country of %s', (phone, country) => {
+    expect(countryOfPhone(phone)).toBe(country);
+  });
+
+  it.each(['', 'abc', '+999123'])('finds no country for %j', (phone) => {
+    expect(countryOfPhone(phone)).toBeNull();
   });
 });

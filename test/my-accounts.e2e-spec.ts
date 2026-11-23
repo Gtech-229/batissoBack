@@ -67,11 +67,19 @@ describe('The customer’s own accounts (e2e)', () => {
     const key = newDeviceKey();
 
     // First sign-in: SMS code, then the PIN that activates the account.
-    await api().post('/api/v1/auth/code').send({ phone }).expect(202);
+    await api()
+      .post('/api/v1/auth/code')
+      .send({ countryCode: 'ML', phone })
+      .expect(202);
     const { verificationToken } = (
       await api()
         .post('/api/v1/auth/code/verify')
-        .send({ phone, deviceId, code: sms.lastCodeFor(phone) })
+        .send({
+          countryCode: 'ML',
+          phone,
+          deviceId,
+          code: sms.lastCodeFor(phone),
+        })
         .expect(200)
     ).body as { verificationToken: string };
     const session = await api()

@@ -122,26 +122,22 @@ export class CountriesController {
   }
 
   /**
-   * @description Make this country the active one (a single active country in V1)
+   * @description Open this country (several countries can be active at once)
    * @route PATCH /api/v1/admin/countries/:code/activate
    * @access Admin
    * @param code (ISO 3166-1 alpha-2) country code, any case
-   * @returns 200 CountrySummary; 409 ANOTHER_COUNTRY_ACTIVE if another country is active
+   * @returns 200 CountrySummary; 404 unknown country
    */
   @Patch(':code/activate')
   @RequirePermission('countries.manage')
   @ApiOperation({
     summary: 'Activer un pays',
     description:
-      'Un seul pays peut être actif en V1 : si un autre pays est actif, désactivez-le d’abord. Sans effet si le pays est déjà actif.',
+      'Ouvre le pays : plusieurs pays peuvent être actifs en même temps (les codes partent par WhatsApp dans tous les pays). Sans effet si le pays est déjà actif.',
   })
   @ApiParam({ name: 'code', description: 'Code ISO du pays (ex. ML)' })
   @ApiOkResponse({ description: 'Pays actif', type: CountrySummary })
   @ApiNotFoundResponse({ description: 'Pays introuvable', type: ErrorResponse })
-  @ApiConflictResponse({
-    description: 'Un autre pays est déjà actif (`ANOTHER_COUNTRY_ACTIVE`)',
-    type: ErrorResponse,
-  })
   activate(@Param('code') code: string): Promise<CountrySummary> {
     return this.countriesService.activate(code.toUpperCase());
   }

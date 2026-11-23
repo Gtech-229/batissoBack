@@ -47,7 +47,7 @@ export class MobileAuthController {
    * @description Ask for a one-time code by SMS (sign-up, first sign-in or new device)
    * @route POST /api/v1/auth/code
    * @access Public
-   * @body RequestCodeDto (phone)
+   * @body RequestCodeDto (countryCode, phone)
    * @returns 202 CodeRequestedResponse, the same for every phone
    */
   @Post('code')
@@ -56,20 +56,21 @@ export class MobileAuthController {
   @ApiOperation({
     summary: 'Demander un code par SMS',
     description:
-      'Envoie un code à 6 chiffres, valable 10 minutes, à tout numéro du pays actif : un utilisateur existant ou un nouveau numéro qui s’inscrit. La réponse est toujours la même, pour ne pas révéler les comptes existants. Au plus un SMS par minute et 5 par heure pour un même numéro : au-delà, rien n’est envoyé.',
+      'Envoie un code à 6 chiffres, valable 10 minutes, à tout numéro d’un pays ouvert (countryCode, choisi dans GET /countries) : un utilisateur existant ou un nouveau numéro qui s’inscrit. La réponse est toujours la même, pour ne pas révéler les comptes existants. Au plus un SMS par minute et 5 par heure pour un même numéro : au-delà, rien n’est envoyé. Un pays qui n’est pas ouvert donne la même réponse, sans rien envoyer.',
   })
   @ApiAcceptedResponse({
     description: 'Demande prise en compte',
     type: CodeRequestedResponse,
   })
   @ApiBadRequestResponse({
-    description: 'Numéro invalide pour le pays actif (`details`)',
+    description:
+      'Code pays invalide, ou numéro invalide pour ce pays (`details`)',
     type: ErrorResponse,
   })
   async requestCode(
     @Body() body: RequestCodeDto,
   ): Promise<CodeRequestedResponse> {
-    await this.auth.requestCode(body.phone);
+    await this.auth.requestCode(body.phone, body.countryCode);
     return { message: CODE_REQUESTED_MESSAGE };
   }
 
@@ -77,7 +78,7 @@ export class MobileAuthController {
    * @description Check the SMS code; returns a single-use token for the PIN step
    * @route POST /api/v1/auth/code/verify
    * @access Public
-   * @body VerifyCodeDto (phone, code, deviceId)
+   * @body VerifyCodeDto (countryCode, phone, code, deviceId)
    * @returns 200 VerificationResponse; 401 INVALID_CODE
    */
   @Post('code/verify')
@@ -99,7 +100,12 @@ export class MobileAuthController {
     type: ErrorResponse,
   })
   verifyCode(@Body() body: VerifyCodeDto): Promise<VerificationResponse> {
-    return this.auth.verifyCode(body.phone, body.code, body.deviceId);
+    return this.auth.verifyCode(
+      body.phone,
+      body.countryCode,
+      body.code,
+      body.deviceId,
+    );
   }
 
   /**
@@ -226,7 +232,7 @@ export class MobileAuthController {
    * @description Get a single-use challenge for the device to sign before signing in
    * @route POST /api/v1/auth/challenge
    * @access Public
-   * @body ChallengeDto (phone, deviceId)
+   * @body ChallengeDto (countryCode, phone, deviceId)
    * @returns 200 ChallengeResponse, for any phone and device
    */
   @Post('challenge')
@@ -243,14 +249,18 @@ export class MobileAuthController {
     type: ErrorResponse,
   })
   createChallenge(@Body() body: ChallengeDto): Promise<ChallengeResponse> {
-    return this.auth.createChallenge(body.phone, body.deviceId);
+    return this.auth.createChallenge(
+      body.phone,
+      body.countryCode,
+      body.deviceId,
+    );
   }
 
   /**
    * @description Sign in with the PIN on a trusted device, proven by its signature of a challenge
    * @route POST /api/v1/auth/login
    * @access Public
-   * @body MobileLoginDto (phone, pin, deviceId, challenge, signature)
+   * @body MobileLoginDto (countryCode, phone, pin, deviceId, challenge, signature)
    * @returns 200 MobileSession; 401 INVALID_CREDENTIALS; 403 DEVICE_VERIFICATION_REQUIRED or PIN_LOCKED
    */
   @Post('login')
@@ -278,6 +288,7 @@ export class MobileAuthController {
   login(@Body() body: MobileLoginDto): Promise<MobileSession> {
     return this.auth.login(
       body.phone,
+      body.countryCode,
       body.pin,
       body.deviceId,
       body.challenge,

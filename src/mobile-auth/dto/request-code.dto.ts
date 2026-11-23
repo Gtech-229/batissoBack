@@ -1,13 +1,24 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, Length, Matches } from 'class-validator';
+import { IsISO31661Alpha2, IsString, Length, Matches } from 'class-validator';
 import { CODE_LENGTH } from '../mobile-auth.constants.js';
-import { Trim } from '../../common/validation/trim.js';
+import { Trim, TrimUpperCase } from '../../common/validation/trim.js';
 
-// The number itself is checked against the active country in the service.
+// The number itself is checked against countryCode in the service (27).
 const PHONE_DESCRIPTION =
-  'Numéro du pays actif, au format local (76 00 00 00) ou international (+223 76 00 00 00)';
+  'Numéro du pays choisi (countryCode), au format local (76 00 00 00) ou international (+223 76 00 00 00)';
 
 export class RequestCodeDto {
+  @ApiProperty({
+    description:
+      'Code du pays du numéro, choisi dans GET /countries (pays ouverts)',
+    example: 'ML',
+  })
+  @TrimUpperCase()
+  @IsISO31661Alpha2({
+    message: 'Le code pays doit être un code ISO à 2 lettres (ex. ML)',
+  })
+  countryCode: string;
+
   @ApiProperty({ description: PHONE_DESCRIPTION, example: '76 00 00 00' })
   @Trim()
   @IsString({ message: 'Le numéro de téléphone est requis' })

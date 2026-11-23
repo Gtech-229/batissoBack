@@ -262,21 +262,22 @@ describe('Countries (e2e)', () => {
       expect(again.body.active).toBe(true);
     });
 
-    it('refuses a second active country and names the active one', async () => {
+    it('activates a second country while the first stays active (27)', async () => {
       await create(MALI).expect(201);
       await create(IVORY_COAST).expect(201);
       await action('ML', 'activate').expect(200);
 
-      const response = await action('CI', 'activate').expect(409);
+      const response = await action('CI', 'activate').expect(200);
 
-      expect(response.body).toMatchObject({
-        error: 'ANOTHER_COUNTRY_ACTIVE',
-        message: 'Le pays ML est déjà actif : désactivez-le d’abord',
+      expect(response.body.active).toBe(true);
+      const active = await prisma.country.findMany({
+        where: { active: true },
+        orderBy: { code: 'asc' },
       });
-      expect(await prisma.country.count({ where: { active: true } })).toBe(1);
+      expect(active.map((country) => country.code)).toEqual(['CI', 'ML']);
     });
 
-    it('keeps a single active country when two activations race', async () => {
+    it('activates two countries at the same time', async () => {
       await create(MALI).expect(201);
       await create(IVORY_COAST).expect(201);
 
@@ -285,14 +286,36 @@ describe('Countries (e2e)', () => {
         action('CI', 'activate'),
       ]);
 
-      expect(responses.map((r) => r.status).sort((a, b) => a - b)).toEqual([
-        200, 409,
-      ]);
-      expect(await prisma.country.count({ where: { active: true } })).toBe(1);
+      expect(responses.map((r) => r.status)).toEqual([200, 200]);
+      expect(await prisma.country.count({ where: { active: true } })).toBe(2);
     });
 
     it('answers 404 for an unknown code', async () => {
       await action('ZZ', 'activate').expect(404);
+    });
+  });
+
+  describe('GET /countries (public)', () => {
+    it('lists only the active countries, by name, signed out', async () => {
+      const BENIN = { ...MALI, code: 'BJ', name: 'Bénin' };
+      await create(MALI).expect(201);
+      await create(IVORY_COAST).expect(201);
+      await create(BENIN).expect(201);
+      await action('ML', 'activate').expect(200);
+      await action('BJ', 'activate').expect(200);
+
+      const response = await api().get('/api/v1/countries').expect(200);
+
+      expect(response.body).toEqual([
+        { code: 'BJ', name: 'Bénin', phonePrefix: '+229' },
+        { code: 'ML', name: 'Mali', phonePrefix: '+223' },
+      ]);
+    });
+
+    it('is empty while no country is open', async () => {
+      await create(MALI).expect(201);
+
+      await api().get('/api/v1/countries').expect(200, []);
     });
   });
 

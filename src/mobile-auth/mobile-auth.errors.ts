@@ -16,7 +16,7 @@ export function invalidCode(): UnauthorizedException {
   });
 }
 
-/** A phone that is not a valid number of the active country, as a field error. */
+/** A phone that is not a valid number of the country sent with it (27), as a field error. */
 export function invalidPhone(): BadRequestException {
   return new BadRequestException({
     message: VALIDATION_ERROR_MESSAGE,

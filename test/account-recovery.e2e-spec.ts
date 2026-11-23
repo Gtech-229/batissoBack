@@ -125,11 +125,12 @@ describe('Account recovery with security questions (e2e)', () => {
   }> {
     await api()
       .post('/api/v1/auth/code')
-      .send({ phone: customer.phone })
+      .send({ countryCode: 'ML', phone: customer.phone })
       .expect(202);
     const res = await api()
       .post('/api/v1/auth/code/verify')
       .send({
+        countryCode: 'ML',
         phone: customer.phone,
         code: sms.lastCodeFor(customer.phone),
         deviceId: NEW_DEVICE,
@@ -228,12 +229,17 @@ describe('Account recovery with security questions (e2e)', () => {
         const { challenge } = (
           await api()
             .post('/api/v1/auth/challenge')
-            .send({ phone: customer.phone, deviceId: NEW_DEVICE })
+            .send({
+              countryCode: 'ML',
+              phone: customer.phone,
+              deviceId: NEW_DEVICE,
+            })
             .expect(200)
         ).body as { challenge: string };
         return api()
           .post('/api/v1/auth/login')
           .send({
+            countryCode: 'ML',
             phone: customer.phone,
             pin,
             deviceId: NEW_DEVICE,
@@ -320,7 +326,7 @@ describe('Account recovery with security questions (e2e)', () => {
       await ageCodes();
       await api()
         .post('/api/v1/auth/code')
-        .send({ phone: customer.phone })
+        .send({ countryCode: 'ML', phone: customer.phone })
         .expect(202);
       const pending = sms.lastCodeFor(customer.phone);
 
@@ -333,7 +339,12 @@ describe('Account recovery with security questions (e2e)', () => {
       expect(errorOf(other)).toBe('INVALID_VERIFICATION');
       const code = await api()
         .post('/api/v1/auth/code/verify')
-        .send({ phone: customer.phone, code: pending, deviceId: NEW_DEVICE })
+        .send({
+          countryCode: 'ML',
+          phone: customer.phone,
+          code: pending,
+          deviceId: NEW_DEVICE,
+        })
         .expect(401);
       expect(errorOf(code)).toBe('INVALID_CODE');
     });

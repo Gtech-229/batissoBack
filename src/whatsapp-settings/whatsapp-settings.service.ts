@@ -26,6 +26,7 @@ import {
 import { TokenCipher } from './token-cipher.js';
 import {
   encryptionKeyMissing,
+  whatsappCountryNotOpen,
   whatsappNotConfigured,
   whatsappSendFailed,
 } from './whatsapp-settings.errors.js';
@@ -85,11 +86,11 @@ export class WhatsappSettingsService {
   }
 
   /**
-   * Sends the fixed test message to a number of the active country (25c), with
+   * Sends the fixed test message to a number of an open country (25c, 27), with
    * the saved instance and token even while WhatsApp is off, so the super admin
    * can check them before turning it on. Changes and records nothing.
    */
-  async sendTest(rawPhone: string): Promise<void> {
+  async sendTest(rawPhone: string, countryCode: string): Promise<void> {
     const row = await this.prisma.whatsappSettings.findUnique({
       where: { id: SETTINGS_ROW_ID },
       select: { instanceId: true, tokenCiphertext: true },
@@ -101,13 +102,13 @@ export class WhatsappSettingsService {
       throw whatsappNotConfigured();
     }
     const country = await this.prisma.country.findFirst({
-      where: { active: true },
+      where: { code: countryCode, active: true },
       select: { code: true },
     });
-    const phone =
-      country && isPhoneCountry(country.code)
-        ? normalizePhone(rawPhone, country.code)
-        : null;
+    if (!country || !isPhoneCountry(country.code)) {
+      throw whatsappCountryNotOpen();
+    }
+    const phone = normalizePhone(rawPhone, country.code);
     if (!phone) {
       throw invalidPhone();
     }

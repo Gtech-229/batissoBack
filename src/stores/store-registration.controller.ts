@@ -32,13 +32,13 @@ export class StoreRegistrationController {
    * @route POST /api/v1/stores
    * @access Mobile session (Bearer), any signed-in user
    * @body RegisterOwnStoreDto (name, address, city, phone, tradeRegister, settings, requestedPlan)
-   * @returns 201 RegisteredStore; 409 STORE_ALREADY_REGISTERED or NO_ACTIVE_COUNTRY
+   * @returns 201 RegisteredStore; 409 STORE_ALREADY_REGISTERED or COUNTRY_INACTIVE
    */
   @Post()
   @ApiOperation({
     summary: 'Inscrire ma quincaillerie',
     description:
-      'Inscrit la quincaillerie de l’utilisateur connecté dans le pays actif, en attente de vérification (PENDING) : il en devient le gérant. Les règles d’argent suivent celles du formulaire administrateur. La formule demandée est montrée aux administrateurs, qui enregistrent l’abonnement. Envoyez ensuite les photos de votre pièce d’identité et du registre du commerce. Aucun dépôt n’est possible avant la vérification. Un utilisateur n’inscrit qu’une quincaillerie.',
+      'Inscrit la quincaillerie de l’utilisateur connecté dans le pays de son numéro de téléphone (il doit être ouvert), en attente de vérification (PENDING) : il en devient le gérant. Les règles d’argent suivent celles du formulaire administrateur. La formule demandée est montrée aux administrateurs, qui enregistrent l’abonnement. Envoyez ensuite les photos de votre pièce d’identité et du registre du commerce. Aucun dépôt n’est possible avant la vérification. Un utilisateur n’inscrit qu’une quincaillerie.',
   })
   @ApiCreatedResponse({
     description: 'Quincaillerie inscrite',
@@ -46,12 +46,12 @@ export class StoreRegistrationController {
   })
   @ApiBadRequestResponse({
     description:
-      'Champ manquant ou invalide, numéro qui n’est pas du pays actif, dépôt minimum au-dessus du solde maximal (`details`)',
+      'Champ manquant ou invalide, numéro qui n’est pas de ce pays, dépôt minimum au-dessus du solde maximal (`details`)',
     type: ErrorResponse,
   })
   @ApiConflictResponse({
     description:
-      'Vous avez déjà inscrit une quincaillerie (`STORE_ALREADY_REGISTERED`) ; aucun pays actif (`NO_ACTIVE_COUNTRY`)',
+      'Vous avez déjà inscrit une quincaillerie (`STORE_ALREADY_REGISTERED`) ; le pays de votre numéro n’est pas ouvert (`COUNTRY_INACTIVE`)',
     type: ErrorResponse,
   })
   register(

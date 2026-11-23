@@ -1,4 +1,9 @@
-import { BadGatewayException, ConflictException } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
+import { VALIDATION_ERROR_MESSAGE } from '../common/errors/error-messages.js';
 
 export function whatsappNotConfigured(): ConflictException {
   return new ConflictException({
@@ -23,5 +28,13 @@ export function whatsappSendFailed(reason: string): BadGatewayException {
   return new BadGatewayException({
     message: `Le message WhatsApp n’a pas pu être envoyé (${reason}) : vérifiez l’instance Green API, le jeton et que le numéro a WhatsApp`,
     error: 'WHATSAPP_SEND_FAILED',
+  });
+}
+
+/** The test message's country is not open (27): a 400 on `countryCode`. */
+export function whatsappCountryNotOpen(): BadRequestException {
+  return new BadRequestException({
+    message: VALIDATION_ERROR_MESSAGE,
+    details: [{ field: 'countryCode', errors: ['Ce pays n’est pas actif'] }],
   });
 }

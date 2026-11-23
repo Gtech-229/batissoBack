@@ -4,8 +4,9 @@ import { VerifyCodeDto } from './request-code.dto.js';
 
 export const PIN_FORMAT_MESSAGE = 'Le code PIN doit contenir 6 chiffres';
 
-/** `POST /auth/challenge`: phone and deviceId, same rules as the SMS code step. */
+/** `POST /auth/challenge`: countryCode, phone and deviceId, same rules as the SMS code step. */
 export class ChallengeDto extends PickType(VerifyCodeDto, [
+  'countryCode',
   'phone',
   'deviceId',
 ] as const) {}

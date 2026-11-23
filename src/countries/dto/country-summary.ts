@@ -33,7 +33,7 @@ export class CountrySummary {
   language: string;
 
   @ApiProperty({
-    description: 'Vrai pour le pays actif (un seul en V1)',
+    description: 'Vrai pour un pays ouvert (plusieurs peuvent l’être)',
     example: true,
   })
   active: boolean;
