@@ -65,12 +65,16 @@ export function storeAlreadyRegistered(): ConflictException {
   });
 }
 
-/** No country is active: nowhere to register a store from the app. */
-export function noActiveCountry(): ConflictException {
+/**
+ * Store registration from the app (21b, 27): the manager's phone country is
+ * not open. Same code as an admin registration in an inactive country, with a
+ * message for the app's user.
+ */
+export function countryNotOpen(): ConflictException {
   return new ConflictException({
     message:
-      'Aucun pays n’est ouvert pour le moment : l’inscription d’une quincaillerie est impossible',
-    error: 'NO_ACTIVE_COUNTRY',
+      'Ikasso n’est pas encore ouvert dans votre pays : l’inscription d’une quincaillerie y est impossible pour le moment',
+    error: 'COUNTRY_INACTIVE',
   });
 }
 

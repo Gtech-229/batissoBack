@@ -128,7 +128,7 @@ export class WhatsappSettingsController {
    * @description Send a test WhatsApp message with the saved instance and token
    * @route POST /api/v1/admin/whatsapp-settings/test
    * @access Super admin
-   * @body SendWhatsappTestDto (phone)
+   * @body SendWhatsappTestDto (countryCode, phone)
    * @returns WhatsappTestResponse; 409 not configured; 502 Green API failed
    */
   @Post('test')
@@ -136,11 +136,12 @@ export class WhatsappSettingsController {
   @ApiOperation({
     summary: 'Envoyer un message WhatsApp de test',
     description:
-      'Envoie un message de test fixe au numéro donné (pays actif) avec l’instance et le jeton enregistrés, même si WhatsApp est désactivé, pour les vérifier avant de l’activer. Ne modifie et n’enregistre rien.',
+      'Envoie un message de test fixe au numéro donné, lu pour le pays choisi (countryCode, un pays ouvert), avec l’instance et le jeton enregistrés, même si WhatsApp est désactivé, pour les vérifier avant de l’activer. Ne modifie et n’enregistre rien.',
   })
   @ApiOkResponse({ description: 'Message envoyé', type: WhatsappTestResponse })
   @ApiBadRequestResponse({
-    description: 'Numéro invalide',
+    description:
+      'Code pays invalide ou pays non ouvert, ou numéro invalide pour ce pays (`details`)',
     type: ErrorResponse,
   })
   @ApiConflictResponse({
@@ -156,7 +157,7 @@ export class WhatsappSettingsController {
   async sendTest(
     @Body() body: SendWhatsappTestDto,
   ): Promise<WhatsappTestResponse> {
-    await this.settings.sendTest(body.phone);
+    await this.settings.sendTest(body.phone, body.countryCode);
     return { sent: true };
   }
 }

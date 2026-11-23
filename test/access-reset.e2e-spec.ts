@@ -104,12 +104,18 @@ describe('Lost phone reset (e2e)', () => {
     );
 
   const requestCode = () =>
-    api().post('/api/v1/auth/code').send({ phone: customer.phone }).expect(202);
+    api()
+      .post('/api/v1/auth/code')
+      .send({ countryCode: 'ML', phone: customer.phone })
+      .expect(202);
 
   const verifyCode = (code: string) =>
-    api()
-      .post('/api/v1/auth/code/verify')
-      .send({ phone: customer.phone, code, deviceId: NEW_DEVICE });
+    api().post('/api/v1/auth/code/verify').send({
+      countryCode: 'ML',
+      phone: customer.phone,
+      code,
+      deviceId: NEW_DEVICE,
+    });
 
   describe('POST .../accounts/:accountId/access-reset', () => {
     it('wipes the PIN, closes every session, and untrusts every device', async () => {
@@ -160,12 +166,17 @@ describe('Lost phone reset (e2e)', () => {
       const { challenge } = (
         await api()
           .post('/api/v1/auth/challenge')
-          .send({ phone: customer.phone, deviceId: customer.deviceId })
+          .send({
+            countryCode: 'ML',
+            phone: customer.phone,
+            deviceId: customer.deviceId,
+          })
           .expect(200)
       ).body as { challenge: string };
       const res = await api()
         .post('/api/v1/auth/login')
         .send({
+          countryCode: 'ML',
           phone: customer.phone,
           pin: TEST_PIN,
           deviceId: customer.deviceId,
@@ -497,12 +508,17 @@ describe('Lost phone reset (e2e)', () => {
       const { challenge } = (
         await api()
           .post('/api/v1/auth/challenge')
-          .send({ phone: customer.phone, deviceId: customer.deviceId })
+          .send({
+            countryCode: 'ML',
+            phone: customer.phone,
+            deviceId: customer.deviceId,
+          })
           .expect(200)
       ).body as { challenge: string };
       return api()
         .post('/api/v1/auth/login')
         .send({
+          countryCode: 'ML',
           phone: customer.phone,
           pin: TEST_PIN,
           deviceId: customer.deviceId,

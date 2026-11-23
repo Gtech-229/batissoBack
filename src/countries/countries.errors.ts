@@ -18,13 +18,6 @@ export function unsupportedCountryCode(code: string): BadRequestException {
   );
 }
 
-export function anotherCountryActive(activeCode: string): ConflictException {
-  return new ConflictException({
-    message: `Le pays ${activeCode} est déjà actif : désactivez-le d’abord`,
-    error: 'ANOTHER_COUNTRY_ACTIVE',
-  });
-}
-
 export function countryInUse(message: string): ConflictException {
   return new ConflictException({ message, error: 'COUNTRY_IN_USE' });
 }

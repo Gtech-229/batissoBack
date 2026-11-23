@@ -1,12 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
+  IsISO31661Alpha2,
   IsString,
   Matches,
   MaxLength,
   MinLength,
   ValidateIf,
 } from 'class-validator';
+
+import { TrimUpperCase } from '../../common/validation/trim.js';
 
 /** Green API idInstance: digits only. */
 export const INSTANCE_ID_PATTERN = /^\d{4,20}$/;
@@ -174,7 +177,17 @@ export const WHATSAPP_TEST_MESSAGE =
 
 export class SendWhatsappTestDto {
   @ApiProperty({
-    description: 'Numéro qui reçoit le message de test (pays actif)',
+    description: 'Pays du numéro (un pays ouvert)',
+    example: 'ML',
+  })
+  @TrimUpperCase()
+  @IsISO31661Alpha2({
+    message: 'Le code pays doit être un code ISO à 2 lettres (ex. ML)',
+  })
+  countryCode: string;
+
+  @ApiProperty({
+    description: 'Numéro qui reçoit le message de test, du pays choisi',
     example: '76 00 00 00',
   })
   @IsString({ message: 'Le numéro de téléphone est requis' })

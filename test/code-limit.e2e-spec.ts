@@ -44,7 +44,7 @@ describe('Global code limit (e2e)', () => {
   const requestCode = (n: number) =>
     api()
       .post('/api/v1/auth/code')
-      .send({ phone: phone(n) })
+      .send({ countryCode: 'ML', phone: phone(n) })
       .expect(202);
 
   const saveCaps = (maxCodesPerHour: number, maxCodesPerDay: number) =>

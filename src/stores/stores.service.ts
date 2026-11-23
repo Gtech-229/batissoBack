@@ -14,7 +14,11 @@ import {
 } from '../common/pagination.js';
 import { DEFAULT_ARTICLE_CATEGORIES } from '../catalogue/default-categories.js';
 import { escapeLike } from '../common/like.js';
-import { isPhoneCountry, normalizePhone } from '../common/phone.js';
+import {
+  countryOfPhone,
+  isPhoneCountry,
+  normalizePhone,
+} from '../common/phone.js';
 import { countryNotFound } from '../countries/countries.errors.js';
 import {
   Prisma,
@@ -59,7 +63,7 @@ import {
   MIN_DEPOSIT_ABOVE_MAX_BALANCE,
   PHONE_NOT_OF_COUNTRY,
   invalidStatusTransition,
-  noActiveCountry,
+  countryNotOpen,
   storeAlreadyRegistered,
   storeClosed,
   storeDocumentsMissing,
@@ -162,8 +166,9 @@ export class StoresService {
   }
 
   /**
-   * A signed-in user registers their own store (21b): PENDING, in the active
-   * country, the registrant its manager, with the plan they ask for. One store
+   * A signed-in user registers their own store (21b): PENDING, in the
+   * country of the registrant's phone, which must be open (27), the
+   * registrant its manager, with the plan they ask for. One store
    * per user, ever: the unique registeredById refuses a second one, even when
    * two registrations run at the same time.
    */
@@ -173,13 +178,20 @@ export class StoresService {
   ): Promise<RegisteredStore> {
     try {
       return await this.prisma.$transaction(async (tx) => {
-        // FOR SHARE, as for an admin registration: a concurrent deactivation
-        // waits for this one. One active country in V1.
-        const [country] = await tx.$queryRaw<{ code: string }[]>`
-          SELECT "code" FROM "countries" WHERE "active"
-          ORDER BY "code" LIMIT 1 FOR SHARE`;
-        if (!country) {
-          throw noActiveCountry();
+        // The registrant's phone says their country (27). FOR SHARE, as for
+        // an admin registration: a concurrent deactivation waits for this one.
+        const { phone } = await tx.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: { phone: true },
+        });
+        const code = countryOfPhone(phone);
+        const [country] = code
+          ? await tx.$queryRaw<{ code: string; active: boolean }[]>`
+              SELECT "code", "active" FROM "countries" WHERE "code" = ${code}
+              FOR SHARE`
+          : [];
+        if (!country?.active) {
+          throw countryNotOpen();
         }
         const existing = await tx.hardwareStore.findUnique({
           where: { registeredById: userId },

@@ -425,7 +425,7 @@ describe('WhatsApp settings (e2e, 25b and 25c)', () => {
       api()
         .post('/api/v1/admin/whatsapp-settings/test')
         .set('Cookie', cookie)
-        .send(body);
+        .send({ countryCode: 'ML', ...body });
 
     beforeEach(async () => {
       await createMali(prisma);
@@ -447,6 +447,53 @@ describe('WhatsApp settings (e2e, 25b and 25c)', () => {
       // Nothing recorded besides the save.
       expect(await prisma.whatsappSettingsChange.count()).toBe(1);
     });
+
+    it('sends to a number of another open country, read for the country sent (27)', async () => {
+      await prisma.country.create({
+        data: {
+          code: 'BJ',
+          name: 'Bénin',
+          phonePrefix: '+229',
+          currencyCode: 'XOF',
+          currencySymbol: 'F CFA',
+          decimals: 0,
+          active: true,
+        },
+      });
+      await save({ instanceId: INSTANCE, token: TOKEN }).expect(200);
+
+      await sendTest({ countryCode: 'BJ', phone: '01 54 32 97 03' }).expect(
+        200,
+      );
+
+      expect(greenApi.calls.map((call) => call.phone)).toEqual([
+        '+2290154329703',
+      ]);
+    });
+
+    it.each([
+      ['not open', 'CI', ['Ce pays n’est pas actif']],
+      [
+        'not an ISO code',
+        'MLI',
+        ['Le code pays doit être un code ISO à 2 lettres (ex. ML)'],
+      ],
+    ])(
+      'refuses a country %s (400 on countryCode), sending nothing',
+      async (_case, countryCode, errors) => {
+        await save({ instanceId: INSTANCE, token: TOKEN }).expect(200);
+
+        const response = await sendTest({
+          countryCode,
+          phone: '07 07 02 03 04',
+        }).expect(400);
+
+        expect(response.body.details).toEqual([
+          { field: 'countryCode', errors },
+        ]);
+        expect(greenApi.calls).toHaveLength(0);
+      },
+    );
 
     it('refuses without an instance and a readable token (409), sending nothing', async () => {
       const empty = await sendTest({ phone: '76 00 00 00' }).expect(409);
@@ -506,7 +553,7 @@ describe('WhatsApp settings (e2e, 25b and 25c)', () => {
 
       await api()
         .post('/api/v1/auth/code')
-        .send({ phone: '76 00 00 00' })
+        .send({ countryCode: 'ML', phone: '76 00 00 00' })
         .expect(202);
 
       // The code is sent after the answer, without waiting.
@@ -525,7 +572,7 @@ describe('WhatsApp settings (e2e, 25b and 25c)', () => {
 
       await api()
         .post('/api/v1/auth/code')
-        .send({ phone: '76 00 00 00' })
+        .send({ countryCode: 'ML', phone: '76 00 00 00' })
         .expect(202);
 
       await new Promise((resolve) => setTimeout(resolve, 200));

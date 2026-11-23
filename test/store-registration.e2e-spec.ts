@@ -205,6 +205,33 @@ describe('Store registration from the app (e2e)', () => {
       ).toBe(2);
     });
 
+    it('places the store in its manager’s phone country, with several open (27)', async () => {
+      await prisma.country.create({
+        data: {
+          code: 'BJ',
+          name: 'Bénin',
+          phonePrefix: '+229',
+          currencyCode: 'XOF',
+          currencySymbol: 'F CFA',
+          decimals: 0,
+          active: true,
+        },
+      });
+      const beninese = await signedInStaff(app, prisma, {
+        phone: '+2290154329703',
+      });
+
+      const response = await register(
+        ownStoreBody({ phone: '01 21 30 40 50', city: 'Cotonou' }),
+        beninese,
+      ).expect(201);
+
+      expect(response.body.country.code).toBe('BJ');
+      expect(response.body.phone).toBe('+2290121304050');
+      // Mali is still open: the store's country comes from the phone only.
+      expect(await prisma.country.count({ where: { active: true } })).toBe(2);
+    });
+
     it('lets two different users each register a store', async () => {
       const other = await signedInStaff(app, prisma, {
         phone: '+22376451278',
@@ -216,7 +243,7 @@ describe('Store registration from the app (e2e)', () => {
       expect(await prisma.hardwareStore.count()).toBe(2);
     });
 
-    it('refuses with 409 NO_ACTIVE_COUNTRY when no country is active', async () => {
+    it('refuses with 409 COUNTRY_INACTIVE when the manager’s phone country is not open (27)', async () => {
       await prisma.country.update({
         where: { code: 'ML' },
         data: { active: false },
@@ -225,9 +252,9 @@ describe('Store registration from the app (e2e)', () => {
       const response = await register().expect(409);
 
       expect(response.body).toMatchObject({
-        error: 'NO_ACTIVE_COUNTRY',
+        error: 'COUNTRY_INACTIVE',
         message:
-          'Aucun pays n’est ouvert pour le moment : l’inscription d’une quincaillerie est impossible',
+          'Ikasso n’est pas encore ouvert dans votre pays : l’inscription d’une quincaillerie y est impossible pour le moment',
       });
       expect(await prisma.hardwareStore.count()).toBe(0);
     });

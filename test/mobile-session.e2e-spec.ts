@@ -55,12 +55,13 @@ describe('Mobile sessions (e2e)', () => {
     const { challenge } = (
       await api()
         .post('/api/v1/auth/challenge')
-        .send({ phone: TEST_PHONE, deviceId: DEVICE })
+        .send({ countryCode: 'ML', phone: TEST_PHONE, deviceId: DEVICE })
         .expect(200)
     ).body as { challenge: string };
     const response = await api()
       .post('/api/v1/auth/login')
       .send({
+        countryCode: 'ML',
         phone: TEST_PHONE,
         pin: TEST_PIN,
         deviceId: DEVICE,
@@ -234,13 +235,18 @@ describe('Mobile sessions (e2e)', () => {
       const { challenge } = (
         await api()
           .post('/api/v1/auth/challenge')
-          .send({ phone: TEST_PHONE, deviceId: 'device-0002-efgh' })
+          .send({
+            countryCode: 'ML',
+            phone: TEST_PHONE,
+            deviceId: 'device-0002-efgh',
+          })
           .expect(200)
       ).body as { challenge: string };
       const tablet = (
         await api()
           .post('/api/v1/auth/login')
           .send({
+            countryCode: 'ML',
             phone: TEST_PHONE,
             pin: TEST_PIN,
             deviceId: 'device-0002-efgh',

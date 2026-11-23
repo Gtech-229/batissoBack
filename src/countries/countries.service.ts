@@ -4,13 +4,13 @@ import { getPhonePrefix, isPhoneCountry } from '../common/phone.js';
 import { Prisma, StoreStatus } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
-  anotherCountryActive,
   countryAlreadyExists,
   countryInUse,
   countryNotFound,
   unsupportedCountryCode,
 } from './countries.errors.js';
 import { CountrySummary, toCountrySummary } from './dto/country-summary.js';
+import { PublicCountry, toPublicCountry } from './dto/public-country.js';
 import type { CreateCountryDto } from './dto/create-country.dto.js';
 import type { UpdateCountryDto } from './dto/update-country.dto.js';
 
@@ -107,35 +107,34 @@ export class CountriesService {
   }
 
   /**
-   * Makes this country the active one. V1 allows a single active country, so
-   * activating while another is active is refused instead of switching.
+   * Opens this country. Any number of countries can be active at once (27):
+   * WhatsApp reaches every country, and every phone is read for its own
+   * country. Activating an active country changes nothing.
    */
   async activate(code: string): Promise<CountrySummary> {
-    return this.prisma.$transaction(async (tx) => {
-      // Two activations of different countries could both see "none active".
-      // This transaction-scoped lock makes them run one after the other.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('countries:activation'))`;
-
-      const country = await tx.country.findUnique({ where: { code } });
-      if (!country) {
-        throw countryNotFound();
-      }
-      if (country.active) {
-        return toCountrySummary(country);
-      }
-      const otherActive = await tx.country.findFirst({
-        where: { active: true },
-        select: { code: true },
-      });
-      if (otherActive) {
-        throw anotherCountryActive(otherActive.code);
-      }
-      const updated = await tx.country.update({
+    const country = await this.prisma.country.findUnique({ where: { code } });
+    if (!country) {
+      throw countryNotFound();
+    }
+    if (country.active) {
+      return toCountrySummary(country);
+    }
+    return toCountrySummary(
+      await this.prisma.country.update({
         where: { code },
         data: { active: true },
-      });
-      return toCountrySummary(updated);
+      }),
+    );
+  }
+
+  /** The open countries for the app's country picker (27), by name. */
+  async listActive(): Promise<PublicCountry[]> {
+    const countries = await this.prisma.country.findMany({
+      where: { active: true },
+      orderBy: [{ name: 'asc' }, { code: 'asc' }],
+      select: { code: true, name: true, phonePrefix: true },
     });
+    return countries.map(toPublicCountry);
   }
 
   /** Refused while the country still has a store that is not closed. */

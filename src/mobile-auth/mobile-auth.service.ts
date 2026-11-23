@@ -122,8 +122,8 @@ export class MobileAuthService {
    * always answers the same, so this route cannot tell which phones have an
    * account.
    */
-  async requestCode(rawPhone: string): Promise<void> {
-    const phone = await this.normalizeForActiveCountry(rawPhone);
+  async requestCode(rawPhone: string, countryCode: string): Promise<void> {
+    const phone = await this.normalizeForCountry(rawPhone, countryCode);
     // Generated and hashed for every request, known phone or not, so the
     // response time does not reveal whether the phone has an account.
     const code = randomInt(0, 10 ** CODE_LENGTH)
@@ -244,10 +244,11 @@ export class MobileAuthService {
    */
   async verifyCode(
     rawPhone: string,
+    countryCode: string,
     code: string,
     deviceId: string,
   ): Promise<VerificationResponse> {
-    const phone = await this.normalizeForActiveCountry(rawPhone);
+    const phone = await this.normalizeForCountry(rawPhone, countryCode);
     const outcome = phone
       ? await this.decideCode(phone, code, deviceId)
       : await this.noCode(code);
@@ -686,10 +687,12 @@ export class MobileAuthService {
    */
   async createChallenge(
     rawPhone: string,
+    countryCode: string,
     deviceId: string,
   ): Promise<ChallengeResponse> {
     // Stored as normalized when possible, so `login` can match it either way.
-    const phone = (await this.normalizeForActiveCountry(rawPhone)) ?? rawPhone;
+    const phone =
+      (await this.normalizeForCountry(rawPhone, countryCode)) ?? rawPhone;
     const challenge = randomBytes(32).toString('base64url');
     await this.prisma.deviceChallenge.create({
       data: {
@@ -711,12 +714,13 @@ export class MobileAuthService {
    */
   async login(
     rawPhone: string,
+    countryCode: string,
     pin: string,
     deviceId: string,
     challenge: string,
     signature: string,
   ): Promise<MobileSession> {
-    const phone = await this.normalizeForActiveCountry(rawPhone);
+    const phone = await this.normalizeForCountry(rawPhone, countryCode);
     const now = new Date();
 
     // Used up by this attempt whatever happens next: one signature, one try.
@@ -1068,13 +1072,18 @@ export class MobileAuthService {
   }
 
   /**
-   * E.164 form of a phone of the active country (one active country in V1).
-   * Null when no country is active: no user can sign in then. A number that is
-   * not valid for the active country is a 400 on the `phone` field.
+   * E.164 form of a phone of `countryCode` (27: several countries may be
+   * active, the app sends the one chosen). Null when that country is unknown
+   * or not active, exactly as when no country was open: nothing tells the
+   * caller which countries exist. A number that is not valid for an active
+   * country is a 400 on the `phone` field.
    */
-  private async normalizeForActiveCountry(raw: string): Promise<string | null> {
+  private async normalizeForCountry(
+    raw: string,
+    countryCode: string,
+  ): Promise<string | null> {
     const country = await this.prisma.country.findFirst({
-      where: { active: true },
+      where: { code: countryCode, active: true },
       select: { code: true },
     });
     if (!country || !isPhoneCountry(country.code)) {

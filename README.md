@@ -102,8 +102,11 @@ There is no seed data, so a fresh database has no country. As an admin:
 1. Create the country: `POST /api/v1/admin/countries`
    (`{ "code": "ML", "name": "Mali", "currencyCode": "XOF", "currencySymbol": "F CFA", "decimals": 0 }`).
    The phone prefix is derived from the code. Countries start inactive.
-2. Activate it: `PATCH /api/v1/admin/countries/ML/activate` (a single active
-   country in V1).
+2. Activate it: `PATCH /api/v1/admin/countries/ML/activate`. Several countries
+   can be open at once (feature 27): codes go over WhatsApp to any country. The
+   mobile app lists them with `GET /api/v1/countries` (no sign-in: `code`, `name`,
+   `phonePrefix`, active countries only) and sends the chosen `countryCode` with
+   every phone number.
 3. Register a store with its money settings and first manager:
    `POST /api/v1/admin/stores`. Amounts are strings in the currency's smallest unit
    (`"200000"` = 200 000 F); phone numbers must belong to the store's country.
@@ -214,7 +217,7 @@ customer whose account was opened at a counter) activates; a new phone signs up
 in the same steps. Codes go over WhatsApp once the super admin has turned it on
 (see "WhatsApp settings"); otherwise, in development, each code is printed in
 the API log (`[SMS] To +223...: ...`). Codes go to any number of
-the active country, limited per phone (1 a minute, 5 an hour, 10 a day) and for
+an open country (the `countryCode` sent with it), limited per phone (1 a minute, 5 an hour, 10 a day) and for
 the whole platform: by default **50 codes in a rolling hour and 200 in 24
 hours**, for every phone together (`maxCodesPerHour` 1 to 10000 and
 `maxCodesPerDay` 1 to 100000 in the admin settings). Past a cap no code is
@@ -225,10 +228,14 @@ is clear). Codes start again as the window moves on, or at once if an admin
 raises the cap. A per-IP limit does not apply: behind the VPS's web server every
 request comes from `127.0.0.1`.
 
-1. `POST /api/v1/auth/code` `{ "phone": "76 00 00 00" }`: sends a 6-digit code
-   (valid 10 minutes), to a known phone or a new one. The answer is always the
-   same, so it never tells which phones have an account.
-2. `POST /api/v1/auth/code/verify` `{ "phone", "code", "deviceId" }`: returns a
+1. `POST /api/v1/auth/code` `{ "countryCode": "ML", "phone": "76 00 00 00" }`:
+   sends a 6-digit code (valid 10 minutes), to a known phone or a new one. The
+   answer is always the same, so it never tells which phones have an account;
+   a country that is not open gets the same answer and no code. The phone is
+   read for `countryCode` (local or international format); a number of another
+   country is a 400 on `phone`. Every step below that sends a phone sends its
+   `countryCode` too.
+2. `POST /api/v1/auth/code/verify` `{ "countryCode", "phone", "code", "deviceId" }`: returns a
    single-use `verificationToken`, `registered` (does the phone have a user?)
    and `pinSet` (has the user chosen a PIN yet?).
    `deviceId` is a random id the app creates once per installation.
@@ -239,9 +246,9 @@ request comes from `127.0.0.1`.
    and the user. **Sign-up:** when `registered` was `false`, also send
    `firstName` and `lastName`; the user is created with that PIN, with no store
    and no account yet (names sent for an existing user are ignored).
-4. Afterwards, on that phone: `POST /api/v1/auth/challenge` `{ "phone", "deviceId" }`,
+4. Afterwards, on that phone: `POST /api/v1/auth/challenge` `{ "countryCode", "phone", "deviceId" }`,
    sign the returned `challenge` with the private key, then `POST /api/v1/auth/login`
-   `{ "phone", "pin", "deviceId", "challenge", "signature" }`. No SMS needed.
+   `{ "countryCode", "phone", "pin", "deviceId", "challenge", "signature" }`. No SMS needed.
 
 Then send `Authorization: Bearer <accessToken>` (15 minutes) to `GET /api/v1/me`
 and the other mobile routes, renew with `POST /api/v1/auth/refresh`
@@ -265,7 +272,8 @@ store; they become its manager and it waits for an admin's verification.
 1. Register: `POST /api/v1/stores` with `name`, `address`, `city`, `phone`,
    `tradeRegister`, `settings` (the same money rules as the admin form) and
    `requestedPlan` (`TRIAL`, `STANDARD` or `PRO`). The store is `PENDING`
-   in the active country; no subscription is created (admins record it). A user
+   in the country of the registrant's own phone, which must be open (else
+   `409 COUNTRY_INACTIVE`); no subscription is created (admins record it). A user
    registers one store, ever (`409 STORE_ALREADY_REGISTERED`).
 2. Send the two photos (multipart, one JPEG or PNG of at most 5 MB in the field
    `photo`, replaceable until the verification):
@@ -806,7 +814,8 @@ where every sign-in code goes, so they are guarded:
   WhatsApp does not receive its code: every user is assumed to have WhatsApp
   (V1).
 - **Test before turning it on:** `POST /api/v1/admin/whatsapp-settings/test`
-  with `{ "phone": "76 00 00 00" }` (super admin only) sends a fixed test text
+  with `{ "countryCode": "ML", "phone": "76 00 00 00" }` (super admin only; the
+  country must be open, else a 400 on `countryCode`) sends a fixed test text
   with the saved instance and token, even while WhatsApp is off: `200
   { "sent": true }`, `WHATSAPP_NOT_CONFIGURED` (409) without an instance and a
   readable token, `WHATSAPP_SEND_FAILED` (502) with the cause when Green API

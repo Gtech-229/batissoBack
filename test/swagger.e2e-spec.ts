@@ -286,6 +286,28 @@ describe('Swagger document (e2e)', () => {
     );
   });
 
+  it('documents the public country list and countryCode on phone routes (feature 27)', () => {
+    const routes = operations.map(([route]) => route);
+
+    expect(routes).toContain('GET /api/v1/countries');
+    expect(Object.keys(schemas.PublicCountry.properties ?? {})).toEqual([
+      'code',
+      'name',
+      'phonePrefix',
+    ]);
+    for (const dto of [
+      'RequestCodeDto',
+      'VerifyCodeDto',
+      'ChallengeDto',
+      'MobileLoginDto',
+      'SendWhatsappTestDto',
+    ]) {
+      expect(Object.keys(schemas[dto].properties ?? {})).toContain(
+        'countryCode',
+      );
+    }
+  });
+
   it('gives every route a French summary and a documented success response', () => {
     const undocumented = operations
       .filter(

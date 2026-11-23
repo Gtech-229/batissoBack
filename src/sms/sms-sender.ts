@@ -3,9 +3,9 @@
  * real provider will implement this same interface.
  *
  * Before using a paid provider (F-53): since 21a, sign-in codes go to any
- * number of the active country, limited per phone only (1 a minute, 5 an hour,
- * 10 a day), so one client could make the platform pay for SMS across a whole
- * number range. Add a global or per-IP limit, or the provider's fraud
+ * number of every open country (27: several can be active), limited per phone
+ * (1 a minute, 5 an hour, 10 a day) and by the platform-wide cap (25a), so one
+ * client could still make the platform pay for SMS across whole number ranges. Add a global or per-IP limit, or the provider's fraud
  * controls, first.
  */
 export interface SmsSender {

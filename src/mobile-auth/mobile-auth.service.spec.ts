@@ -31,7 +31,7 @@ function setup(options: { challengeCount: number; user: object | null }) {
 }
 
 const login = (service: MobileAuthService) =>
-  service.login('76 00 00 00', '482915', 'device-0001-abcd', 'c', 'AAAA');
+  service.login('76 00 00 00', 'ML', '482915', 'device-0001-abcd', 'c', 'AAAA');
 
 describe('MobileAuthService.login: same work on every refusal (F-15)', () => {
   it.each([

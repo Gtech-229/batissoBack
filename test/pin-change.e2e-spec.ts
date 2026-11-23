@@ -59,12 +59,13 @@ describe('PIN change (e2e)', () => {
     const { challenge } = (
       await api()
         .post('/api/v1/auth/challenge')
-        .send({ phone: TEST_PHONE, deviceId })
+        .send({ countryCode: 'ML', phone: TEST_PHONE, deviceId })
         .expect(200)
     ).body as { challenge: string };
     return api()
       .post('/api/v1/auth/login')
       .send({
+        countryCode: 'ML',
         phone: TEST_PHONE,
         pin,
         deviceId,
