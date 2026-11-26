@@ -1,5 +1,5 @@
 import type { PrismaService } from '../prisma/prisma.service.js';
-import { storeDocumentsMissing, storeNotFound } from './stores.errors.js';
+import { invalidStatusTransition, storeNotFound } from './stores.errors.js';
 import { StoresService } from './stores.service.js';
 
 describe('StoresService.changeStatusMany', () => {
@@ -13,8 +13,7 @@ describe('StoresService.changeStatusMany', () => {
 
   it('runs each store in order, once, a refusal leaving the others', async () => {
     const { service, spy } = serviceWith(async (id) => {
-      if (id === 'b')
-        throw storeDocumentsMissing({ identity: true, tradeRegister: false });
+      if (id === 'b') throw invalidStatusTransition('vérifier', 'vérifiée');
       if (id === 'c') throw storeNotFound();
       return {} as never;
     });
@@ -38,9 +37,8 @@ describe('StoresService.changeStatusMany', () => {
           id: 'b',
           ok: false,
           error: {
-            code: 'STORE_DOCUMENTS_MISSING',
-            message:
-              'Impossible de vérifier cette quincaillerie : il manque le registre du commerce',
+            code: 'INVALID_STATUS_TRANSITION',
+            message: 'Impossible de vérifier une quincaillerie vérifiée',
           },
         },
         {

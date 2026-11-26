@@ -180,12 +180,12 @@ characters as the single routes).
   never blocks the others.
 - The answer (200) has one result per store: `{ id, ok }`, or
   `{ id, ok: false, error: { code, message } }` with the very code and message
-  the single route would give (`INVALID_STATUS_TRANSITION`,
-  `STORE_DOCUMENTS_MISSING`, `NOT_FOUND` for an unknown id).
-- Bulk verify accepts exactly what single verify accepts: an admin-registered
-  store (including imported ones) needs no documents, a self-registered one
-  needs both photos. `GET /admin/stores` shows this as `documentsComplete` on
-  each store, so a PENDING store with `true` is one bulk verify accepts.
+  the single route would give (`INVALID_STATUS_TRANSITION`, `NOT_FOUND` for an
+  unknown id).
+- Bulk verify accepts exactly what single verify accepts: any PENDING store,
+  with or without its documents (optional for every store). `GET /admin/stores`
+  shows `documentsComplete` on each store, for information: `true` for an
+  admin-registered store, and for a self-registered one with both photos sent.
 - An invalid body (no ids, more than 100, a non-UUID, a bad reason) is a 400 and
   changes nothing. An unexpected error (database down) is a 500; the stores
   already changed keep their change.
@@ -275,15 +275,16 @@ store; they become its manager and it waits for an admin's verification.
    in the country of the registrant's own phone, which must be open (else
    `409 COUNTRY_INACTIVE`); no subscription is created (admins record it). A user
    registers one store, ever (`409 STORE_ALREADY_REGISTERED`).
-2. Send the two photos (multipart, one JPEG or PNG of at most 5 MB in the field
-   `photo`, replaceable until the verification):
+2. Optionally, send the two photos (multipart, one JPEG or PNG of at most 5 MB
+   in the field `photo`), before or after the verification, and replace them at
+   any time until the store is closed (`409 STORE_CLOSED` then):
    `PUT /api/v1/stores/:storeId/documents/identity` and
    `PUT /api/v1/stores/:storeId/documents/trade-register`.
 3. An admin reads the store (`GET /api/v1/admin/stores/:id`: `requestedPlan`,
    `selfRegistered`, `documents`), views the photos
    (`GET /api/v1/admin/stores/:id/documents/identity` or `/trade-register`),
-   then verifies it. Verification answers `409 STORE_DOCUMENTS_MISSING` until
-   both photos are sent. No account and no deposit before that.
+   then verifies it, with or without the photos: they are optional. No account
+   and no deposit before the verification.
 
 Files live in the private `STORE_DOCUMENT_DIR`, which belongs in the backups next
 to `ID_PHOTO_DIR`.

@@ -42,7 +42,7 @@ export class BulkStatusReasonDto extends BulkStoreIdsDto {
 export class BulkStatusError {
   @ApiProperty({
     description:
-      'Code d’erreur de l’action seule : INVALID_STATUS_TRANSITION, STORE_DOCUMENTS_MISSING, NOT_FOUND',
+      'Code d’erreur de l’action seule : INVALID_STATUS_TRANSITION, NOT_FOUND',
     example: 'INVALID_STATUS_TRANSITION',
   })
   code: string;

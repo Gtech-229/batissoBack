@@ -90,7 +90,7 @@ export class StoreSummary {
 
   @ApiProperty({
     description:
-      'Dossier complet pour la vérification : toujours vrai pour une quincaillerie inscrite par un administrateur ; pour une quincaillerie inscrite depuis l’application, vrai seulement quand ses deux documents sont envoyés. Une quincaillerie PENDING avec true est acceptée par la vérification groupée (POST /admin/stores/bulk/verify).',
+      'Documents d’inscription présents : toujours vrai pour une quincaillerie inscrite par un administrateur ; pour une quincaillerie inscrite depuis l’application, vrai quand ses deux documents sont envoyés. Pour information : la vérification ne les exige pas.',
     example: true,
   })
   documentsComplete: boolean;

@@ -145,30 +145,42 @@ describe('Store registration documents (e2e)', () => {
         .expect(401);
     });
 
-    it.each([
-      ['VERIFIED', 'vérifiée'],
-      ['SUSPENDED', 'suspendue'],
-      ['CLOSED', 'fermée'],
-    ] as const)(
-      'refuses a %s store with 409 STORE_NOT_PENDING and keeps no file',
-      async (status, label) => {
+    it.each(['VERIFIED', 'SUSPENDED'] as const)(
+      'accepts and replaces a document of a %s store (optional, before or after the verification)',
+      async (status) => {
         await upload('identity').expect(200);
-        const kept = (await paths()).managerIdPhotoPath;
+        const old = (await paths()).managerIdPhotoPath;
         await prisma.hardwareStore.update({
           where: { id: storeId },
           data: { status },
         });
 
-        const response = await upload('identity', PNG).expect(409);
+        await upload('identity', PNG).expect(200);
 
-        expect(response.body).toMatchObject({
-          error: 'STORE_NOT_PENDING',
-          message: `Cette quincaillerie est ${label} : ses documents ne peuvent être envoyés qu’avant sa vérification`,
-        });
-        expect((await paths()).managerIdPhotoPath).toBe(kept);
-        expect(await storedDocuments()).toEqual([kept]);
+        const replaced = (await paths()).managerIdPhotoPath;
+        expect(replaced).not.toBe(old);
+        expect(await storedDocuments()).toEqual([replaced]);
       },
     );
+
+    it('refuses a CLOSED store with 409 STORE_CLOSED and keeps no file', async () => {
+      await upload('identity').expect(200);
+      const kept = (await paths()).managerIdPhotoPath;
+      await prisma.hardwareStore.update({
+        where: { id: storeId },
+        data: { status: 'CLOSED' },
+      });
+
+      const response = await upload('identity', PNG).expect(409);
+
+      expect(response.body).toMatchObject({
+        error: 'STORE_CLOSED',
+        message:
+          'Cette quincaillerie est fermée : elle ne peut plus être modifiée',
+      });
+      expect((await paths()).managerIdPhotoPath).toBe(kept);
+      expect(await storedDocuments()).toEqual([kept]);
+    });
 
     it.each([
       [
@@ -350,7 +362,7 @@ describe('Store registration documents (e2e)', () => {
     });
   });
 
-  describe('PATCH /admin/stores/:id/verify (21b rule)', () => {
+  describe('PATCH /admin/stores/:id/verify (documents optional)', () => {
     const verify = (cookie: string, id = storeId) =>
       api().patch(`/api/v1/admin/stores/${id}/verify`).set('Cookie', cookie);
     const status = async (id = storeId) =>
@@ -362,60 +374,40 @@ describe('Store registration documents (e2e)', () => {
       ).status;
 
     it.each([
-      [[], 'la pièce d’identité du gérant et le registre du commerce'],
-      [['identity'], 'le registre du commerce'],
-      [['trade-register'], 'la pièce d’identité du gérant'],
-    ] as [Kind[], string][])(
-      'refuses a self-registered store with %j sent: 409 STORE_DOCUMENTS_MISSING',
-      async (sent, missing) => {
+      [[], { identity: false, tradeRegister: false }],
+      [['identity'], { identity: true, tradeRegister: false }],
+      [['trade-register'], { identity: false, tradeRegister: true }],
+      [['identity', 'trade-register'], { identity: true, tradeRegister: true }],
+    ] as [Kind[], { identity: boolean; tradeRegister: boolean }][])(
+      'verifies a self-registered store with %j sent',
+      async (sent, documents) => {
         const cookie = await signedInAdmin(['stores.read', 'stores.manage']);
         for (const kind of sent) {
           await upload(kind).expect(200);
         }
 
-        const response = await verify(cookie).expect(409);
+        const response = await verify(cookie).expect(200);
 
         expect(response.body).toMatchObject({
-          error: 'STORE_DOCUMENTS_MISSING',
-          message: `Impossible de vérifier cette quincaillerie : il manque ${missing}`,
+          status: 'VERIFIED',
+          verifiedAt: expect.any(String),
+          documents,
         });
-        expect(await status()).toBe('PENDING');
+        expect(await status()).toBe('VERIFIED');
       },
     );
 
-    it('verifies a self-registered store once both documents are sent; uploads are then refused', async () => {
+    it('lets the manager send a document after the verification, and an admin read it', async () => {
       const cookie = await signedInAdmin(['stores.read', 'stores.manage']);
-      await upload('identity').expect(200);
-      await upload('trade-register').expect(200);
+      await verify(cookie).expect(200);
 
-      const response = await verify(cookie).expect(200);
+      const sent = await upload('trade-register').expect(200);
 
-      expect(response.body).toMatchObject({
-        status: 'VERIFIED',
-        documents: { identity: true, tradeRegister: true },
-      });
-      await upload('identity', PNG).expect(409);
-    });
-
-    it('verifies when the last document arrives just before the refusal is explained (F-55)', async () => {
-      const cookie = await signedInAdmin(['stores.read', 'stores.manage']);
-      await upload('identity').expect(200);
-      await upload('trade-register').expect(200);
-      // The first verify UPDATE misses, as when the last upload commits right
-      // after it: the re-read then finds both documents.
-      const update = vi
-        .spyOn(prisma.hardwareStore, 'updateMany')
-        .mockResolvedValueOnce({ count: 0 });
-
-      try {
-        const response = await verify(cookie).expect(200);
-
-        expect(response.body).toMatchObject({ status: 'VERIFIED' });
-        expect(update).toHaveBeenCalledTimes(2);
-      } finally {
-        update.mockRestore();
-      }
-      expect(await status()).toBe('VERIFIED');
+      expect(sent.body).toEqual({ identity: false, tradeRegister: true });
+      await api()
+        .get(`/api/v1/admin/stores/${storeId}/documents/trade-register`)
+        .set('Cookie', cookie)
+        .expect(200);
     });
 
     it('verifies an admin-registered store without documents, as before', async () => {

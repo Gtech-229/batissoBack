@@ -27,9 +27,9 @@ export function toStoreDocuments(
 }
 
 /**
- * The document half of the verify rule (26b): an admin-registered store needs
- * no documents; a self-registered one (21b) needs both photos. The same rule
- * as VERIFIABLE in stores.service.ts, which applies it inside the UPDATE.
+ * Whether the registration documents are all there (26b): always for an
+ * admin-registered store, which has none to send; for a self-registered one
+ * (21b), both photos. Information only: verification never requires them.
  */
 export function documentsComplete(
   store: Pick<

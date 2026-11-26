@@ -46,7 +46,6 @@ import {
   toRegisteredStore,
   type RegisteredStore,
 } from './dto/registered-store.js';
-import { toStoreDocuments } from './dto/store-documents.js';
 import {
   STORE_ACTION_LABELS,
   STORE_STATUS_LABELS,
@@ -66,15 +65,8 @@ import {
   countryNotOpen,
   storeAlreadyRegistered,
   storeClosed,
-  storeDocumentsMissing,
   storeNotFound,
 } from './stores.errors.js';
-
-/** Stores a verification may apply to: admin-registered, or with both documents. */
-const VERIFIABLE: Prisma.HardwareStoreWhereInput[] = [
-  { registeredById: null },
-  { managerIdPhotoPath: { not: null }, tradeRegisterPhotoPath: { not: null } },
-];
 
 /** A store's money settings, parsed. */
 interface StoreAmounts {
@@ -470,54 +462,29 @@ export class StoresService {
     const transition = STORE_TRANSITIONS[action];
     const now = new Date();
 
-    const apply = () =>
-      this.prisma.hardwareStore.updateMany({
-        where: {
-          id,
-          status: { in: [...transition.from] },
-          // A self-registered store is verified with both documents only. In
-          // the same UPDATE, so an upload (which locks the row) cannot
-          // interleave.
-          ...(action === 'verify' && { OR: [...VERIFIABLE] }),
-        },
-        data: {
-          status: transition.to,
-          statusChangedAt: now,
-          statusChangedById: adminId,
-          // Verify and reactivate clear the previous suspension reason.
-          statusReason: transition.needsReason ? reason : null,
-          ...(action === 'verify' && { verifiedAt: now }),
-        },
-      });
-
-    const { count } = await apply();
+    const { count } = await this.prisma.hardwareStore.updateMany({
+      where: {
+        id,
+        // Only the status decides, documents included: they are optional
+        // for every store, self-registered or not.
+        status: { in: [...transition.from] },
+      },
+      data: {
+        status: transition.to,
+        statusChangedAt: now,
+        statusChangedById: adminId,
+        // Verify and reactivate clear the previous suspension reason.
+        statusReason: transition.needsReason ? reason : null,
+        ...(action === 'verify' && { verifiedAt: now }),
+      },
+    });
     if (count === 0) {
       const current = await this.prisma.hardwareStore.findUnique({
         where: { id },
-        select: {
-          status: true,
-          registeredById: true,
-          managerIdPhotoPath: true,
-          tradeRegisterPhotoPath: true,
-        },
+        select: { status: true },
       });
       if (!current) {
         throw storeNotFound();
-      }
-      if (
-        action === 'verify' &&
-        transition.from.includes(current.status) &&
-        current.registeredById !== null
-      ) {
-        const documents = toStoreDocuments(current);
-        if (!documents.identity || !documents.tradeRegister) {
-          throw storeDocumentsMissing(documents);
-        }
-        // Both are there now: the last upload committed between the UPDATE
-        // and this read (F-55). One more try, then the usual refusal.
-        if ((await apply()).count > 0) {
-          return this.findOne(id);
-        }
       }
       throw invalidStatusTransition(
         STORE_ACTION_LABELS[action],

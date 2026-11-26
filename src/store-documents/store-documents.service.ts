@@ -10,12 +10,11 @@ import {
   toStoreDocuments,
   type StoreDocuments,
 } from '../stores/dto/store-documents.js';
-import { storeNotFound } from '../stores/stores.errors.js';
+import { storeClosed, storeNotFound } from '../stores/stores.errors.js';
 import { StoreDocumentStorage } from './store-document-storage.js';
 import {
   DOCUMENT_REQUIRED,
   noStoreDocument,
-  storeNotPending,
   type StoreDocumentKind,
 } from './store-documents.errors.js';
 
@@ -45,7 +44,8 @@ export class StoreDocumentsService {
   ) {}
 
   /**
-   * Uploads or replaces one document while the store is PENDING. As for
+   * Uploads or replaces one document, at any time until the store is closed:
+   * documents are optional, before or after the verification. As for
    * identity photos: the file is written first, then the store points to it,
    * and the old file is removed only after that commit.
    */
@@ -68,7 +68,7 @@ export class StoreDocumentsService {
     let outcome: { previous: string | null; documents: StoreDocuments };
     try {
       outcome = await this.prisma.$transaction(async (tx) => {
-        // FOR UPDATE: a verification (which updates the row) waits for this
+        // FOR UPDATE: a closing (which updates the row) waits for this
         // upload, or the reverse; two uploads run one after the other, so each
         // sees and removes the other's file.
         const [store] = await tx.$queryRaw<StoreDocumentRow[]>`
@@ -77,8 +77,8 @@ export class StoreDocumentsService {
         if (!store) {
           throw storeNotFound();
         }
-        if (store.status !== 'PENDING') {
-          throw storeNotPending(store.status);
+        if (store.status === 'CLOSED') {
+          throw storeClosed();
         }
         const updated = await tx.hardwareStore.update({
           where: { id: storeId },
