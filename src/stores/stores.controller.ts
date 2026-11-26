@@ -299,7 +299,7 @@ export class StoresController {
   @ApiOperation({
     summary: 'Vérifier plusieurs quincailleries',
     description:
-      'PENDING -> VERIFIED pour chaque quincaillerie. Une quincaillerie inscrite depuis l’application exige ses deux documents (STORE_DOCUMENTS_MISSING sinon) : documentsComplete dans la liste le dit à l’avance. Chaque quincaillerie est traitée seule, dans l’ordre, avec exactement les règles de l’action unitaire ; un refus n’empêche pas les autres. Chaque résultat donne ok, ou le code et le message que l’action unitaire aurait renvoyés (dont NOT_FOUND pour un identifiant inconnu). 1 à 100 identifiants, doublons ignorés.',
+      'PENDING -> VERIFIED pour chaque quincaillerie, avec ou sans ses documents (facultatifs). Chaque quincaillerie est traitée seule, dans l’ordre, avec exactement les règles de l’action unitaire ; un refus n’empêche pas les autres. Chaque résultat donne ok, ou le code et le message que l’action unitaire aurait renvoyés (dont NOT_FOUND pour un identifiant inconnu). 1 à 100 identifiants, doublons ignorés.',
   })
   @ApiOkResponse({
     description: 'Un résultat par quincaillerie',
@@ -445,14 +445,14 @@ export class StoresController {
    * @route PATCH /api/v1/admin/stores/:id/verify
    * @access Admin
    * @param id (UUID) store id
-   * @returns 200 StoreDetail (VERIFIED, verifiedAt set); 409 INVALID_STATUS_TRANSITION or STORE_DOCUMENTS_MISSING
+   * @returns 200 StoreDetail (VERIFIED, verifiedAt set); 409 INVALID_STATUS_TRANSITION
    */
   @Patch(':id/verify')
   @RequirePermission('stores.manage')
   @ApiOperation({
     summary: 'Vérifier une quincaillerie',
     description:
-      'PENDING -> VERIFIED, après contrôle du registre du commerce et de l’identité du gérant. Une quincaillerie inscrite depuis l’application exige ses deux documents (pièce d’identité du gérant et registre du commerce).',
+      'PENDING -> VERIFIED, après contrôle de la quincaillerie. Les documents envoyés depuis l’application (pièce d’identité du gérant, registre du commerce) sont facultatifs : une quincaillerie peut être vérifiée sans eux.',
   })
   @ApiParam({ name: 'id', description: 'Identifiant de la quincaillerie' })
   @ApiOkResponse({ description: 'Quincaillerie vérifiée', type: StoreDetail })
@@ -461,8 +461,7 @@ export class StoresController {
     type: ErrorResponse,
   })
   @ApiConflictResponse({
-    description:
-      'Statut actuel incompatible (`INVALID_STATUS_TRANSITION`) ; quincaillerie inscrite depuis l’application sans ses deux documents (`STORE_DOCUMENTS_MISSING`)',
+    description: 'Statut actuel incompatible (`INVALID_STATUS_TRANSITION`)',
     type: ErrorResponse,
   })
   verify(

@@ -140,38 +140,38 @@ describe('Stores: group actions (e2e)', () => {
   );
 
   describe('verify and documents', () => {
-    it('accepts exactly what single verify accepts', async () => {
+    it('verifies every PENDING store, with or without its documents', async () => {
       const adminRegistered = await createStoreRecord(prisma);
       const complete = await selfRegisteredStore({
         identity: true,
         tradeRegister: true,
       });
-      const missing = await selfRegisteredStore({
+      const partial = await selfRegisteredStore({
         identity: true,
         tradeRegister: false,
       });
-      const singleMissing = (await single(missing.id, 'verify')).body;
+      const none = await selfRegisteredStore({
+        identity: false,
+        tradeRegister: false,
+      });
 
       const response = await bulk('verify', {
-        ids: [adminRegistered.id, complete.id, missing.id],
+        ids: [adminRegistered.id, complete.id, partial.id, none.id],
       }).expect(200);
 
       expect(response.body.results).toEqual([
         { id: adminRegistered.id, ok: true },
         { id: complete.id, ok: true },
-        {
-          id: missing.id,
-          ok: false,
-          error: {
-            code: 'STORE_DOCUMENTS_MISSING',
-            message: singleMissing.message,
-          },
-        },
+        { id: partial.id, ok: true },
+        { id: none.id, ok: true },
       ]);
-      expect((await reload(adminRegistered.id)).verifiedAt).toBeInstanceOf(
-        Date,
-      );
-      expect((await reload(missing.id)).status).toBe('PENDING');
+      for (const store of [adminRegistered, complete, partial, none]) {
+        expect(await reload(store.id)).toMatchObject({
+          status: 'VERIFIED',
+          statusChangedById: adminId,
+          verifiedAt: expect.any(Date),
+        });
+      }
     });
   });
 

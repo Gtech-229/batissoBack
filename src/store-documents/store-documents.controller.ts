@@ -34,7 +34,7 @@ function DocumentUpload(summary: string, document: string) {
     UseInterceptors(IdPhotoUploadInterceptor),
     ApiOperation({
       summary,
-      description: `Photo ${document} : une image JPEG ou PNG (vérifiée d’après son contenu), au plus 5 Mo, dans le champ \`photo\`. Remplace la photo précédente, qui est supprimée. Stockée en privé sur le serveur et lue seulement par les administrateurs. Seulement tant que la quincaillerie attend sa vérification.`,
+      description: `Photo ${document} : une image JPEG ou PNG (vérifiée d’après son contenu), au plus 5 Mo, dans le champ \`photo\`. Remplace la photo précédente, qui est supprimée. Stockée en privé sur le serveur et lue seulement par les administrateurs. Facultatif, avant comme après la vérification, tant que la quincaillerie n’est pas fermée.`,
     }),
     ApiConsumes('multipart/form-data'),
     ApiBody({
@@ -60,8 +60,7 @@ function DocumentUpload(summary: string, document: string) {
       type: ErrorResponse,
     }),
     ApiConflictResponse({
-      description:
-        'Quincaillerie déjà vérifiée, suspendue ou fermée (`STORE_NOT_PENDING`)',
+      description: 'Quincaillerie fermée (`STORE_CLOSED`)',
       type: ErrorResponse,
     }),
   );
@@ -90,12 +89,12 @@ export class StoreDocumentsController {
   constructor(private readonly documents: StoreDocumentsService) {}
 
   /**
-   * @description Upload or replace the manager's identity photo of a store waiting for verification
+   * @description Upload or replace the manager's identity photo (optional), until the store is closed
    * @route PUT /api/v1/stores/:storeId/documents/identity
    * @access Store manager (mobile session)
    * @param storeId the store
    * @body multipart/form-data, one file in the field `photo`
-   * @returns 200 StoreDocuments; 409 STORE_NOT_PENDING
+   * @returns 200 StoreDocuments; 409 STORE_CLOSED
    */
   @Put('identity')
   @DocumentUpload(
@@ -110,12 +109,12 @@ export class StoreDocumentsController {
   }
 
   /**
-   * @description Upload or replace the trade register photo of a store waiting for verification
+   * @description Upload or replace the trade register photo (optional), until the store is closed
    * @route PUT /api/v1/stores/:storeId/documents/trade-register
    * @access Store manager (mobile session)
    * @param storeId the store
    * @body multipart/form-data, one file in the field `photo`
-   * @returns 200 StoreDocuments; 409 STORE_NOT_PENDING
+   * @returns 200 StoreDocuments; 409 STORE_CLOSED
    */
   @Put('trade-register')
   @DocumentUpload(

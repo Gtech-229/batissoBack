@@ -78,21 +78,6 @@ export function countryNotOpen(): ConflictException {
   });
 }
 
-/** A self-registered store is verified once both of its documents are sent. */
-export function storeDocumentsMissing(documents: {
-  identity: boolean;
-  tradeRegister: boolean;
-}): ConflictException {
-  const missing = [
-    ...(documents.identity ? [] : ['la pièce d’identité du gérant']),
-    ...(documents.tradeRegister ? [] : ['le registre du commerce']),
-  ].join(' et ');
-  return new ConflictException({
-    message: `Impossible de vérifier cette quincaillerie : il manque ${missing}`,
-    error: 'STORE_DOCUMENTS_MISSING',
-  });
-}
-
 /** A store import file refused as a whole (26a): nothing in it is checked. */
 export function importFileRefused(
   code: string,
