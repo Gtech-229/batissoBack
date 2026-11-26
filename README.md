@@ -787,9 +787,10 @@ where every sign-in code goes, so they are guarded:
   with `chatId` = the number without `+` followed by `@c.us`, 10 seconds at
   most. The host is built from the instance id in the code, never typed by an
   admin.
-- **Ivorian and Beninese numbers** (`+225`/`+229` with 10 digits): these
-  countries moved from 8 to 10 digits, and WhatsApp accounts created before
-  the switch keep their old ID. Before sending, the API asks Green API
+- **Ivorian, Beninese and Cameroonian numbers** (`+225`/`+229` with 10
+  digits, `+237` with 9): these countries added a prefix in front of their old
+  8 digits (Côte d'Ivoire 2021 and Benin 2024 two digits, Cameroon 2014 one
+  digit, `6` for old mobiles), and WhatsApp accounts created before the switch keep their old ID. Before sending, the API asks Green API
   `checkWhatsapp` about the new ID (`2250707020304`), then the old one
   (`22507020304`: country code + the last 8 digits), and sends to the first
   that has an account; with neither, nothing is sent and the cause is
@@ -799,7 +800,14 @@ where every sign-in code goes, so they are guarded:
   `IVORIAN_OPERATOR_RANGES` in `src/sms/green-api-client.ts`): the same 8
   digits behind another prefix belong to someone else, so such a number gets
   only the new-ID check. Benin added `01` to every number, so its old ID always
-  applies. The checks and the send share the same 10 seconds; a
+  applies. In Cameroon the old ID is tried only for the old mobile ranges that
+  got the `6`: `65x`, `67x`, `69x` (`237677123456` -> `23777123456`). Every other
+  number (a fixed line `2…`, a range issued after 2014 such as `62x`, `64x`,
+  `66x`) gets only the new-ID check: its last 8 digits can be another person's
+  old number (`622…` and the old fixed line `22…` share them), and a code must
+  never reach someone else (F-112). The table is `NUMBERING_SWITCHES` in
+  `src/sms/green-api-client.ts`.
+  The checks and the send share the same 10 seconds; a
   failed check gives `check HTTP <status>`, `check timeout`, `check network` or
   `check bad response` (a Green API plan that limits `checkWhatsapp` shows up
   here). Other countries are sent as they are, without a check.

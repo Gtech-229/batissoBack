@@ -24,13 +24,6 @@ export interface GreenApiCredentials {
 export type FetchFunction = typeof fetch;
 
 /**
- * Countries whose numbers grew from 8 to 10 digits (a 2-digit prefix before
- * the old 8): Côte d'Ivoire (2021) and Benin (2024). WhatsApp accounts created
- * before the switch keep their old ID (country code + the 8 old digits).
- */
-const TEN_DIGIT_SWITCH_CODES = ['225', '229'];
-
-/**
  * Côte d'Ivoire, 2021 (ARTCI plan, F-100): each old mobile number got the one
  * prefix of its operator, from its first 2 digits. Another prefix with the same
  * 8 digits is a different subscriber, so it never falls back to that old ID.
@@ -104,20 +97,78 @@ const IVORIAN_OPERATOR_RANGES: Record<string, string[]> = {
 };
 
 /**
- * The pre-switch ID of a 10-digit number (country code + its last 8 digits),
- * or null when that old number cannot be this subscriber's: an Ivorian prefix
- * that is not the one the old number migrated to. Benin added `01` to every
- * number, so its old ID is always the subscriber's.
+ * Cameroon, 2014 (F-112): old mobile numbers got `6` in front, and only the
+ * old mobile ranges moved there (5x, 7x, 9x: MTN and Orange). Every other
+ * `6…` range, and every fixed line (`2…`), was issued with 9 digits or
+ * shares its last 8 digits with a different subscriber's old number, so it
+ * never falls back to an old ID.
  */
-function preSwitchNumber(code: string, national: string): string | null {
-  const [prefix, old] = [national.slice(0, 2), national.slice(2)];
+const CAMEROONIAN_MIGRATED_RANGES: Record<string, string[]> = {
+  '6': ['5', '7', '9'],
+};
+
+/**
+ * A country whose numbers grew by a prefix in front of the old 8 digits.
+ * WhatsApp accounts created before the switch keep their old ID (country code
+ * + the 8 old digits), so a number of the new length is checked under both,
+ * when that old ID can only be the same subscriber's.
+ */
+interface NumberingSwitch {
+  /** Country calling code, digits only. */
+  code: string;
+  /** Digits of a national number since the switch. */
+  length: number;
+  /** Digits added in front of the old 8. */
+  prefixLength: number;
+  /**
+   * For each prefix added to old numbers, how those old numbers started (a
+   * prefix of the old 8 digits). Any other prefix or start never had that old
+   * form. Unset: every number got the same prefix (Benin).
+   */
+  migrated?: Readonly<Record<string, readonly string[]>>;
+}
+
+/**
+ * Côte d'Ivoire (2021, a 2-digit prefix per operator), Benin (2024, `01` for
+ * everyone) and Cameroon (2014, `6` for old mobiles).
+ */
+const NUMBERING_SWITCHES: readonly NumberingSwitch[] = [
+  {
+    code: '225',
+    length: 10,
+    prefixLength: 2,
+    migrated: IVORIAN_OPERATOR_RANGES,
+  },
+  { code: '229', length: 10, prefixLength: 2 },
+  {
+    code: '237',
+    length: 9,
+    prefixLength: 1,
+    migrated: CAMEROONIAN_MIGRATED_RANGES,
+  },
+];
+
+/**
+ * The pre-switch ID of a new-length number (country code + its last 8
+ * digits), or null when that old number cannot be this subscriber's: a
+ * prefix, or a start of the old digits, that the switch did not join (an
+ * Ivorian prefix that is not the old number's operator, a Cameroonian range
+ * that was not an old mobile). Benin added `01` to every number, so its old
+ * ID is always the subscriber's.
+ */
+function preSwitchNumber(
+  numbering: NumberingSwitch,
+  national: string,
+): string | null {
+  const prefix = national.slice(0, numbering.prefixLength);
+  const old = national.slice(numbering.prefixLength);
   if (
-    code === '225' &&
-    !IVORIAN_OPERATOR_RANGES[prefix]?.includes(old.slice(0, 2))
+    numbering.migrated &&
+    !numbering.migrated[prefix]?.some((start) => old.startsWith(start))
   ) {
     return null;
   }
-  return code + old;
+  return numbering.code + old;
 }
 
 /**
@@ -125,9 +176,10 @@ function preSwitchNumber(code: string, national: string): string | null {
  * instance id (`<first 4 digits>.api.greenapi.com`, Green API's pattern), so
  * it is digits only and cannot point elsewhere. `phone` is in E.164.
  *
- * An Ivorian or Beninese 10-digit number is first checked (`checkWhatsapp`):
- * the new ID, then the pre-switch one when it is the same subscriber's; the
- * text goes to the first that has an account, and nowhere when none has one. One deadline covers every call.
+ * A number of a numbering-switch country (Côte d'Ivoire, Benin, Cameroon)
+ * is first checked (`checkWhatsapp`): the new ID, then the pre-switch one
+ * when it is the same subscriber's; the text goes to the first that has an
+ * account, and nowhere when none has one. One deadline covers every call.
  */
 export async function sendGreenApiMessage(
   credentials: GreenApiCredentials,
@@ -156,18 +208,22 @@ export async function sendGreenApiMessage(
 }
 
 /**
- * The number WhatsApp knows: unchanged outside the 10-digit switch countries;
- * there, the new form or the pre-switch one, whichever has an account.
+ * The number WhatsApp knows: unchanged outside the numbering-switch
+ * countries; there, the new form or the pre-switch one, whichever has an
+ * account.
  */
 async function whatsappNumber(
   digits: string,
   check: (number: string) => Promise<unknown>,
 ): Promise<string> {
-  const code = TEN_DIGIT_SWITCH_CODES.find((c) => digits.startsWith(c));
-  if (!code || digits.length !== code.length + 10) {
+  const numbering = NUMBERING_SWITCHES.find(
+    (s) =>
+      digits.startsWith(s.code) && digits.length === s.code.length + s.length,
+  );
+  if (!numbering) {
     return digits;
   }
-  const old = preSwitchNumber(code, digits.slice(code.length));
+  const old = preSwitchNumber(numbering, digits.slice(numbering.code.length));
   for (const candidate of old ? [digits, old] : [digits]) {
     const answer = await check(candidate);
     const exists = (answer as { existsWhatsapp?: unknown } | null)
