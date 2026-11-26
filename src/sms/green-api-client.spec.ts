@@ -185,7 +185,7 @@ describe('sendFailureKind (F-97)', () => {
   });
 });
 
-describe('sendGreenApiMessage: Ivorian and Beninese 10-digit numbers', () => {
+describe('sendGreenApiMessage: numbers of the numbering-switch countries', () => {
   const CI_PHONE = '+2250707020304';
   const BJ_PHONE = '+2290154329703';
 
@@ -279,6 +279,93 @@ describe('sendGreenApiMessage: Ivorian and Beninese 10-digit numbers', () => {
       'checkWhatsapp',
       'checkWhatsapp',
     ]);
+  });
+
+  describe('Cameroonian 9-digit numbers (+237, 2014 switch)', () => {
+    const CM_MOBILE = '+237677123456';
+
+    it('sends to the new ID when it has an account (one check)', async () => {
+      const fetchFn = greenApi(['237677123456']);
+
+      await sendGreenApiMessage(CREDENTIALS, CM_MOBILE, TEXT, fetchFn);
+
+      expect(
+        calls(fetchFn).map(({ method, body }) => ({ method, body })),
+      ).toEqual([
+        { method: 'checkWhatsapp', body: { phoneNumber: 237677123456 } },
+        {
+          method: 'sendMessage',
+          body: { chatId: '237677123456@c.us', message: TEXT },
+        },
+      ]);
+    });
+
+    it.each([
+      ['an MTN 67x', CM_MOBILE, 23777123456, '23777123456@c.us'],
+      ['an Orange 69x', '+237699123456', 23799123456, '23799123456@c.us'],
+      ['a 65x', '+237655123456', 23755123456, '23755123456@c.us'],
+    ])(
+      'sends an old mobile (%s) to its pre-switch ID, without the 6, when only that one exists',
+      async (_label, phone, oldNumber, chatId) => {
+        const fetchFn = greenApi([String(oldNumber)]);
+
+        await sendGreenApiMessage(CREDENTIALS, phone, TEXT, fetchFn);
+
+        const made = calls(fetchFn);
+        expect(made.map(({ method }) => method)).toEqual([
+          'checkWhatsapp',
+          'checkWhatsapp',
+          'sendMessage',
+        ]);
+        expect(made[1].body).toEqual({ phoneNumber: oldNumber });
+        expect(made[2].body).toEqual({ chatId, message: TEXT });
+      },
+    );
+
+    it('sends nothing when neither ID has an account', async () => {
+      const fetchFn = greenApi([]);
+
+      const error = await sendError(fetchFn, CM_MOBILE);
+
+      expect(error.reason).toBe('no WhatsApp account');
+      expect(error.message).not.toContain('677123456');
+      expect(calls(fetchFn).map(({ method }) => method)).toEqual([
+        'checkWhatsapp',
+        'checkWhatsapp',
+      ]);
+    });
+
+    it.each([
+      // F-112: 622… (a post-2014 mobile) and 222… (the old fixed line 22…)
+      // end with the same 8 digits; neither may reach that old ID's owner.
+      ['a post-2014 mobile range (62x)', '+237622123456', '23722123456'],
+      ['another post-2014 mobile range (64x)', '+237642123456', '23742123456'],
+      ['a Nexttel 66x', '+237662123456', '23762123456'],
+      ['a fixed line (22x)', '+237222123456', '23722123456'],
+      ['a number of another first digit (9)', '+237912345678', '23712345678'],
+    ])(
+      'checks %s under its new ID only, even when its last 8 digits have an account',
+      async (_label, phone, oldId) => {
+        const fetchFn = greenApi([oldId]);
+
+        const error = await sendError(fetchFn, phone);
+
+        expect(error.reason).toBe('no WhatsApp account');
+        expect(calls(fetchFn).map(({ body }) => body)).toEqual([
+          { phoneNumber: Number(phone.slice(1)) },
+        ]);
+      },
+    );
+
+    it('never checks an 8-digit Cameroonian number', async () => {
+      const fetchFn = greenApi([]);
+
+      await sendGreenApiMessage(CREDENTIALS, '+23777123456', TEXT, fetchFn);
+
+      expect(calls(fetchFn).map(({ method }) => method)).toEqual([
+        'sendMessage',
+      ]);
+    });
   });
 
   it('never checks a Malian number, nor an 8-digit Ivorian one', async () => {
