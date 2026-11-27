@@ -223,6 +223,23 @@ export class AccountDetail {
   termsAcceptedAt: Date;
 
   @ApiProperty({
+    description: 'Date de fermeture, null si le compte n’est pas fermé',
+    type: Date,
+    nullable: true,
+    example: null,
+  })
+  closedAt: Date | null;
+
+  @ApiProperty({
+    description:
+      'Qui a fermé le compte : le client (`CUSTOMER`, parti de lui-même) ou la quincaillerie (`STORE`) ; null si le compte n’est pas fermé',
+    enum: ['CUSTOMER', 'STORE'],
+    nullable: true,
+    example: null,
+  })
+  closedBy: ClosedBy | null;
+
+  @ApiProperty({
     description: 'Objectifs, « Non affecté » en premier',
     type: [GoalView],
   })
@@ -258,10 +275,32 @@ export class AccountDetail {
   statusReason: string | null;
 
   @ApiProperty({
+    description:
+      'Motif de la fermeture par le gérant, null si le compte n’est pas fermé ou si le client est parti de lui-même. Pour le personnel : le client ne le voit jamais.',
+    type: String,
+    nullable: true,
+    example: null,
+  })
+  closedReason: string | null;
+
+  @ApiProperty({
     description: 'Date d’ouverture',
     example: '2026-10-14T10:00:00.000Z',
   })
   createdAt: Date;
+}
+
+/** Who closed an account (28): its customer, or the store's manager. */
+export type ClosedBy = 'CUSTOMER' | 'STORE';
+
+/** Derived from `closedById`: null while the account is not closed. */
+export function closedByOf(
+  account: Pick<Account, 'customerId' | 'closedById'>,
+): ClosedBy | null {
+  if (account.closedById === null) {
+    return null;
+  }
+  return account.closedById === account.customerId ? 'CUSTOMER' : 'STORE';
 }
 
 /** An account with what its detail shows. */
@@ -351,6 +390,14 @@ export function reasonFor(
   return account.customerId === viewerId ? null : account.statusReason;
 }
 
+/** The manager's closing reason (28): the same rule as the suspension's. */
+export function closedReasonFor(
+  account: Pick<Account, 'customerId' | 'closedReason'>,
+  viewerId: string,
+): string | null {
+  return account.customerId === viewerId ? null : account.closedReason;
+}
+
 /** `viewerId`: the session user, so their own account never shows the reason. */
 export function toAccountDetail(
   account: AccountWithDetail,
@@ -366,6 +413,7 @@ export function toAccountDetail(
     // Whether there is a photo, never where it is.
     hasIdPhoto: account.idPhotoPath !== null,
     statusReason: reasonFor(account, viewerId),
+    closedReason: closedReasonFor(account, viewerId),
   };
 }
 
@@ -376,7 +424,10 @@ export function toAccountFields(
     goals: GoalWithArticle[];
     projects: Project[];
   },
-): Omit<AccountDetail, 'openedBy' | 'hasIdPhoto' | 'statusReason'> {
+): Omit<
+  AccountDetail,
+  'openedBy' | 'hasIdPhoto' | 'statusReason' | 'closedReason'
+> {
   return {
     id: account.id,
     number: account.number,
@@ -394,6 +445,8 @@ export function toAccountFields(
         ? null
         : { name: account.beneficiaryName, phone: account.beneficiaryPhone },
     termsAcceptedAt: account.termsAcceptedAt,
+    closedAt: account.closedAt,
+    closedBy: closedByOf(account),
     goals: account.goals.map(toGoalView),
     projects: account.projects.map(toProjectView),
     createdAt: account.createdAt,

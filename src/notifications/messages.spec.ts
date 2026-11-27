@@ -1,6 +1,7 @@
 import {
   accessRecoveredMessage,
   accessResetMessage,
+  accountClosedByStoreMessage,
   accountStatusMessage,
   cancellationRequestedMessage,
   correctionMessage,
@@ -18,6 +19,21 @@ import {
   paidOrderCancelledMessage,
   purchaseMessage,
 } from './messages.js';
+
+describe('accountClosedByStoreMessage (28)', () => {
+  it('tells the closing: account, store, history kept, rejoining reopens it', () => {
+    const { title, body } = accountClosedByStoreMessage({
+      accountNumber: 'C-000123',
+      storeName: 'Quincaillerie Sira',
+    });
+
+    expect(title).toBe('Compte fermé');
+    expect(body).toContain('C-000123');
+    expect(body).toContain('Quincaillerie Sira');
+    expect(body).toContain('historique reste consultable');
+    expect(body).toContain('le même compte sera rouvert');
+  });
+});
 
 describe('accountStatusMessage', () => {
   const change = { accountNumber: 'C-000123', storeName: 'Quincaillerie Sira' };

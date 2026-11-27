@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { accountNotFound } from '../accounts/accounts.errors.js';
+import { accountClosed, accountNotFound } from '../accounts/accounts.errors.js';
 import { formatAmount, parseAmount } from '../common/money.js';
 import {
+  AccountStatus,
   GoalMovementReason,
   GoalStatus,
   OperationChannel,
@@ -102,8 +103,13 @@ export class CorrectionsService {
           // FOR UPDATE: every operation on this account waits here, so the
           // balance and the deposit's corrections cannot change meanwhile.
           const [account] = await tx.$queryRaw<
-            { customerId: string; balance: bigint; currencyCode: string }[]
-          >`SELECT "customerId", "balance", "currencyCode" FROM "accounts"
+            {
+              customerId: string;
+              balance: bigint;
+              currencyCode: string;
+              status: AccountStatus;
+            }[]
+          >`SELECT "customerId", "balance", "currencyCode", "status" FROM "accounts"
           WHERE "id" = ${request.accountId}::uuid AND "storeId" = ${store.storeId}::uuid
           FOR UPDATE`;
           if (!account) {
@@ -120,6 +126,10 @@ export class CorrectionsService {
 
           if (account.customerId === actor.userId) {
             throw ownAccountCorrection();
+          }
+          // A closed account (28) takes no money action, a fix neither.
+          if (account.status === AccountStatus.CLOSED) {
+            throw accountClosed();
           }
 
           const deposit = await tx.operation.findFirst({

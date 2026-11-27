@@ -106,6 +106,8 @@ describe('The customer’s own accounts (e2e)', () => {
         },
         beneficiary: null,
         termsAcceptedAt: opened.body.termsAcceptedAt,
+        closedAt: null,
+        closedBy: null,
         goals: [
           {
             id: expect.any(String),

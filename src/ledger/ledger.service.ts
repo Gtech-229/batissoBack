@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  accountClosed,
   accountNotFound,
   accountSuspended,
 } from '../accounts/accounts.errors.js';
@@ -141,7 +142,11 @@ export class LedgerService {
           if (account.customerId === actor.userId) {
             throw ownAccountDeposit();
           }
-          // Under the account lock, which a suspension also takes (16b).
+          // Under the account lock, which a suspension (16b) and a closing
+          // (28) also take.
+          if (account.status === AccountStatus.CLOSED) {
+            throw accountClosed();
+          }
           if (account.status === AccountStatus.SUSPENDED) {
             throw accountSuspended();
           }

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  accountClosed,
   accountNotFound,
   accountSuspended,
 } from '../accounts/accounts.errors.js';
@@ -123,6 +124,9 @@ export class GoalsService {
           const parallel = await this.replay(tx, idempotencyKey, request);
           if (parallel) {
             return { result: parallel, toNotify: [] };
+          }
+          if (status === AccountStatus.CLOSED) {
+            throw accountClosed();
           }
           if (status === AccountStatus.SUSPENDED) {
             throw accountSuspended();
@@ -383,6 +387,9 @@ export class GoalsService {
       const { status } = await this.ownAccount(tx, actor.userId, accountId, {
         lock: true,
       });
+      if (status === AccountStatus.CLOSED) {
+        throw accountClosed();
+      }
       if (status === AccountStatus.SUSPENDED) {
         throw accountSuspended();
       }

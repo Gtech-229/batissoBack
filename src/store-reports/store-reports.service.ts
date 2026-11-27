@@ -192,7 +192,8 @@ export class StoreReportsService {
           AND o."type" = 'DEPOSIT'::"OperationType"
           AND o."status" = 'CONFIRMED'::"OperationStatus"
       ) last ON TRUE
-      WHERE a."storeId" = ${storeId}::uuid`;
+      WHERE a."storeId" = ${storeId}::uuid
+        AND a."status" <> 'CLOSED'::"AccountStatus"`;
     const statusFilter =
       status === 'ACTIVE'
         ? Prisma.sql`WHERE r."lastActivityAt" >= ${activeSince}`

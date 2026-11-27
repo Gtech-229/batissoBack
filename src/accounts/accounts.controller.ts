@@ -31,6 +31,7 @@ import { ScanQrCodeDto } from '../qr-codes/dto/qr-code.dto.js';
 import type { CurrentStoreContext } from '../store-access/current-store.js';
 import { CurrentStore } from '../store-access/decorators/current-store.decorator.js';
 import { StoreRoles } from '../store-access/decorators/store-roles.decorator.js';
+import { StatusReasonDto } from '../stores/dto/status-reason.dto.js';
 import { invalidAccountId } from './accounts.errors.js';
 import { AccountsService } from './accounts.service.js';
 import { AccountDetail } from './dto/account-detail.js';
@@ -72,7 +73,7 @@ export class AccountsController {
   constructor(private readonly accounts: AccountsService) {}
 
   /**
-   * @description Open a customer's savings account at the counter (creates the customer if the phone is new)
+   * @description Open a customer's savings account at the counter (creates the customer if the phone is new; reopens their closed account, 28)
    * @route POST /api/v1/stores/:storeId/accounts
    * @access Store seller or manager (mobile session)
    * @param storeId the store
@@ -83,7 +84,7 @@ export class AccountsController {
   @ApiOperation({
     summary: 'Ouvrir un compte client',
     description:
-      'Le client est trouvé par son numéro ; s’il n’a pas encore de compte utilisateur, il est créé avec ces nom et prénom (sans PIN : il active l’application par code SMS). Un utilisateur existant garde ses nom et prénom, renvoyés dans la réponse. Le compte reçoit un numéro (C-000123), la devise du pays, un solde de 0 et son objectif « Non affecté ». Un seul compte par client et par quincaillerie ; un membre de l’équipe ne peut pas ouvrir de compte à son propre nom. Seulement pour une quincaillerie vérifiée.',
+      'Le client est trouvé par son numéro ; s’il n’a pas encore de compte utilisateur, il est créé avec ces nom et prénom (sans PIN : il active l’application par code SMS). Un utilisateur existant garde ses nom et prénom, renvoyés dans la réponse. Le compte reçoit un numéro (C-000123), la devise du pays, un solde de 0 et son objectif « Non affecté ». Un seul compte par client et par quincaillerie : si le client avait quitté la quincaillerie, son compte fermé est rouvert (même numéro, historique et objectifs, conditions acceptées de nouveau, bénéficiaire de cette demande). Un membre de l’équipe ne peut pas ouvrir de compte à son propre nom. Seulement pour une quincaillerie vérifiée.',
   })
   @ApiCreatedResponse({ description: 'Compte ouvert', type: AccountDetail })
   @ApiBadRequestResponse({
@@ -187,5 +188,47 @@ export class AccountsController {
     @CurrentUser() viewer: AuthenticatedUser,
   ): Promise<AccountDetail> {
     return this.accounts.detail(store.storeId, accountId, viewer.userId);
+  }
+
+  /**
+   * @description Close a customer's account: the store removes the customer, with a reason (only at a zero balance, nothing in progress)
+   * @route POST /api/v1/stores/:storeId/accounts/:accountId/close
+   * @access Store manager only (mobile session)
+   * @param storeId the store
+   * @param accountId the account
+   * @body StatusReasonDto (reason)
+   * @returns 200 AccountDetail (CLOSED); 404; 409 ACCOUNT_NOT_EMPTY, ORDER_IN_PROGRESS, DISPUTE_IN_PROGRESS, ACCOUNT_SUSPENDED, ACCOUNT_CLOSED, STORE_CLOSED
+   */
+  @Post(':accountId/close')
+  @HttpCode(HttpStatus.OK)
+  @StoreRoles(['MANAGER'])
+  @ApiOperation({
+    summary: 'Fermer le compte d’un client',
+    description:
+      'Le gérant retire le client de la quincaillerie, avec un motif (gardé pour l’équipe et les administrateurs, jamais montré au client). Seulement à un solde de zéro, sans bon de matériaux en cours ni contestation ouverte. Le compte passe à CLOSED : son historique reste, il ne prend plus de dépôts, d’achats ni de mouvements entre objectifs. Le client en est averti ; s’il rejoint de nouveau la quincaillerie, le même compte est rouvert.',
+  })
+  @ApiParam({ name: 'accountId', description: 'Identifiant du compte' })
+  @ApiOkResponse({ description: 'Compte fermé', type: AccountDetail })
+  @ApiBadRequestResponse({
+    description:
+      'Identifiant de quincaillerie ou de compte invalide ; motif invalide (`details`)',
+    type: ErrorResponse,
+  })
+  @ApiForbiddenResponse({
+    description: 'Réservé au gérant (`STORE_ROLE_REQUIRED`)',
+    type: ErrorResponse,
+  })
+  @ApiConflictResponse({
+    description:
+      'Solde non nul (`ACCOUNT_NOT_EMPTY`) ; bon de matériaux en cours (`ORDER_IN_PROGRESS`) ; contestation ouverte (`DISPUTE_IN_PROGRESS`) ; compte suspendu (`ACCOUNT_SUSPENDED`) ; déjà fermé (`ACCOUNT_CLOSED`) ; quincaillerie fermée (`STORE_CLOSED`)',
+    type: ErrorResponse,
+  })
+  close(
+    @CurrentStore() store: CurrentStoreContext,
+    @Param('accountId', AccountIdPipe) accountId: string,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Body() body: StatusReasonDto,
+  ): Promise<AccountDetail> {
+    return this.accounts.close(store, actor, accountId, body.reason);
   }
 }

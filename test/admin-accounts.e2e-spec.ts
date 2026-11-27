@@ -199,11 +199,14 @@ describe('Admin accounts (e2e)', () => {
     });
 
     it('refuses bad filters in French', async () => {
-      const response = await list('?storeId=nope&status=CLOSED').expect(400);
+      const response = await list('?storeId=nope&status=DELETED').expect(400);
 
       expect(response.body.details).toEqual([
         { field: 'storeId', errors: ['Identifiant de quincaillerie invalide'] },
-        { field: 'status', errors: ['L’état doit être ACTIVE ou SUSPENDED'] },
+        {
+          field: 'status',
+          errors: ['L’état doit être ACTIVE, SUSPENDED ou CLOSED'],
+        },
       ]);
     });
   });
@@ -269,6 +272,32 @@ describe('Admin accounts (e2e)', () => {
         error: 'INVALID_STATUS_TRANSITION',
         message: 'Ce compte est déjà suspendu',
       });
+    });
+
+    it('refuses a closed account both ways, 409 ACCOUNT_CLOSED (28)', async () => {
+      const { id } = await account({
+        number: 'C-000014',
+        phone: '+22376000014',
+      });
+      await prisma.account.update({
+        where: { id },
+        data: {
+          status: 'CLOSED',
+          balance: 0n,
+          closedAt: new Date(),
+          closedById: sellerId,
+          closedReason: 'Client injoignable',
+        },
+      });
+
+      const suspended = await suspend(id).expect(409);
+      expect(suspended.body).toMatchObject({ error: 'ACCOUNT_CLOSED' });
+      const reactivated = await reactivate(id).expect(409);
+      expect(reactivated.body).toMatchObject({ error: 'ACCOUNT_CLOSED' });
+      expect(
+        (await prisma.account.findUniqueOrThrow({ where: { id } })).status,
+      ).toBe('CLOSED');
+      expect(await prisma.notification.count()).toBe(0);
     });
 
     it('refuses an account of a closed store', async () => {

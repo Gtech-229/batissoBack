@@ -31,6 +31,8 @@ export class MyAccount extends OmitType(AccountDetail, [
   'hasIdPhoto',
   // Staff only: the customer is told the account is suspended, never why.
   'statusReason',
+  // Staff only too (28): the customer sees who closed it, never why.
+  'closedReason',
 ] as const) {
   @ApiProperty({
     description: 'Quincaillerie du compte',

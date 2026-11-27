@@ -267,6 +267,17 @@ export function accountStatusMessage(change: {
       };
 }
 
+/** To the customer: the store's manager closed their account (28). Never the reason. */
+export function accountClosedByStoreMessage(closing: {
+  accountNumber: string;
+  storeName: string;
+}): NotificationMessage {
+  return {
+    title: 'Compte fermé',
+    body: `La quincaillerie ${closing.storeName} a fermé votre compte ${closing.accountNumber}. Son historique reste consultable dans l’application. Pour y épargner de nouveau, rejoignez-la : le même compte sera rouvert.`,
+  };
+}
+
 /** To the user: their security answers just reset their access (14b). */
 export function accessRecoveredMessage(): NotificationMessage {
   return {
