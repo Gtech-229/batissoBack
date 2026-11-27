@@ -32,7 +32,9 @@ export class AdminAccountsQueryDto extends PaginationQueryDto {
 
   @ApiPropertyOptional({ enum: AccountStatus, description: 'Filtrer par état' })
   @IsOptional()
-  @IsEnum(AccountStatus, { message: 'L’état doit être ACTIVE ou SUSPENDED' })
+  @IsEnum(AccountStatus, {
+    message: 'L’état doit être ACTIVE, SUSPENDED ou CLOSED',
+  })
   status?: AccountStatus;
 }
 

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { accountNotFound } from '../accounts/accounts.errors.js';
+import { accountClosed, accountNotFound } from '../accounts/accounts.errors.js';
 import {
   articleNotFound,
   articleUnavailable,
@@ -12,6 +12,7 @@ import {
   type Paginated,
 } from '../common/pagination.js';
 import {
+  AccountStatus,
   GoalStatus,
   MaterialOrderStatus,
   OrderConfirmationChannel,
@@ -283,15 +284,25 @@ export class OrdersService {
       // FOR SHARE: a closing waits for this order (a suspended store still
       // serves purchases; a closed one accepts no change).
       await lockStoreNotClosed(tx, store.storeId);
-      const account = await tx.account.findFirst({
-        where: { id: accountId, storeId: store.storeId },
-        select: { id: true, customerId: true, currencyCode: true },
-      });
+      // FOR SHARE: a closing (28) waits for this order, then counts it.
+      const [account] = await tx.$queryRaw<
+        {
+          id: string;
+          customerId: string;
+          currencyCode: string;
+          status: AccountStatus;
+        }[]
+      >`SELECT "id", "customerId", "currencyCode", "status" FROM "accounts"
+        WHERE "id" = ${accountId}::uuid AND "storeId" = ${store.storeId}::uuid
+        FOR SHARE`;
       if (!account) {
         throw accountNotFound();
       }
       if (account.customerId === actor.userId) {
         throw ownAccountOrder();
+      }
+      if (account.status === AccountStatus.CLOSED) {
+        throw accountClosed();
       }
       // FOR SHARE: an admin's change to the threshold waits for this order.
       const [settings] = await tx.$queryRaw<{ validationThreshold: bigint }[]>`

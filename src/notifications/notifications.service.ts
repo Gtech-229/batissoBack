@@ -25,6 +25,7 @@ import {
 import {
   accessRecoveredMessage,
   accessResetMessage,
+  accountClosedByStoreMessage,
   accountStatusMessage,
   cancellationRequestedMessage,
   deliveryOverdueMessage,
@@ -456,6 +457,34 @@ export class NotificationsService {
         type: event.suspended
           ? NotificationType.ACCOUNT_SUSPENDED
           : NotificationType.ACCOUNT_REACTIVATED,
+        title,
+        body,
+      },
+      { sms: true },
+    );
+  }
+
+  /**
+   * The rows telling the customer the store's manager closed their account
+   * (28): in-app, SMS and push, like a suspension. Never the reason.
+   */
+  async recordAccountClosedByStore(
+    tx: Prisma.TransactionClient,
+    event: {
+      customerId: string;
+      storeId: string;
+      storeName: string;
+      accountNumber: string;
+    },
+  ): Promise<string[]> {
+    const { title, body } = accountClosedByStoreMessage(event);
+    return this.writeRows(
+      tx,
+      {
+        userId: event.customerId,
+        storeId: event.storeId,
+        operationId: null,
+        type: NotificationType.ACCOUNT_CLOSED_BY_STORE,
         title,
         body,
       },

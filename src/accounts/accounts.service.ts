@@ -9,14 +9,19 @@ import {
 } from '../common/pagination.js';
 import { isPhoneCountry, normalizePhone } from '../common/phone.js';
 import {
+  AccountStatus,
   ActivityAction,
+  DisputeStatus,
+  MaterialOrderStatus,
   StoreStatus,
   type Prisma,
 } from '../generated/prisma/client.js';
 import type { AuthenticatedUser } from '../mobile-auth/authenticated-user.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CurrentStoreContext } from '../store-access/current-store.js';
 import {
+  lockStoreNotClosed,
   lockVerifiedStore,
   storeNotVerified,
 } from '../store-access/verified-store.js';
@@ -27,14 +32,20 @@ import {
 } from '../stores/stores.errors.js';
 import { formatAccountNumber } from './account-number.js';
 import {
+  accountClosed,
   accountExists,
+  accountNotEmpty,
   accountNotFound,
+  disputeInProgress,
   OPENING_REFUSAL,
+  orderInProgress,
   ownAccount,
   phoneNotOfStoreCountry,
+  suspendedAccountNotClosable,
 } from './accounts.errors.js';
 import {
   ACCOUNT_DETAIL_INCLUDE,
+  closedByOf,
   toAccountDetail,
   type AccountDetail,
 } from './dto/account-detail.js';
@@ -47,6 +58,16 @@ import { toMyAccount, type MyAccount } from './dto/my-account.js';
 import type { JoinStoreDto } from './dto/join-store.dto.js';
 import type { OpenAccountDto } from './dto/open-account.dto.js';
 import { toStorePreview, type StorePreview } from './dto/store-preview.js';
+
+/** Orders that are not final yet: an account with one cannot close (28). */
+const ORDERS_IN_PROGRESS = [
+  MaterialOrderStatus.AWAITING_VALIDATION,
+  MaterialOrderStatus.AWAITING_CUSTOMER,
+  MaterialOrderStatus.CONFIRMED,
+];
+
+/** Disputes not closed yet: an account with one cannot close (28). */
+const DISPUTES_IN_PROGRESS = [DisputeStatus.OPEN, DisputeStatus.ANSWERED];
 
 /** The label of every account's system goal (Unassigned). */
 export const UNASSIGNED_GOAL_LABEL = 'Non affecté';
@@ -66,7 +87,10 @@ const MY_ACCOUNT_INCLUDE = {
  */
 @Injectable()
 export class AccountsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   /**
    * Opens an account at the counter, in one transaction: the customer found by
@@ -206,9 +230,156 @@ export class AccountsService {
   }
 
   /**
+   * The signed-in customer leaves the store of one of their accounts (28).
+   * Another user's account answers 404.
+   */
+  async leave(actor: AuthenticatedUser, accountId: string): Promise<MyAccount> {
+    const found = await this.prisma.account.findFirst({
+      where: { id: accountId, customerId: actor.userId },
+      select: { storeId: true },
+    });
+    if (!found) {
+      throw accountNotFound();
+    }
+    return this.prisma.$transaction(async (tx) => {
+      await this.closeAccount(tx, {
+        storeId: found.storeId,
+        accountId,
+        actor,
+        reason: null,
+      });
+      return toMyAccount(
+        await tx.account.findUniqueOrThrow({
+          where: { id: accountId },
+          include: MY_ACCOUNT_INCLUDE,
+        }),
+      );
+    });
+  }
+
+  /**
+   * The store's manager closes a customer's account, with a reason (28). The
+   * customer's notice is written in the transaction and sent after the commit.
+   */
+  async close(
+    store: CurrentStoreContext,
+    actor: AuthenticatedUser,
+    accountId: string,
+    reason: string,
+  ): Promise<AccountDetail> {
+    const { detail, toNotify } = await this.prisma.$transaction(async (tx) => {
+      await this.closeAccount(tx, {
+        storeId: store.storeId,
+        accountId,
+        actor,
+        reason,
+      });
+      const account = await tx.account.findUniqueOrThrow({
+        where: { id: accountId },
+        include: { ...ACCOUNT_DETAIL_INCLUDE, store: true },
+      });
+      const ids = await this.notifications.recordAccountClosedByStore(tx, {
+        customerId: account.customerId,
+        storeId: account.storeId,
+        storeName: account.store.name,
+        accountNumber: account.number,
+      });
+      return {
+        detail: toAccountDetail(account, actor.userId),
+        toNotify: ids,
+      };
+    });
+    void this.notifications.dispatch(toNotify);
+    return detail;
+  }
+
+  /**
+   * Closes an account of the store inside the caller's transaction (28). Locks
+   * the store `FOR SHARE` (not closed), then the account `FOR UPDATE`, the
+   * order deposits use: a deposit in progress lands first, and the zero
+   * balance is read after it. Orders and disputes are counted under the
+   * account lock, which their creation also takes.
+   */
+  private async closeAccount(
+    tx: Prisma.TransactionClient,
+    data: {
+      storeId: string;
+      accountId: string;
+      actor: AuthenticatedUser;
+      reason: string | null;
+    },
+  ): Promise<void> {
+    await lockStoreNotClosed(tx, data.storeId);
+    const [account] = await tx.$queryRaw<
+      {
+        customerId: string;
+        number: string;
+        balance: bigint;
+        status: AccountStatus;
+      }[]
+    >`SELECT "customerId", "number", "balance", "status" FROM "accounts"
+      WHERE "id" = ${data.accountId}::uuid AND "storeId" = ${data.storeId}::uuid
+      FOR UPDATE`;
+    if (!account) {
+      throw accountNotFound();
+    }
+    if (account.status === AccountStatus.CLOSED) {
+      throw accountClosed();
+    }
+    if (account.status === AccountStatus.SUSPENDED) {
+      throw suspendedAccountNotClosable();
+    }
+    if (account.balance !== 0n) {
+      throw accountNotEmpty();
+    }
+    const orders = await tx.materialOrder.count({
+      where: { accountId: data.accountId, status: { in: ORDERS_IN_PROGRESS } },
+    });
+    if (orders > 0) {
+      throw orderInProgress();
+    }
+    const disputes = await tx.dispute.count({
+      where: {
+        accountId: data.accountId,
+        status: { in: DISPUTES_IN_PROGRESS },
+      },
+    });
+    if (disputes > 0) {
+      throw disputeInProgress();
+    }
+
+    await tx.account.update({
+      where: { id: data.accountId },
+      data: {
+        status: AccountStatus.CLOSED,
+        closedAt: new Date(),
+        closedById: data.actor.userId,
+        closedReason: data.reason,
+      },
+    });
+    await tx.activityLog.create({
+      data: {
+        storeId: data.storeId,
+        userId: data.actor.userId,
+        action: ActivityAction.ACCOUNT_CLOSED,
+        newValue: {
+          accountId: data.accountId,
+          number: account.number,
+          closedBy: closedByOf({
+            customerId: account.customerId,
+            closedById: data.actor.userId,
+          }),
+        },
+        device: data.actor.deviceId,
+      },
+    });
+  }
+
+  /**
    * Writes a new account inside the caller's transaction: the next number, the
    * account (terms accepted now, opened by the actor), its Unassigned goal and
    * the activity log row. Shared by the counter opening and the app join.
+   * A CLOSED account of this customer in this store reopens instead (28).
    */
   private async createAccount(
     tx: Prisma.TransactionClient,
@@ -221,6 +392,11 @@ export class AccountsService {
       actor: AuthenticatedUser;
     },
   ): Promise<string> {
+    const reopened = await this.reopenIfClosed(tx, data);
+    if (reopened) {
+      return reopened;
+    }
+
     // nextval is atomic: two openings never get the same value, and it never
     // rolls back (a refused opening leaves a harmless gap).
     const [{ value }] = await tx.$queryRaw<{ value: bigint }[]>`
@@ -268,6 +444,60 @@ export class AccountsService {
       },
     });
     return accountId;
+  }
+
+  /**
+   * The customer's existing account in this store, locked `FOR UPDATE` (after
+   * the store lock, the usual order): null when there is none; ACCOUNT_EXISTS
+   * when it is active or suspended; reopened when it is CLOSED (28): ACTIVE
+   * again, terms accepted now, the request's beneficiary, the closed fields
+   * cleared; its number, history, goals and photo stay. A parallel reopening
+   * waits here, then finds it active.
+   */
+  private async reopenIfClosed(
+    tx: Prisma.TransactionClient,
+    data: {
+      storeId: string;
+      customerId: string;
+      beneficiaryName: string | null;
+      beneficiaryPhone: string | null;
+      actor: AuthenticatedUser;
+    },
+  ): Promise<string | null> {
+    const [existing] = await tx.$queryRaw<
+      { id: string; number: string; status: AccountStatus }[]
+    >`SELECT "id", "number", "status" FROM "accounts"
+      WHERE "customerId" = ${data.customerId}::uuid
+        AND "storeId" = ${data.storeId}::uuid
+      FOR UPDATE`;
+    if (!existing) {
+      return null;
+    }
+    if (existing.status !== AccountStatus.CLOSED) {
+      throw accountExists();
+    }
+    await tx.account.update({
+      where: { id: existing.id },
+      data: {
+        status: AccountStatus.ACTIVE,
+        termsAcceptedAt: new Date(),
+        beneficiaryName: data.beneficiaryName,
+        beneficiaryPhone: data.beneficiaryPhone,
+        closedAt: null,
+        closedById: null,
+        closedReason: null,
+      },
+    });
+    await tx.activityLog.create({
+      data: {
+        storeId: data.storeId,
+        userId: data.actor.userId,
+        action: ActivityAction.ACCOUNT_REOPENED,
+        newValue: { accountId: existing.id, number: existing.number },
+        device: data.actor.deviceId,
+      },
+    });
+    return existing.id;
   }
 
   /**

@@ -97,6 +97,8 @@ describe('Customer accounts (e2e)', () => {
           },
           beneficiary: { name: 'Ali Keita', phone: '+22376778899' },
           termsAcceptedAt: expect.any(String),
+          closedAt: null,
+          closedBy: null,
           goals: [
             {
               id: expect.any(String),
@@ -119,6 +121,7 @@ describe('Customer accounts (e2e)', () => {
           createdAt: expect.any(String),
           hasIdPhoto: false,
           statusReason: null,
+          closedReason: null,
         });
         const body = response.body as {
           id: string;

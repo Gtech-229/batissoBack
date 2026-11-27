@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { accountNotFound } from '../accounts/accounts.errors.js';
+import { accountClosed, accountNotFound } from '../accounts/accounts.errors.js';
 import {
   ONE_SNAPSHOT,
   paginated,
@@ -7,6 +7,7 @@ import {
   type Paginated,
 } from '../common/pagination.js';
 import {
+  AccountStatus,
   DisputeAuthor,
   DisputeStatus,
   Prisma,
@@ -79,6 +80,14 @@ export class DisputesService {
     try {
       const { disputeId, toNotify } = await this.prisma.$transaction(
         async (tx) => {
+          // FOR SHARE: a closing (28) waits for this dispute, then counts it;
+          // a closed account opens none.
+          const [locked] = await tx.$queryRaw<{ status: AccountStatus }[]>`
+            SELECT "status" FROM "accounts"
+            WHERE "id" = ${account.id}::uuid FOR SHARE`;
+          if (locked.status === AccountStatus.CLOSED) {
+            throw accountClosed();
+          }
           const dispute = await tx.dispute.create({
             data: {
               operationId: operation.id,

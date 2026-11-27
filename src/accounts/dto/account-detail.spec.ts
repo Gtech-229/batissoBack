@@ -1,5 +1,7 @@
 import type { Article, User } from '../../generated/prisma/client.js';
 import {
+  closedByOf,
+  closedReasonFor,
   reasonFor,
   toAccountDetail,
   type AccountWithDetail,
@@ -68,6 +70,9 @@ const account = (
   statusChangedById: null,
   termsAcceptedAt: new Date('2026-10-14T10:00:00.000Z'),
   openedById: '2',
+  closedAt: null,
+  closedById: null,
+  closedReason: null,
   createdAt: new Date('2026-10-14T10:00:00.000Z'),
   updatedAt: new Date('2026-10-14T10:00:00.000Z'),
   customer: user('1', 'Fanta'),
@@ -94,7 +99,67 @@ describe('reasonFor (F-43)', () => {
   });
 });
 
+describe('closedByOf (28)', () => {
+  it('is null while the account is not closed', () => {
+    expect(closedByOf({ customerId: '1', closedById: null })).toBeNull();
+  });
+
+  it('is CUSTOMER when the customer left', () => {
+    expect(closedByOf({ customerId: '1', closedById: '1' })).toBe('CUSTOMER');
+  });
+
+  it('is STORE when someone else (the manager) closed it', () => {
+    expect(closedByOf({ customerId: '1', closedById: '2' })).toBe('STORE');
+  });
+});
+
+describe('closedReasonFor (28)', () => {
+  const removed = { customerId: '1', closedReason: 'Client injoignable' };
+
+  it('gives a colleague the reason', () => {
+    expect(closedReasonFor(removed, STAFF_ID)).toBe('Client injoignable');
+  });
+
+  it('never gives it to the account’s own customer, even as staff', () => {
+    expect(closedReasonFor(removed, '1')).toBeNull();
+  });
+});
+
 describe('toAccountDetail', () => {
+  it('shows a removal to staff: when, by the store, and why', () => {
+    const closedAt = new Date('2026-11-27T09:00:00.000Z');
+    const detail = detailFor(
+      account({
+        status: 'CLOSED',
+        closedAt,
+        closedById: '2',
+        closedReason: 'Client injoignable',
+      }),
+    );
+
+    expect(detail).toMatchObject({
+      status: 'CLOSED',
+      closedAt,
+      closedBy: 'STORE',
+      closedReason: 'Client injoignable',
+    });
+  });
+
+  it('never shows the closing reason to the account’s own customer', () => {
+    const detail = toAccountDetail(
+      account({
+        status: 'CLOSED',
+        closedAt: new Date(),
+        closedById: '2',
+        closedReason: 'Client injoignable',
+      }),
+      '1',
+    );
+
+    expect(detail.closedBy).toBe('STORE');
+    expect(detail.closedReason).toBeNull();
+  });
+
   it('writes money as exact strings, beyond the JSON number range', () => {
     const detail = detailFor(
       account({

@@ -4,6 +4,8 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
+  ParseUUIDPipe,
   Post,
 } from '@nestjs/common';
 import {
@@ -14,6 +16,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -22,10 +25,13 @@ import type { AuthenticatedUser } from '../mobile-auth/authenticated-user.js';
 import { CurrentUser } from '../mobile-auth/decorators/current-user.decorator.js';
 import { MobileRoute } from '../mobile-auth/decorators/mobile-route.decorator.js';
 import { ScanQrCodeDto } from '../qr-codes/dto/qr-code.dto.js';
+import { invalidAccountId } from './accounts.errors.js';
 import { AccountsService } from './accounts.service.js';
 import { JoinStoreDto } from './dto/join-store.dto.js';
 import { MyAccount } from './dto/my-account.js';
 import { StorePreview } from './dto/store-preview.js';
+
+const AccountIdPipe = new ParseUUIDPipe({ exceptionFactory: invalidAccountId });
 
 @ApiTags('Mobile - Mon compte')
 @ApiBearerAuth()
@@ -118,7 +124,7 @@ export class MyAccountsController {
   }
 
   /**
-   * @description Join the store behind a scanned QR code: the account opens at once, terms accepted in the app
+   * @description Join the store behind a scanned QR code: the account opens at once, terms accepted in the app; a closed account of the user there reopens (28)
    * @route POST /api/v1/me/accounts/join
    * @access Mobile session (Bearer), any signed-in user
    * @body JoinStoreDto (code, termsAccepted, beneficiary?)
@@ -128,7 +134,7 @@ export class MyAccountsController {
   @ApiOperation({
     summary: 'Rejoindre une quincaillerie',
     description:
-      'Ouvre tout de suite votre compte d’épargne dans la quincaillerie dont vous avez scanné le QR code, après avoir accepté ses conditions dans l’application (voir l’aperçu). La photo de votre pièce d’identité sera prise plus tard au comptoir. Un seul compte par quincaillerie.',
+      'Ouvre tout de suite votre compte d’épargne dans la quincaillerie dont vous avez scanné le QR code, après avoir accepté ses conditions dans l’application (voir l’aperçu). La photo de votre pièce d’identité sera prise plus tard au comptoir. Un seul compte par quincaillerie : si vous l’aviez quittée, votre compte fermé est rouvert (même numéro, historique et objectifs).',
   })
   @ApiCreatedResponse({ description: 'Compte ouvert', type: MyAccount })
   @ApiBadRequestResponse({
@@ -150,5 +156,41 @@ export class MyAccountsController {
     @Body() body: JoinStoreDto,
   ): Promise<MyAccount> {
     return this.accounts.join(user, body);
+  }
+
+  /**
+   * @description Leave a store: close one of the signed-in user's own accounts (only at a zero balance, nothing in progress)
+   * @route POST /api/v1/me/accounts/:accountId/leave
+   * @access Mobile session (Bearer), the account's customer only
+   * @param accountId the account
+   * @returns 200 MyAccount (CLOSED); 404 not one of the user's accounts; 409 ACCOUNT_NOT_EMPTY, ORDER_IN_PROGRESS, DISPUTE_IN_PROGRESS, ACCOUNT_SUSPENDED, ACCOUNT_CLOSED, STORE_CLOSED
+   */
+  @Post(':accountId/leave')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Quitter une quincaillerie',
+    description:
+      'Ferme votre compte dans cette quincaillerie. Seulement à un solde de zéro (utilisez d’abord votre épargne en achats de matériaux), sans bon de matériaux en cours ni contestation ouverte. L’historique du compte reste consultable ; il ne prend plus de dépôts ni d’achats. Rejoindre de nouveau la quincaillerie rouvre le même compte.',
+  })
+  @ApiParam({ name: 'accountId', description: 'Identifiant du compte' })
+  @ApiOkResponse({ description: 'Compte fermé', type: MyAccount })
+  @ApiBadRequestResponse({
+    description: 'Identifiant de compte invalide',
+    type: ErrorResponse,
+  })
+  @ApiNotFoundResponse({
+    description: 'Compte introuvable parmi les vôtres',
+    type: ErrorResponse,
+  })
+  @ApiConflictResponse({
+    description:
+      'Solde non nul (`ACCOUNT_NOT_EMPTY`) ; bon de matériaux en cours (`ORDER_IN_PROGRESS`) ; contestation ouverte (`DISPUTE_IN_PROGRESS`) ; compte suspendu (`ACCOUNT_SUSPENDED`) ; déjà fermé (`ACCOUNT_CLOSED`) ; quincaillerie fermée (`STORE_CLOSED`)',
+    type: ErrorResponse,
+  })
+  leave(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('accountId', AccountIdPipe) accountId: string,
+  ): Promise<MyAccount> {
+    return this.accounts.leave(user, accountId);
   }
 }

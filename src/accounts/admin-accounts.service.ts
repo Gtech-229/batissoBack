@@ -11,6 +11,7 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { PrismaService } from '../prisma/prisma.service.js';
 import { lockStoreNotClosed } from '../store-access/verified-store.js';
 import {
+  accountClosed,
   accountNotFound,
   invalidAccountTransition,
 } from './accounts.errors.js';
@@ -104,6 +105,11 @@ export class AdminAccountsService {
         await lockStoreNotClosed(tx, found.storeId);
         const [current] = await tx.$queryRaw<{ status: AccountStatus }[]>`
         SELECT "status" FROM "accounts" WHERE "id" = ${id}::uuid FOR UPDATE`;
+        // A closed account (28) is not suspended or reactivated: it reopens
+        // only when its customer joins again.
+        if (current?.status === AccountStatus.CLOSED) {
+          throw accountClosed();
+        }
         if (current?.status !== transition.from) {
           throw invalidAccountTransition(action);
         }

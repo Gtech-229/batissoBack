@@ -177,6 +177,10 @@ enum ActivityAction {
   PROOF_REMOVED
   /// A manager exported a report as a file: data left the app (15b).
   REPORT_EXPORTED
+  /// The customer left the store, or its manager removed them (28).
+  ACCOUNT_CLOSED
+  /// A closed account reopened: the customer joined again (28).
+  ACCOUNT_REOPENED
 }
 
 enum AccountStatus {
@@ -184,6 +188,10 @@ enum AccountStatus {
   /// Suspended by an admin (16b): no deposits and no goal moves; purchases
   /// are still served.
   SUSPENDED
+  /// The customer left the store or its manager removed them (28), only at a
+  /// zero balance with nothing in progress. History kept, no money action;
+  /// joining again reopens it.
+  CLOSED
 }
 
 enum GoalStatus {
@@ -344,6 +352,8 @@ model User {
   // Feature 5a: savings accounts held, and accounts opened as staff.
   accounts            Account[]               @relation("AccountCustomer")
   openedAccounts      Account[]               @relation("AccountOpenedBy")
+  // Feature 28: accounts closed, as their customer or as a manager.
+  closedAccounts      Account[]               @relation("AccountClosedBy")
   // Feature 6: operations recorded, and validated (orders, feature 10).
   operations          Operation[]             @relation("OperationAuthor")
   validations         Operation[]             @relation("OperationValidatedBy")
@@ -553,10 +563,18 @@ model Account {
   termsAcceptedAt      DateTime
   /// The staff member who opened the account.
   openedById           String        @db.Uuid
+  /// Set together when the account closes (28), cleared when it reopens; the
+  /// service keeps them in step with the CLOSED status.
+  closedAt             DateTime?
+  /// Who closed it: the customer (they left) or a manager (they removed them).
+  closedById           String?       @db.Uuid
+  /// The manager's reason; null when the customer left. Never for the customer.
+  closedReason         String?       @db.VarChar(500)
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 
   customer        User               @relation("AccountCustomer", fields: [customerId], references: [id], onDelete: Restrict)
+  closedBy        User?              @relation("AccountClosedBy", fields: [closedById], references: [id], onDelete: Restrict)
   statusChangedBy Admin?             @relation("AccountStatusChangedBy", fields: [statusChangedById], references: [id], onDelete: SetNull)
   store           HardwareStore      @relation(fields: [storeId], references: [id], onDelete: Restrict)
   openedBy        User               @relation("AccountOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
@@ -1026,6 +1044,8 @@ enum NotificationType {
   ACCOUNT_SUSPENDED
   /// An admin reactivated the customer's account (16b).
   ACCOUNT_REACTIVATED
+  /// The store's manager closed the customer's account (28).
+  ACCOUNT_CLOSED_BY_STORE
 }
 
 enum NotificationChannel {
